@@ -230,6 +230,32 @@ try {
     ok(d2.length === 1 && d2[0].body?.replaces === "<d2@x>", `a draft without files is still replaced by its next save — replaces: ${JSON.stringify(d2.map((x) => x.body?.replaces))}`);
   });
 
+  await scenario("local-copies", async () => {
+    // A draft the server refused lives only in this browser. Writing another
+    // message must not take its place.
+    await fresh({ draftFail: 1 });
+    const s = await ev(`
+      openCompose(); await wait(150); fill("Refused by the server", "only copy"); await wait(900);
+      closeSheets(); await wait(500);
+      openCompose(); await wait(150); fill("Another message", "typed after"); await wait(900);
+      const mid = keptDraft()?.subject;
+      $("#cTo").value = ""; $("#cSubj").value = ""; $("#cBody").innerHTML = ""; closeSheets(); await wait(400);
+      const kept = keptDraft();
+      return { mid, after: kept?.subject, why: kept?.why || "" };`);
+    ok(s.mid === "Refused by the server" && s.after === "Refused by the server", `a draft held only in this browser survives another message being written and closed — ${JSON.stringify(s)}`);
+    ok(/refused/.test(s.why), "and still says why it was not saved");
+    const r = await ev(`resumeKept(keptDraft()); await wait(200); const subj = $("#cSubj").value; const slots = Object.keys(localStorage).filter((k) => k.startsWith("dmzs-draft")).length; return { subj, slots };`);
+    ok(r.subj === "Refused by the server" && r.slots === 1, `resuming it moves it to the composer's own slot — ${JSON.stringify(r)}`);
+    await fresh();
+    const big = await ev(`
+      openCompose(); await wait(150);
+      const px = "data:image/png;base64," + "A".repeat(6 * 1024 * 1024);
+      fill("With a photo", 'words to keep<img alt="p" src="' + px + '">'); await wait(1200);
+      const kept = JSON.parse(localStorage.getItem(draftSlot()) || "null");
+      return { has: !!kept, words: /words to keep/.test(kept?.html || ""), size: (kept?.html || "").length };`);
+    ok(big.has && big.words && big.size < 100000, `a message too large to keep locally is kept without its pictures — ${JSON.stringify(big)}`);
+  });
+
   await scenario("block-prefill", async () => {
     await fresh();
     const v = await ev(`await openMsg("m1", messages[0]); await wait(400); $("#sdBlock").click(); await wait(200); const v = $("#modalInput").value; closeModal(null); return v;`);

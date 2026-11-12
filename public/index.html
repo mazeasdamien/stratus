@@ -2565,6 +2565,12 @@ function renderList() {
   renderEmptyReader();
   const rows = messages;
   const items = [];
+  // A message held only in this browser is offered at the top of Drafts
+  // whenever there is one, not only when the folder is empty: with other
+  // drafts in the list the one Apple never took had no way back but a toast.
+  if (rows.length && folder === "drafts" && !query && keptDraft()) {
+    items.push(["kept", `<button class="morebtn" data-resume-kept>Resume the unfinished message kept in this browser</button>`]);
+  }
   for (const m of rows) {
     items.push(["r" + m.id, rowHtml(m)]);
     if (openThread && m.thread_key === openThread) {
@@ -4342,6 +4348,18 @@ function closeSheets() {
    anyone should have to remember to keep. */
 
 const DRAFT_KEY = "dmzs-draft";
+/**
+ * Where this message's local copy lives: one slot per message, named after
+ * its send key.
+ *
+ * There used to be one slot for everything. A draft Apple had refused, or one
+ * that outlived a crash, existed nowhere else — and starting any other
+ * message overwrote it 700 ms after the first keystroke, or removed it when
+ * that message was closed empty. A slot is only ever written or removed by
+ * the message it belongs to. The bare key is the old single slot, still read
+ * so a draft kept before this change is still offered.
+ */
+const draftSlot = () => `${DRAFT_KEY}:${sendKey}`;
 /** What the copy at Apple is called, so the next save knows what it replaces. */
 let draftPid = "";
 let draftTimer = null;
@@ -4404,8 +4422,9 @@ const setSaved = (msg, warn = false) => {
 function saveDraftLocal() {
   if (!document.body.classList.contains("composing")) return;
   const d = draftSnapshot();
+  const slot = draftSlot();
   if (draftEmpty(d)) {
-    localStorage.removeItem(DRAFT_KEY);
+    localStorage.removeItem(slot);
     setSaved("");
     return;
   }
@@ -4413,13 +4432,24 @@ function saveDraftLocal() {
     // Why the copy at Apple did not happen, carried with the draft rather than
     // announced once and forgotten. A save that failed at midnight is still
     // failing at nine, and a toast nobody caught is not a diagnosis.
-    localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...d, why: draftWhy }));
+    localStorage.setItem(slot, JSON.stringify({ ...d, why: draftWhy }));
     setSaved("Kept");
   } catch {
-    // Out of quota. Said out loud rather than swallowed: silently stopping is
-    // how someone finds out at the worst possible moment.
-    localStorage.removeItem(DRAFT_KEY);
-    setSaved("Too large to keep here — saved on close", true);
+    // Out of quota, and nearly always for one reason: the pictures quoted
+    // from the message being answered, which sit in the body as data URIs of
+    // several megabytes. The words are the part that cannot be redone, so
+    // they are kept without the pictures rather than not at all — a reply to
+    // a mail with three photos used to have no local copy whatever.
+    try {
+      const lean = d.html.replace(/(<img\b[^>]*?\ssrc=")data:[^"]*"/gi, '$1"');
+      localStorage.setItem(slot, JSON.stringify({ ...d, html: lean, why: draftWhy }));
+      setSaved("Kept, without its pictures");
+    } catch {
+      // Said out loud rather than swallowed: silently stopping is how someone
+      // finds out at the worst possible moment.
+      localStorage.removeItem(slot);
+      setSaved("Too large to keep here — saved on close", true);
+    }
   }
 }
 
@@ -4436,24 +4466,37 @@ const queueDraftSave = () => {
  * a fresh snapshot: by the time a save fails the composer is usually closed,
  * and the DOM is no longer something to read a draft out of.
  */
-function rememberWhy(why) {
+function rememberWhy(why, slot) {
   try {
-    const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null");
-    if (d) localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...d, why }));
+    const d = JSON.parse(localStorage.getItem(slot) || "null");
+    if (d) localStorage.setItem(slot, JSON.stringify({ ...d, why }));
   } catch {
     /* nothing stored to annotate */
   }
 }
 
-/** The draft this browser is holding that never reached Apple, if any. */
+/**
+ * The draft this browser is holding that never reached Apple, if any: the
+ * newest one, when several messages were left unfinished. The message open in
+ * the composer right now is not one of them.
+ */
 function keptDraft() {
-  try {
-    const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null");
-    return draftEmpty(d) ? null : d;
-  } catch {
-    localStorage.removeItem(DRAFT_KEY);
-    return null;
+  const open = document.body.classList.contains("composing") ? draftSlot() : "";
+  let newest = null;
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key !== DRAFT_KEY && !key.startsWith(DRAFT_KEY + ":")) continue;
+    if (key === open) continue;
+    let d = null;
+    try {
+      d = JSON.parse(localStorage.getItem(key) || "null");
+    } catch {
+      /* unreadable: nothing to offer, nothing worth keeping */
+    }
+    if (draftEmpty(d)) continue;
+    if (!newest || Number(d.at || 0) > Number(newest.at || 0)) newest = { ...d, slot: key };
   }
+  return newest;
 }
 
 /** Puts a kept draft back in the composer it came out of. */
@@ -4479,6 +4522,10 @@ function resumeKept(d) {
   draftWhy = d.why || "";
   // Not clean: this copy never reached Apple, and closing must try again.
   draftClean = false;
+  // The composer has given the message a new slot. It is written there before
+  // the old one is let go, so there is no moment with no local copy.
+  saveDraftLocal();
+  if (d.slot && d.slot !== draftSlot()) localStorage.removeItem(d.slot);
   setSaved(d.why ? `Not saved to Drafts: ${d.why}` : "Kept", !!d.why);
 }
 for (const id of ["#cTo", "#cCc", "#cBcc", "#cSubj", "#cBody"]) {
@@ -4494,7 +4541,7 @@ for (const id of ["#cTo", "#cCc", "#cBcc", "#cSubj", "#cBody"]) {
  *
  * Returns the reason it failed, or "" when it worked.
  */
-async function saveDraftRemote(d, files, session) {
+async function saveDraftRemote(d, files, session, slot) {
   setSaved("Saving…");
   const res = await api("/api/draft", {
     method: "POST",
@@ -4523,19 +4570,25 @@ async function saveDraftRemote(d, files, session) {
     if (stillOpen) setSaved(why, true);
     return why;
   }
-  // Apple has it now, so the local copy has nothing left to protect — unless
-  // that copy is already a different draft.
-  if (stillOpen) {
-    localStorage.removeItem(DRAFT_KEY);
-    setSaved("Saved to Drafts");
+  // Apple has it now, so this message's local copy has nothing left to
+  // protect — unless more has been typed since the snapshot left.
+  if (slot) {
+    let kept = null;
+    try {
+      kept = JSON.parse(localStorage.getItem(slot) || "null");
+    } catch {
+      /* unreadable: nothing worth keeping */
+    }
+    if (!kept || Number(kept.at || 0) <= Number(d.at || 0)) localStorage.removeItem(slot);
   }
+  if (stillOpen) setSaved("Saved to Drafts");
   return "";
 }
 
 /** Throws the draft away for good, both copies. */
 async function dropDraft() {
   clearTimeout(draftTimer);
-  localStorage.removeItem(DRAFT_KEY);
+  localStorage.removeItem(draftSlot());
   const pid = draftPid;
   draftPid = "";
   draftRowId = "";
@@ -4566,7 +4619,7 @@ async function dropDraft() {
  */
 function keepDraft() {
   if (!draftDirty()) {
-    localStorage.removeItem(DRAFT_KEY);
+    localStorage.removeItem(draftSlot());
     return Promise.resolve();
   }
   // Nothing has changed since the last save, so there is nothing to repeat.
@@ -4587,18 +4640,21 @@ function keepDraft() {
   const snap = draftSnapshot();
   const files = attached.map(({ filename, type, data }) => ({ filename, type, data }));
   const session = draftSession;
+  const slot = draftSlot();
   draftClean = true;
 
-  draftSaving = saveDraftRemote(snap, files, session)
+  draftSaving = saveDraftRemote(snap, files, session, slot)
     .then((why) => {
       toast(why ? `Draft kept in this browser only — ${why}` : "Draft saved");
       // A failed save leaves the local copy as the only one, so it must not be
       // treated as settled the next time round — and the reason has to survive
       // with it, because the local copy is now the only record that it failed.
+      // The reason is written to this message's own slot whatever the
+      // composer holds by now.
+      if (why) rememberWhy(why, slot);
       if (why && draftSession === session) {
         draftClean = false;
         draftWhy = why;
-        rememberWhy(why);
       }
       refreshAll();
     })
@@ -6139,7 +6195,7 @@ $("#accPills").addEventListener("click", (e) => {
 
 $("#list").addEventListener("click", (e) => {
   if (e.target.closest("#moreBtn")) { loadList(true); return; }
-  if (e.target.closest("#resumeKeptBtn")) {
+  if (e.target.closest("#resumeKeptBtn, [data-resume-kept]")) {
     const d = keptDraft();
     if (d) resumeKept(d);
     return;
