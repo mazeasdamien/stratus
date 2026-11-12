@@ -217,6 +217,11 @@ export class FakeImap {
       }
       return ok();
     }
+    if ((m = /^UID MOVE (\S+) "(.*)"$/.exec(cmd))) {
+      if (!this.boxes.has(m[2])) return no("[TRYCREATE] no such mailbox");
+      for (const x of [...b.msgs]) if (this.inSet(m[1], x.uid, max)) this.move(b.name, x.uid, m[2]);
+      return ok();
+    }
     if ((m = /^UID EXPUNGE (\S+)$/.exec(cmd))) {
       if (!this.caps.includes("UIDPLUS")) return send(`${tag} BAD unknown\r\n`);
       b.msgs = b.msgs.filter((x) => !(this.inSet(m[1], x.uid, max) && x.flags.has(BS + "Deleted")));

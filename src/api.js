@@ -673,9 +673,9 @@ export async function handleApi(request, env, path, ctx, session) {
     const acct = await accountById(env, rows[0].account_id);
     if (!acct) return json({ error: "Unknown account" }, 404);
 
-    let n = 0;
+    let acted = [];
     try {
-      n = await threadAct(env, acct, rows, async (im, boxes, uid) => {
+      acted = await threadAct(env, acct, rows, async (im, boxes, uid) => {
         if (b.purge) return imapPurge(im, uid);
         const dest = resolveMailbox(boxes, target);
         if (!dest) throw new Error(`No mailbox matching "${target}". Server has: ${mailboxList(boxes)}`);
@@ -686,16 +686,24 @@ export async function handleApi(request, env, path, ctx, session) {
     }
 
     const ids = rows.map((r) => r.id);
-    const marks = ids.map(() => "?").join(",");
     if (b.purge) {
+      // Every row goes: one the server no longer has there is already as
+      // deleted as it can be, which is what the single purge route says too.
       await forgetMessages(env, ids);
-      await env.DB.prepare(`DELETE FROM messages WHERE id IN (${marks})`).bind(...ids).run();
-    } else {
-      await env.DB.prepare(`UPDATE messages SET folder=?, unread=0 WHERE id IN (${marks})`)
-        .bind(target, ...ids)
-        .run();
+      await env.DB.prepare(`DELETE FROM messages WHERE id IN (${ids.map(() => "?").join(",")})`).bind(...ids).run();
+      return json({ ok: true, n: ids.length, from });
     }
-    return json({ ok: true, n: n || ids.length, from });
+    // A move refiles only what moved. A message the server did not have in
+    // this folder — moved on the phone a moment ago, or never matched — used
+    // to be refiled here all the same, so the app showed it in Trash while
+    // iCloud and every other device still had it where it was.
+    if (!acted.length) {
+      return json({ error: "iCloud no longer has this in that folder. It may have been moved on another device." }, 404);
+    }
+    await env.DB.prepare(`UPDATE messages SET folder=?, unread=0 WHERE id IN (${acted.map(() => "?").join(",")})`)
+      .bind(target, ...acted)
+      .run();
+    return json({ ok: true, n: acted.length, from });
   }
 
   // GET /api/blocked — the rules, and what each one has destroyed.

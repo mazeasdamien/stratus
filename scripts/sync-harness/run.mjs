@@ -255,5 +255,21 @@ const forGood = await api("POST", `/api/messages/${row("<binned@x>").id}/purge`)
 eq([forGood.status, forGood.body?.alreadyGone], [200, false], "purging it succeeds");
 ok(!holds("Deleted Messages", "<binned@x>") && !row("<binned@x>"), "and it is gone from Trash at the provider and here");
 
+// ── Filing a conversation refiles only what the provider actually moved ──
+imap.add("INBOX", msg("<th1@x>", "Thread"));
+const th2 = imap.add("INBOX", msg("<th2@x>", "Re: Thread", "In-Reply-To: <th1@x>\r\nReferences: <th1@x>\r\n"));
+for (let i = 0; i < 6; i++) await pass1("thread " + i);
+eq([row("<th1@x>")?.folder, row("<th2@x>")?.folder], ["inbox", "inbox"], "both messages of the thread are in the inbox");
+imap.move("INBOX", th2.uid, "Archive"); // on the phone, a moment before
+const filed = await api("POST", "/api/thread", { key: "<th1@x>", from: "inbox", folder: "trash" });
+eq([filed.status, filed.body?.n], [200, 1], "the move reports the one message it moved");
+ok(holds("Deleted Messages", "<th1@x>") && row("<th1@x>").folder === "trash", "that message is in Trash at the provider and here");
+ok(holds("Archive", "<th2@x>") && row("<th2@x>").folder !== "trash", "the one moved elsewhere is not shown as binned");
+// Nothing left of the thread in the inbox at the provider: say so, change nothing.
+DB.raw.prepare("UPDATE messages SET folder='inbox' WHERE mid='<th2@x>'").run();
+const none = await api("POST", "/api/thread", { key: "<th1@x>", from: "inbox", folder: "trash" });
+ok(none.status !== 200 && !!none.body?.error, "a thread the provider no longer has there is refused: " + JSON.stringify(none.body));
+eq(row("<th2@x>").folder, "inbox", "and its row is left where it was");
+
 console.log(`${fail ? "✗" : "✓"} ${pass} assertions passées, ${fail} échec(s) (caps ${caps.join(" ")})`);
 process.exit(fail ? 1 : 0);

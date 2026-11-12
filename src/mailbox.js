@@ -176,10 +176,14 @@ export async function icloudAct(env, account, mid, hintFolder, fn, { onlyHint = 
  *
  * Grouped by the folder each message is filed under, so a mailbox is selected
  * once rather than once per message.
+ *
+ * Returns the ids of the rows whose message the server had there, which are
+ * the only ones anything was done to. A count alone let the caller refile
+ * every row, including the ones another device had already moved away.
  */
 export async function threadAct(env, account, rows, fn) {
   const pass = await icloudPassword(env, account);
-  if (!pass) return 0;
+  if (!pass) throw new Error("This account has no stored credential");
 
   const byFolder = new Map();
   for (const r of rows) {
@@ -188,7 +192,7 @@ export async function threadAct(env, account, rows, fn) {
     byFolder.get(k).push(r);
   }
 
-  let done = 0;
+  const acted = [];
   const im = await imapOpen({ user: account.email, pass });
   try {
     const boxes = await imapList(im);
@@ -200,16 +204,14 @@ export async function threadAct(env, account, rows, fn) {
         const needle = String(r.mid || r.pid).replace(/["\\\r\n]/g, "");
         if (!needle) continue;
         const uids = await imapSearch(im, `HEADER "Message-ID" "${needle}"`).catch(() => []);
-        for (const uid of uids) {
-          await fn(im, boxes, uid);
-          done++;
-        }
+        for (const uid of uids) await fn(im, boxes, uid);
+        if (uids.length) acted.push(r.id);
       }
     }
   } finally {
     await im.logout();
   }
-  return done;
+  return acted;
 }
 
 /** The messages of one conversation, as they are filed right now. */
