@@ -350,6 +350,35 @@ try {
     ok(/second message/.test(late) && !/Corrected/.test(late), `a late answer does not overwrite the next message — ${JSON.stringify(late.slice(0, 80))}`);
   });
 
+  await scenario("list-and-conversations", async () => {
+    const threadPosts = async () => (await posts("/api/thread")).map((l) => l.body);
+    // "Load older" starts after the last row by date and id.
+    await fresh();
+    await ev(`messages._more = true; await loadList(true); await wait(200);`);
+    const page = (await seen()).filter((l) => l.method === "GET" && l.path === "/api/messages" && l.query.before).pop();
+    ok(page && page.query.before_id === "m3" && Number(page.query.before) > 0, `the next page is asked for by date and id — ${JSON.stringify(page?.query)}`);
+    // Undo of a conversation move names the messages that moved.
+    await fresh();
+    await ev(`await fileThread("t-m1", "inbox", "archive", "Archived"); await wait(100); lastUndo(); await wait(400);`);
+    const moves = await threadPosts();
+    ok(moves.length === 2 && moves[1].from === "archive" && moves[1].folder === "inbox" && Array.isArray(moves[1].ids) && moves[1].ids.length === 2, `Undo puts back exactly what moved — ${JSON.stringify(moves[1])}`);
+    // Stepping to a conversation with the keyboard and filing it files all of it.
+    await fresh();
+    await ev(`messages[1].n = 3; renderList(); await openMsg("m1", messages[0]); await wait(400); step(1); await wait(500); document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "e", bubbles: true })); await wait(400);`);
+    const stepped = await threadPosts();
+    ok(stepped.length === 1 && stepped[0].key === "t-m2", `j then e files the whole conversation — ${JSON.stringify(stepped)}`);
+    // So does a bulk action on a row that stands for one.
+    await fresh();
+    await ev(`messages[0].n = 3; renderList(); enterSelmode(); for (const el of [...document.querySelectorAll("#list [data-id]")].slice(0, 2)) togglePick(el.closest(".wrap") || el); bulkApply("archive", "Archived"); await wait(500);`);
+    const bulk = await threadPosts();
+    const single = (await seen()).filter((l) => l.method === "POST" && l.path.endsWith("/move")).map((l) => l.path);
+    ok(bulk.length === 1 && bulk[0].key === "t-m1" && single.length === 1 && single[0].includes("/m2/"), `a bulk action files a picked conversation whole and a single message alone — thread ${JSON.stringify(bulk.map((b) => b.key))}, single ${JSON.stringify(single)}`);
+    // Reply goes to Reply-To when the sender set one.
+    await fresh();
+    const to = await ev(`await openMsg("m3", messages[2]); await wait(400); $("#rReply").click(); await wait(300); return addrGet("#cTo", "#cToChips");`);
+    ok(to === "customer@x.fr", `a reply goes to the Reply-To address — to: ${to}`);
+  });
+
   await scenario("key-repeat", async () => {
     await fresh();
     const filed = (l) => l.method === "POST" && (l.path.endsWith("/move") || l.path === "/api/thread");
