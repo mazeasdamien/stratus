@@ -1233,6 +1233,15 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
   box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 6px 18px color-mix(in srgb,var(--red) 26%,transparent);
   color:#fff}
 #rAtts{padding:8px 16px 0}
+/* On a phone the files are one row that scrolls sideways. Wrapped, each file
+   took a line of its own under "Download all", and two attachments cost the
+   message a fifth of the screen. The chip cut off at the edge is what says
+   there are more. */
+@media (max-width:899px){
+  #rAtts{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;overscroll-behavior-x:contain}
+  #rAtts::-webkit-scrollbar{display:none}
+  #rAtts .att{flex:none}
+}
 
 /* A draft's delete, out of hiding. It was a grey glyph beside the date that
    read as decoration; it is a red disc now, the same red as every other
