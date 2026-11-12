@@ -15,6 +15,9 @@ export function makeD1(log = []) {
       return new Stmt(this.sql, a);
     }
     exec() {
+      // D1 refuses a statement with more than 100 bound values; node:sqlite
+      // takes thousands. Without this the harness passes code D1 rejects.
+      if (this.args.length > 100) throw new Error(`D1_ERROR: too many SQL variables (${this.args.length})`);
       log.push(this.sql);
       const st = db.prepare(this.sql);
       if (/^\s*(SELECT|WITH)/i.test(this.sql)) return { results: st.all(...norm(this.args)), meta: { changes: 0 } };

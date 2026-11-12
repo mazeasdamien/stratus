@@ -710,7 +710,12 @@ export async function handleApi(request, env, path, ctx, session) {
       // Every row goes: one the server no longer has there is already as
       // deleted as it can be, which is what the single purge route says too.
       await forgetMessages(env, ids);
-      await env.DB.prepare(`DELETE FROM messages WHERE id IN (${ids.map(() => "?").join(",")})`).bind(...ids).run();
+      // Ninety at a time: D1 binds at most 100 values to a statement, and a
+      // conversation can hold up to 200 messages.
+      for (let i = 0; i < ids.length; i += 90) {
+        const some = ids.slice(i, i + 90);
+        await env.DB.prepare(`DELETE FROM messages WHERE id IN (${some.map(() => "?").join(",")})`).bind(...some).run();
+      }
       return json({ ok: true, n: ids.length, from, ids });
     }
     // A move refiles only what moved. A message the server did not have in
@@ -723,9 +728,13 @@ export async function handleApi(request, env, path, ctx, session) {
     // The folder and nothing else. This also marked every message read, here
     // only: filing an unread conversation showed it read in the app while
     // iCloud kept it unread, and moving a single message never did that.
-    await env.DB.prepare(`UPDATE messages SET folder=? WHERE id IN (${acted.map(() => "?").join(",")})`)
-      .bind(target, ...acted)
-      .run();
+    // Ninety at a time, for D1's limit of 100 bound values.
+    for (let i = 0; i < acted.length; i += 90) {
+      const some = acted.slice(i, i + 90);
+      await env.DB.prepare(`UPDATE messages SET folder=? WHERE id IN (${some.map(() => "?").join(",")})`)
+        .bind(target, ...some)
+        .run();
+    }
     return json({ ok: true, n: acted.length, from, ids: acted });
   }
 
