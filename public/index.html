@@ -3203,7 +3203,10 @@ function step(delta) {
   if (!messages.length) return;
   const at = current ? messages.findIndex((m) => m.id === current.message.id) : -1;
   const next = messages[Math.min(messages.length - 1, Math.max(0, at + delta))];
-  if (next && (!current || next.id !== current.message.id)) openMsg(next.id);
+  // With its row, as a click passes it. Without, the reader did not know the
+  // message stood for a conversation: j then e archived the newest message of
+  // a thread of five, and the row came back a minute later with four.
+  if (next && (!current || next.id !== current.message.id)) openMsg(next.id, next);
 }
 
 addEventListener("keydown", (e) => {
@@ -7348,12 +7351,28 @@ function togglePick(wrap) {
 function bulkApply(target, said) {
   const ids = [...picked];
   if (!ids.length) return;
-  const n = ids.length;
+  // The rows as listed, read before they leave the list. A row that stands
+  // for a conversation is filed as one, as a swipe on it is: filing only its
+  // newest message made the row vanish and return with the rest.
+  const rows = ids.map((id) => messages.find((m) => m.id === id) || { id });
   exitSelmode();
   messages = messages.filter((m) => !ids.includes(m.id));
   renderList();
-  Promise.all(ids.map((id) => fileMessage(id, target))).then((rs) => {
-    const ok = rs.filter(Boolean).length;
+  const fileRow = (m) =>
+    Number(m.n) > 1 && m.thread_key
+      ? api("/api/thread", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key: m.thread_key, from: m.folder || "inbox", folder: target }),
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d) => (d ? Number(d.n) || 1 : 0))
+          .catch(() => 0)
+      : fileMessage(m.id, target).then((d) => (d ? 1 : 0));
+  Promise.all(rows.map(fileRow)).then((counts) => {
+    const ok = counts.reduce((a, b) => a + b, 0);
+    // Whatever did not move is still where it was; show it again.
+    if (counts.includes(0)) loadList();
     if (!ok) return;
     toast(ok > 1 ? `${said} — ${ok} messages` : said);
     say(ok > 1 ? `${said} ${ok} messages` : said);
