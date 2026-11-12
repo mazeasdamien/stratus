@@ -805,14 +805,17 @@ export async function handleApi(request, env, path, ctx, session) {
     return json({ ok: true }, 200, { "Set-Cookie": sessionCookie(token) });
   }
 
-  // GET /api/messages?folder=&account=&q=&starred=&before=&limit=
+  // GET /api/messages?folder=&account=&q=&starred=&before=&before_id=&limit=
   // folder=all searches across everything, which is what the search box uses.
+  // `before` and `before_id` are the date and id of the last row of the page
+  // before this one.
   if (path === "/api/messages" && request.method === "GET") {
     const p = new URL(request.url).searchParams;
     const folder = p.get("folder") || "inbox";
     const account = p.get("account") || "";
     const term = (p.get("q") || "").trim().slice(0, 120);
     const before = Number(p.get("before")) || 0;
+    const beforeId = /^[a-f0-9]{16}$/.test(p.get("before_id") || "") ? p.get("before_id") : "";
     // Floored at 1: to SQLite a negative LIMIT means no limit at all, so
     // ?limit=-1 answered with the whole mailbox in one response.
     const limit = Math.max(1, Math.min(100, Math.floor(Number(p.get("limit"))) || 50));
@@ -835,23 +838,10 @@ export async function handleApi(request, env, path, ctx, session) {
       return json({ messages: results ?? [] });
     }
 
-    // Grouped by conversation, except while searching: a search is a question
-    // about individual messages, and collapsing the answer hides the one that
-    // matched behind whichever is newest.
-    //
-    // COUNT and the two SUMs are safe alongside the bare columns; a second
-    // min()/max() would not be. SQLite fills bare columns from the row that
-    // produced the max, but only guarantees it when there is exactly one such
-    // aggregate — so `starred` is summed rather than maxed, and `id` is
-    // reliably the newest message's.
-    const grouped = !term;
-    let sql = grouped
-      ? `SELECT id, account_id, thread_key, from_name, from_email, subject, snippet,
-                MAX(date) AS date, SUM(unread) AS unread, SUM(starred) AS starred,
-                folder, has_body, COUNT(*) AS n
-           FROM messages WHERE 1=1`
-      : "SELECT id, account_id, thread_key, from_name, from_email, subject, snippet, date, unread, starred, folder, has_body, 1 AS n FROM messages WHERE 1=1";
-    const vals = [];
+    // Which messages the list is about: the folder, the account, the star.
+    // Written once and applied under two names, `m` for the row shown and `x`
+    // for the rest of its conversation, with the same values bound each time.
+    let mine = [];
     if (folder === "sent") {
       // Everything you wrote, not only rows filed under Sent. Copy yourself
       // (Cc, Bcc) and iCloud keeps two copies with one Message-ID — one in
@@ -867,56 +857,121 @@ export async function handleApi(request, env, path, ctx, session) {
         own.add(String(a.email).toLowerCase());
         for (const x of await aliasesOf(env, a)) own.add(String(x).toLowerCase());
       }
-      const mine = [...own].slice(0, 40);
-      sql += mine.length
-        ? ` AND (folder='sent' OR (lower(from_email) IN (${mine.map(() => "?").join(",")}) AND folder NOT IN ('trash','spam','drafts')))`
-        : " AND folder='sent'";
-      vals.push(...mine);
-    } else if (folder !== "all") {
-      sql += " AND folder=?";
-      vals.push(folder);
+      mine = [...own].slice(0, 40);
     }
-    if (account) {
-      sql += " AND account_id=?";
-      vals.push(account);
+    const starredOnly = p.get("starred") === "1";
+    const P = (a) => {
+      let s = "1=1";
+      if (folder === "sent") {
+        s += mine.length
+          ? ` AND (${a}.folder='sent' OR (lower(${a}.from_email) IN (${mine.map(() => "?").join(",")}) AND ${a}.folder NOT IN ('trash','spam','drafts')))`
+          : ` AND ${a}.folder='sent'`;
+      } else if (folder !== "all") {
+        s += ` AND ${a}.folder=?`;
+      }
+      if (account) s += ` AND ${a}.account_id=?`;
+      if (starredOnly) s += ` AND ${a}.starred=1`;
+      return s;
+    };
+    const pv = [...(folder === "sent" ? mine : folder === "all" ? [] : [folder]), ...(account ? [account] : [])];
+
+    // Where the last page stopped. A date alone skipped every row sharing the
+    // date of the last one shown: two messages in the same millisecond, one
+    // either side of a page boundary, and the second was never listed. With
+    // `before_id` the cursor names the row itself. The first term says
+    // nothing the rest does not; it is there for the index, which cannot
+    // seek on an OR.
+    let cursor = "";
+    let cv = [];
+    if (beforeId) {
+      cursor = " AND m.date<=? AND (m.date<? OR (m.date=? AND m.id<?))";
+      cv = [before, before, before, beforeId];
+    } else if (before) {
+      cursor = " AND m.date<?";
+      cv = [before];
     }
-    if (p.get("starred") === "1") sql += " AND starred=1";
+    const COLS =
+      "m.id, m.account_id, m.thread_key, m.from_name, m.from_email, m.subject, m.snippet, m.date, m.unread, m.starred, m.folder, m.has_body";
+
+    // Grouped by conversation, except while searching: a search is a question
+    // about individual messages, and collapsing the answer hides the one that
+    // matched behind whichever is newest.
     if (term) {
+      let sql = `SELECT ${COLS}, 1 AS n FROM messages m WHERE ${P("m")}`;
+      const vals = [...pv];
       // Full text, including message bodies. Falls back to a LIKE over the
       // headers when the term reduces to nothing the index can match.
       const match = ftsQuery(term);
       if (match) {
-        sql += " AND id IN (SELECT id FROM search WHERE search MATCH ?)";
+        sql += " AND m.id IN (SELECT id FROM search WHERE search MATCH ?)";
         vals.push(match);
       } else {
         // Escaped, so a search for "100%" or "a_b" means those characters
         // and not LIKE's wildcards.
-        sql += " AND (subject LIKE ? ESCAPE '\\' OR from_email LIKE ? ESCAPE '\\' OR from_name LIKE ? ESCAPE '\\')";
+        sql += " AND (m.subject LIKE ? ESCAPE '\\' OR m.from_email LIKE ? ESCAPE '\\' OR m.from_name LIKE ? ESCAPE '\\')";
         const like = `%${term.replace(/[\\%_]/g, "\\$&")}%`;
         vals.push(like, like, like);
       }
+      sql += `${cursor} ORDER BY m.date DESC, m.id DESC LIMIT ?`;
+      const { results } = await env.DB.prepare(sql).bind(...vals, ...cv, limit).all();
+      return json({ messages: results ?? [] });
     }
-    if (grouped) {
-      // Messages with no References and a subject that normalizes to nothing
-      // all share the empty key. Grouping on it would file every one of them
-      // into a single conversation, so those fall back to their own id and
-      // stay the separate messages they are.
-      sql += " GROUP BY CASE WHEN thread_key='' THEN id ELSE thread_key END";
-      // The cursor has to run on the group, not the row: filtering rows first
-      // would drop a thread's older half and let the same thread come back on
-      // the next page.
-      if (before) {
-        sql += " HAVING MAX(date)<?";
-        vals.push(before);
+
+    // One row per conversation: its newest message, the highest id deciding
+    // between two with the same date. This was a GROUP BY over the whole
+    // folder, which read every row of it for each page of fifty. Asking for
+    // the rows that have nothing newer in their conversation walks the folder
+    // from the top, in date order, and stops when the page is full.
+    //
+    // Messages with no References and a subject that normalizes to nothing
+    // all share the empty key. Treating it as a conversation would file every
+    // one of them into one, so they stay the separate messages they are.
+    //
+    // The cursor runs on the row shown and not on the rest of its
+    // conversation: filtering those too would drop a thread's newer half and
+    // let the same thread come back on the next page.
+    const { results } = await env.DB.prepare(
+      `SELECT ${COLS} FROM messages m
+        WHERE ${P("m")}${cursor}
+          AND NOT EXISTS (
+            SELECT 1 FROM messages x
+             WHERE m.thread_key<>'' AND x.thread_key=m.thread_key AND ${P("x")}
+               AND (x.date>m.date OR (x.date=m.date AND x.id>m.id)))
+        ORDER BY m.date DESC, m.id DESC LIMIT ?`
+    )
+      .bind(...pv, ...cv, ...pv, limit)
+      .all();
+    const heads = results ?? [];
+
+    // How many messages each of those conversations holds here, and how many
+    // of them are unread or starred: one more query, for this page only. A
+    // statement binds at most 100 values, so a long page goes in chunks.
+    const keys = [...new Set(heads.map((r) => r.thread_key).filter(Boolean))];
+    const room = Math.max(1, 100 - pv.length);
+    const stmts = [];
+    for (let i = 0; i < keys.length; i += room) {
+      const chunk = keys.slice(i, i + room);
+      stmts.push(
+        env.DB.prepare(
+          `SELECT x.thread_key, COUNT(*) AS n, SUM(x.unread) AS unread, SUM(x.starred) AS starred
+             FROM messages x
+            WHERE ${P("x")} AND x.thread_key IN (${chunk.map(() => "?").join(",")})
+            GROUP BY x.thread_key`
+        ).bind(...pv, ...chunk)
+      );
+    }
+    const sums = new Map();
+    if (stmts.length) {
+      for (const out of await env.DB.batch(stmts)) {
+        for (const r of out.results ?? []) sums.set(r.thread_key, r);
       }
-    } else if (before) {
-      sql += " AND date<?";
-      vals.push(before);
     }
-    sql += " ORDER BY date DESC LIMIT ?";
-    vals.push(limit);
-    const { results } = await env.DB.prepare(sql).bind(...vals).all();
-    return json({ messages: results ?? [] });
+    return json({
+      messages: heads.map((r) => {
+        const s = r.thread_key ? sums.get(r.thread_key) : null;
+        return { ...r, unread: s ? s.unread : r.unread, starred: s ? s.starred : r.starred, n: s ? s.n : 1 };
+      }),
+    });
   }
 
   // GET /api/messages/:id — header + defused body; opening marks as read.

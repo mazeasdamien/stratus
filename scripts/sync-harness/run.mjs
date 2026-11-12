@@ -393,6 +393,85 @@ const edited = await api("POST", `/api/outbox/${kept.body.id}/cancel`);
 eq([edited.status, edited.body?.message?.subject, !!outboxRow(kept.body.id), wentOut("Kept")], [200, "Kept", false, 0], "Edit takes back one that is not being sent");
 eq(DB.raw.prepare("SELECT COUNT(*) n FROM settings WHERE key LIKE 'outbox_lock_%'").get().n, 0, "no lease outlives what it guarded");
 
+// ── The list: the same answer as the query it replaced, and pages that skip nothing ──
+// A conversation with a mix of read, unread and starred messages in one folder.
+imap.add("INBOX", msg("<p1@x>", "Pager one"), [BS + "Flagged"]);
+imap.add("INBOX", msg("<p2@x>", "Re: Pager one", "In-Reply-To: <p1@x>\r\nReferences: <p1@x>\r\n"), [SEEN]);
+imap.add("INBOX", msg("<p3@x>", "Re: Pager one", "In-Reply-To: <p2@x>\r\nReferences: <p1@x> <p2@x>\r\n"));
+imap.add("INBOX", msg("<p4@x>", "Pager two"));
+imap.add("INBOX", msg("<p5@x>", "Pager three"), [SEEN]);
+for (let i = 0; i < 8; i++) await pass1("pager " + i);
+eq(["<p1@x>", "<p2@x>", "<p3@x>"].map((m) => row(m)?.thread_key), ["<p1@x>", "<p1@x>", "<p1@x>"], "the three messages share a conversation");
+// The grouped query the route ran until now, word for word.
+const ownAddresses = ["me@example.com", ...JSON.parse(DB.raw.prepare("SELECT value FROM settings WHERE key='aliases_acct1'").get().value)];
+const oldList = (folder, { starred = false, account = "" } = {}) => {
+  let sql = `SELECT id, account_id, thread_key, from_name, from_email, subject, snippet,
+                MAX(date) AS date, SUM(unread) AS unread, SUM(starred) AS starred,
+                folder, has_body, COUNT(*) AS n
+           FROM messages WHERE 1=1`;
+  const vals = [];
+  if (folder === "sent") {
+    sql += ` AND (folder='sent' OR (lower(from_email) IN (${ownAddresses.map(() => "?").join(",")}) AND folder NOT IN ('trash','spam','drafts')))`;
+    vals.push(...ownAddresses);
+  } else if (folder !== "all") {
+    sql += " AND folder=?";
+    vals.push(folder);
+  }
+  if (account) {
+    sql += " AND account_id=?";
+    vals.push(account);
+  }
+  if (starred) sql += " AND starred=1";
+  sql += " GROUP BY CASE WHEN thread_key='' THEN id ELSE thread_key END ORDER BY date DESC LIMIT ?";
+  return DB.raw.prepare(sql).all(...vals, 100).map((r) => ({ ...r }));
+};
+// The old order between two conversations of the same date was left to chance.
+const newestFirst = (rows) => [...rows].sort((a, b) => b.date - a.date || (a.id < b.id ? 1 : -1));
+const listOf = async (query) => (await api("GET", `/api/messages?${query}`)).body.messages;
+for (const [folder, extra, opts] of [
+  ["inbox", "", {}],
+  ["archive", "", {}],
+  ["sent", "", {}],
+  ["all", "", {}],
+  ["all", "&starred=1", { starred: true }],
+  ["sent", "&account=acct1", { account: "acct1" }],
+  ["inbox", "&account=nobody", { account: "nobody" }],
+]) {
+  const want = newestFirst(oldList(folder, opts));
+  const got = await listOf(`folder=${folder}&limit=100${extra}`);
+  ok(folder === "inbox" && extra ? want.length === 0 : want.length > 0, `the old query lists something for ${folder}${extra}: ${want.length}`);
+  eq(got, want, `folder=${folder}${extra} answers what the grouped query answered`);
+}
+const pagerRow = (await listOf("folder=inbox&limit=100")).find((m) => m.thread_key === "<p1@x>");
+eq([pagerRow?.id, pagerRow?.n, pagerRow?.unread, pagerRow?.starred], [row("<p3@x>").id, 3, 2, 1], "a conversation shows its newest message, with its count and the sums of its flags");
+// Same date either side of a page boundary: three conversations, and two
+// messages of one conversation.
+const tied = row("<p4@x>").date;
+DB.raw.prepare("UPDATE messages SET date=? WHERE mid IN ('<p5@x>','<c@x>','<n@x>')").run(tied);
+DB.raw.prepare("UPDATE messages SET date=? WHERE mid='<p2@x>'").run(row("<p3@x>").date);
+const pageThrough = async (query, withId) => {
+  const out = [];
+  for (let cursor = "", turns = 0; turns < 100; turns++) {
+    const batch = await listOf(`${query}&limit=2${cursor}`);
+    out.push(...batch);
+    if (batch.length < 2) break;
+    const last = batch[batch.length - 1];
+    cursor = `&before=${last.date}` + (withId ? `&before_id=${last.id}` : "");
+  }
+  return out;
+};
+const whole = await listOf("folder=inbox&limit=100");
+const paged = await pageThrough("folder=inbox", true);
+ok(whole.filter((m) => m.date === tied).length >= 4, "four conversations share one date");
+eq(paged.map((m) => m.id), whole.map((m) => m.id), "paging two at a time with before and before_id returns every conversation once, in order");
+eq(new Set(paged.map((m) => m.thread_key || m.id)).size, paged.length, "and none of them twice");
+eq(whole.find((m) => m.thread_key === "<p1@x>")?.n, 3, "two messages of one conversation with the same date are still one row");
+ok((await pageThrough("folder=inbox", false)).length < whole.length, "the date alone, as the cursor was, skips rows that share it");
+// Search is not grouped, and pages the same way.
+const found = await listOf("folder=all&q=Pager&limit=100");
+eq(found.map((m) => m.n), [1, 1, 1, 1, 1], "a search lists each matching message on its own");
+eq((await pageThrough("folder=all&q=Pager", true)).map((m) => m.id), found.map((m) => m.id), "and paging through it returns each once, in order");
+
 // ── The nightly snapshot never replaces a complete one with a partial one ──
 const { runBackup } = await import("../../src/backup.js");
 const snapshots = () => [...MAIL.map.keys()].filter((k) => k.startsWith("backup/"));
