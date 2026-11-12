@@ -7188,22 +7188,38 @@ function meetingLink(url) {
   }
 }
 
+/**
+ * The time zone an invitation's time has to be read in.
+ *
+ * An all-day date, and a "floating" time — 09:00 with no zone, meaning 09:00
+ * wherever you happen to be — name a day or an hour on the clock, not an
+ * instant. The server sends each as that reading written down in UTC, so it
+ * is formatted in UTC to get the same reading back. Formatted in local time,
+ * an all-day event fell on the day before anywhere west of Greenwich, and a
+ * floating 09:00 was moved by the reader's own offset.
+ */
+const whenZone = (p) => (p && (p.allDay || p.floating) ? { timeZone: "UTC" } : {});
+
 function inviteWhen(inv) {
   if (!inv.start) return "";
   const s = new Date(inv.start.ms);
   const e = inv.end ? new Date(inv.end.ms) : null;
+  const zone = whenZone(inv.start);
+  const day = (d, how = { weekday: "long", day: "numeric", month: "long" }) =>
+    d.toLocaleDateString(undefined, { ...how, ...zone });
+  // Compared in the zone they are shown in, or two times on one printed day
+  // could count as two days.
+  const sameDay = (a, b) => day(a, { dateStyle: "short" }) === day(b, { dateStyle: "short" });
   if (inv.start.allDay) {
-    const day = (d) => d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
     // An all-day DTEND is exclusive: a one-day event ends the next midnight.
     const last = e ? new Date(e.getTime() - 86400_000) : null;
-    return last && last.toDateString() !== s.toDateString() ? `${day(s)} – ${day(last)}` : `${day(s)}, all day`;
+    return last && !sameDay(last, s) ? `${day(s)} – ${day(last)}` : `${day(s)}, all day`;
   }
-  const date = s.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
-  const t = (d) => d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-  if (!e) return `${date}, ${t(s)}`;
-  return e.toDateString() === s.toDateString()
-    ? `${date}, ${t(s)} – ${t(e)}`
-    : `${date} ${t(s)} – ${e.toLocaleDateString(undefined, { day: "numeric", month: "short" })} ${t(e)}`;
+  const t = (d) => d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", ...zone });
+  if (!e) return `${day(s)}, ${t(s)}`;
+  return sameDay(e, s)
+    ? `${day(s)}, ${t(s)} – ${t(e)}`
+    : `${day(s)} ${t(s)} – ${day(e, { day: "numeric", month: "short" })} ${t(e)}`;
 }
 function renderInvite(cur) {
   const box = $("#rInvite");
@@ -7350,27 +7366,35 @@ async function loadTimeline() {
   renderTimeline();
 }
 
-function eventDayLabel(ms) {
-  const d = new Date(ms);
+/** The day an event starts on, for the heading it is listed under. */
+function eventDayLabel(start) {
+  const d = new Date(start.ms);
+  // An all-day or floating start is a date as written, kept in UTC (see
+  // whenZone). Its day is the one written, whatever the local offset.
+  const utc = !!whenZone(start).timeZone;
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const targetDay = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const targetDay = utc
+    ? new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()).getTime()
+    : new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   const diff = Math.round((targetDay - today) / 86400_000);
   if (diff === 0) return "Today";
   if (diff === 1) return "Tomorrow";
   if (diff === -1) return "Yesterday";
-  return d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+  return d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", ...whenZone(start) });
 }
 
 function eventTimeText(ev) {
   if (ev.start.allDay) return "All day";
   const s = new Date(ev.start.ms);
   const e = ev.end ? new Date(ev.end.ms) : null;
-  const t = (d) => d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  const zone = whenZone(ev.start);
+  const t = (d) => d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", ...zone });
+  const day = (d, how) => d.toLocaleDateString(undefined, { ...how, ...zone });
   if (!e) return t(s);
-  return e.toDateString() === s.toDateString()
+  return day(e, { dateStyle: "short" }) === day(s, { dateStyle: "short" })
     ? `${t(s)} – ${t(e)}`
-    : `${t(s)} – ${e.toLocaleDateString(undefined, { day: "numeric", month: "short" })} ${t(e)}`;
+    : `${t(s)} – ${day(e, { day: "numeric", month: "short" })} ${t(e)}`;
 }
 
 function renderTimeline() {
@@ -7378,7 +7402,7 @@ function renderTimeline() {
   const now = Date.now();
   const upcoming = timelineEvents.filter((e) => (e.end?.ms || e.start.ms) >= now - 2 * 3600_000);
 
-  const hasToday = timelineEvents.some((e) => eventDayLabel(e.start.ms) === "Today");
+  const hasToday = timelineEvents.some((e) => eventDayLabel(e.start) === "Today");
   $("#timelineDot").hidden = !hasToday;
 
   if (currentTab === "timeline") {
@@ -7397,7 +7421,7 @@ function renderTimeline() {
 
   const groups = new Map();
   for (const ev of timelineEvents) {
-    const dayKey = eventDayLabel(ev.start.ms);
+    const dayKey = eventDayLabel(ev.start);
     if (!groups.has(dayKey)) groups.set(dayKey, []);
     groups.get(dayKey).push(ev);
   }
