@@ -297,6 +297,30 @@ eq([undone.status, undone.body?.n, uFolders()], [200, 2, ["archive", "inbox", "i
 ok(holds("Archive", "<u0@x>") && holds("INBOX", "<u1@x>") && holds("INBOX", "<u2@x>") && !holds("Archive", "<u1@x>"), "at the provider as well");
 eq([row("<u1@x>").unread, row("<u2@x>").unread], [1, 0], "and the unread one is unread still");
 
+// ── Folder names with accents travel in modified UTF-7, and are filed under what the server lists ──
+const accented = "R&AOk-unions &- caf&AOk-";
+const madeFolder = await api("POST", "/api/folders", { name: "Réunions & café" });
+eq([madeFolder.status, madeFolder.body?.name, madeFolder.body?.label], [200, accented, "Réunions & café"], "creating a folder answers its key and the name to show");
+ok(imap.boxes.has(accented) && imap.log.includes(`CREATE "${accented}"`), "and the server was asked for it in modified UTF-7");
+const folderEntry = async (key) => (await api("GET", "/api/folders")).body.folders.find((f) => f.folder === key);
+eq([(await folderEntry(accented))?.label, (await folderEntry("inbox"))?.label], ["Réunions & café", "inbox"], "the folder list carries a label beside each key");
+imap.add("INBOX", msg("<acc@x>", "To be filed under an accent"));
+for (let i = 0; i < 6; i++) await pass1("accent " + i);
+const intoAccent = await api("POST", `/api/messages/${row("<acc@x>").id}/move`, { folder: accented });
+eq([intoAccent.status, holds(accented, "<acc@x>"), row("<acc@x>").folder], [200, true, accented], "a message moves into it by its key");
+for (let i = 0; i < 6; i++) await pass1("accent sync " + i);
+eq([row("<acc@x>").folder, row("<acc@x>").mailbox], [accented, accented], "and the sync keeps it filed under the name the server lists");
+// Renamed by the name a person sees: found, and the new name encoded.
+const renamed = await api("POST", "/api/folders/rename", { from: "Réunions & café", to: "Séminaires" });
+eq([renamed.status, renamed.body?.name, renamed.body?.label], [200, "S&AOk-minaires", "Séminaires"], "renaming answers the new key and its label");
+ok(imap.boxes.has("S&AOk-minaires") && !imap.boxes.has(accented) && row("<acc@x>").folder === "S&AOk-minaires", "the mailbox is renamed at the provider and its mail refiled under the new key");
+// A nested mailbox keeps its parent as listed; only the new leaf is encoded.
+imap.box("Clients/Old", BS + "HasNoChildren");
+const nested = await api("POST", "/api/folders/rename", { from: "Clients/Old", to: "Été" });
+eq([nested.status, nested.body?.name, nested.body?.label], [200, "Clients/&AMk-t&AOk-", "Clients/Été"], "a nested folder is renamed under its parent");
+const dropped = await api("DELETE", `/api/folders/${encodeURIComponent("Clients/Été")}`);
+eq([dropped.status, imap.boxes.has("Clients/&AMk-t&AOk-")], [200, false], "and can be named by its label to delete it");
+
 // ── A block rule never destroys mail you wrote ──
 DB.raw.prepare("INSERT INTO settings (key, value) VALUES ('aliases_acct1', ?)").run(JSON.stringify(["me@mydomain.example"]));
 const ownRule = await api("POST", "/api/blocked", { pattern: "mydomain.example" });

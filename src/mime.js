@@ -32,6 +32,59 @@ export function b64encode(bytes, url = false) {
   return url ? out.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "") : out;
 }
 
+/* ── IMAP mailbox names: modified UTF-7 (RFC 3501 §5.1.3) ── */
+
+/**
+ * A mailbox name as IMAP carries it.
+ *
+ * Printable ASCII stands for itself, except "&", which is written "&-".
+ * Anything else travels as UTF-16 in base64, with "," for "/" and no
+ * padding, between "&" and "-": "Réunions" is "R&AOk-unions". A name typed
+ * with an accent used to be sent as raw UTF-8, which is not a mailbox name
+ * to any server that follows the RFC.
+ */
+export function encodeMailboxName(name) {
+  const s = String(name ?? "");
+  let out = "";
+  let run = [];
+  const flush = () => {
+    if (!run.length) return;
+    out += "&" + b64encode(run).replace(/=+$/, "").replace(/\//g, ",") + "-";
+    run = [];
+  };
+  // By UTF-16 code unit, which is what the encoding is defined over: a
+  // character outside the BMP goes in as its two surrogates.
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c >= 0x20 && c <= 0x7e) {
+      flush();
+      out += c === 0x26 ? "&-" : s[i];
+    } else {
+      run.push(c >> 8, c & 0xff);
+    }
+  }
+  flush();
+  return out;
+}
+
+/**
+ * The name a person reads, from the one the server lists.
+ *
+ * For showing only. What is stored and matched stays exactly what the
+ * server lists: it is the key mail is filed under. A sequence that does not
+ * decode is left as it is written rather than guessed at.
+ */
+export function decodeMailboxName(name) {
+  return String(name ?? "").replace(/&([A-Za-z0-9+,]*)-/g, (whole, coded) => {
+    if (!coded) return "&";
+    const bytes = b64decode(coded.replace(/,/g, "/"));
+    if (!bytes.length || bytes.length % 2) return whole;
+    let s = "";
+    for (let i = 0; i < bytes.length; i += 2) s += String.fromCharCode((bytes[i] << 8) | bytes[i + 1]);
+    return s;
+  });
+}
+
 const decodeCharset = (bytes, charset) => {
   try {
     return new TextDecoder(charset || "utf-8").decode(bytes);

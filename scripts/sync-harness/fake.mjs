@@ -206,6 +206,27 @@ export class FakeImap {
       for (const b of this.boxes.values()) send(`* LIST (${b.flags}) "/" "${b.name}"\r\n`);
       return ok();
     }
+    // Mailbox management, by a strict server: a name is printable ASCII, which
+    // is what modified UTF-7 is for. Raw UTF-8 arrives here as other bytes.
+    if ((m = /^CREATE "(.*)"$/.exec(cmd))) {
+      if (/[^\x20-\x7e]/.test(m[1])) return no("[CANNOT] invalid mailbox name");
+      if (this.boxes.has(m[1])) return no("[ALREADYEXISTS] mailbox exists");
+      this.box(m[1], BS + "HasNoChildren");
+      return ok();
+    }
+    if ((m = /^RENAME "(.*)" "(.*)"$/.exec(cmd))) {
+      if (/[^\x20-\x7e]/.test(m[2])) return no("[CANNOT] invalid mailbox name");
+      const moved = this.boxes.get(m[1]);
+      if (!moved || this.boxes.has(m[2])) return no("cannot rename");
+      this.boxes.delete(m[1]);
+      moved.name = m[2];
+      this.boxes.set(m[2], moved);
+      return ok();
+    }
+    if ((m = /^DELETE "(.*)"$/.exec(cmd))) {
+      if (!this.boxes.delete(m[1])) return no("[NONEXISTENT] no such mailbox");
+      return ok();
+    }
     if ((m = /^SELECT "(.*)"$/.exec(cmd))) {
       const b = this.boxes.get(m[1]);
       if (!b) return no("no such mailbox");

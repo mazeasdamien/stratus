@@ -963,6 +963,33 @@ console.log("\n── en-têtes sortants : longueur et pliage ───");
   ok(pj.includes("filename*=utf-8''r%C3%A9sum%C3%A9.pdf"), "nom accentué en RFC 2231");
 }
 
+console.log("\n── noms de boîtes IMAP : UTF-7 modifié ──────");
+{
+  // RFC 3501 §5.1.3. « Réunions » voyage sous la forme « R&AOk-unions » ; rien
+  // ne le décodait, et un nom tapé avec un accent partait en UTF-8 brut.
+  const { encodeMailboxName, decodeMailboxName } = await import("./src/mime.js");
+  eq(encodeMailboxName("Réunions"), "R&AOk-unions", "un accent : UTF-16 en base64 entre & et -");
+  eq(decodeMailboxName("R&AOk-unions"), "Réunions", "et son décodage");
+  eq(encodeMailboxName("INBOX/Receipts 2026"), "INBOX/Receipts 2026", "l'ASCII imprimable reste tel quel");
+  eq(encodeMailboxName("Tom & Jerry"), "Tom &- Jerry", "& lui-même s'écrit &-");
+  eq(decodeMailboxName("Tom &- Jerry"), "Tom & Jerry", "&- redevient &");
+  // L'exemple de la RFC : « , » à la place de « / », pas de remplissage.
+  eq(decodeMailboxName("~peter/mail/&U,BTFw-/&ZeVnLIqe-"), "~peter/mail/台北/日本語", "exemple de la RFC décodé");
+  eq(encodeMailboxName("~peter/mail/台北/日本語"), "~peter/mail/&U,BTFw-/&ZeVnLIqe-", "exemple de la RFC encodé");
+  eq(encodeMailboxName("😀"), "&2D3eAA-", "hors BMP : les deux demi-codets UTF-16");
+  eq(decodeMailboxName("&2D3eAA-"), "😀", "hors BMP décodé");
+  eq(encodeMailboxName("é&è"), "&AOk-&-&AOg-", "& entre deux séquences");
+  for (const nom of ["", "Été", "Père & Fils", "Projets/Été 2026/À faire", "📎 Pièces jointes 😀", "a&-b", "日本語 mail", "Ça&là", "tab\tulation"]) {
+    const code = encodeMailboxName(nom);
+    ok(/^[\x20-\x7e]*$/.test(code), `« ${nom} » encodé en ASCII imprimable : ${code}`);
+    eq(decodeMailboxName(code), nom, `aller-retour de « ${nom} »`);
+  }
+  // Ce qui ne se décode pas est laissé tel qu'écrit, jamais deviné.
+  eq(decodeMailboxName("R&D-team"), "R&D-team", "séquence invalide laissée intacte");
+  eq(decodeMailboxName("A&"), "A&", "& non terminé laissé intact");
+  eq(decodeMailboxName("Archive"), "Archive", "rien à décoder");
+}
+
 console.log("\n── contrat : appels du client ↔ routes ──────");
 {
   // Le bouton Disconnect a passé des mois à dire « Removed » sans jamais

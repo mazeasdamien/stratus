@@ -4,6 +4,7 @@
 
 import { open } from "./crypto.js";
 import { imapList, imapOpen, imapSearch, imapSelect } from "./imap.js";
+import { decodeMailboxName } from "./mime.js";
 
 /* ────────────────────────────────────────────────────────────────
    iCloud over IMAP, spoken by the Worker itself.
@@ -65,6 +66,10 @@ export async function icloudPassword(env, account) {
  * app's own name ("archive" for "Archive"), and the leaf shown in the UI
  * ("Cranfield"). Matching on only one of them is why renaming a folder that
  * plainly exists could fail with "no mailbox called…".
+ *
+ * And a name with an accent has one more: the server lists "R&AOk-unions"
+ * for what a person reads, and types, as "Réunions". That form is tried
+ * last, so nothing that matched before matches differently now.
  */
 export function resolveMailbox(boxes, wanted) {
   const want = String(wanted || "").trim();
@@ -76,6 +81,8 @@ export function resolveMailbox(boxes, wanted) {
     boxes.find((mb) => mb.name.toLowerCase() === lower) ||
     boxes.find((mb) => String(folderNameFor(mb)).toLowerCase() === lower) ||
     boxes.find((mb) => leaf(mb.name).toLowerCase() === lower) ||
+    boxes.find((mb) => decodeMailboxName(mb.name) === want) ||
+    boxes.find((mb) => decodeMailboxName(folderNameFor(mb)) === want) ||
     null
   );
 }

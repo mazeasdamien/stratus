@@ -10,7 +10,7 @@ import { open, seal } from "./crypto.js";
 import { isAuthFailure } from "./errors.js";
 import { icsReply, indexEvent, parseIcs } from "./ics.js";
 import { imapCreate, imapDelete, imapEmpty, imapFetchMeta, imapFetchPart, imapFetchRaw, imapFlag, imapList, imapListRaw, imapMove, imapOpen, imapPurge, imapRename, imapSearch, imapSelect } from "./imap.js";
-import { b64decode, b64encode, blockMatches, buildRfc822, htmlToText, isBlockPattern, newMessageId, parseAddressList, qpBytes, replyReferences, textToHtml } from "./mime.js";
+import { b64decode, b64encode, blockMatches, buildRfc822, decodeMailboxName, encodeMailboxName, htmlToText, isBlockPattern, newMessageId, parseAddressList, qpBytes, replyReferences, textToHtml } from "./mime.js";
 import { pushAll, vapidKeys } from "./push.js";
 import { latin1ToBytes } from "./rfc822.js";
 import { isRelayed, relayMessage, relaySend } from "./relay.js";
@@ -265,12 +265,17 @@ export async function handleApi(request, env, path, ctx, session) {
     let box;
     try {
       box = await withImap(env, acct, async (im) => {
-        await imapCreate(im, name);
+        // In the form IMAP carries names in. Sent as typed, "Réunions" went
+        // out as raw UTF-8, which a server either refuses or files under a
+        // name no other client can read.
+        const wire = encodeMailboxName(name);
+        await imapCreate(im, wire);
         // CREATE reports that the command was accepted, not where the mailbox
         // ended up: the server picks the path, and on a hierarchy hanging off
         // INBOX that is not the name asked for. The LIST is also the only
         // proof the thing is selectable rather than merely acknowledged.
-        const made = resolveMailbox(await imapList(im), name);
+        const boxes = await imapList(im);
+        const made = resolveMailbox(boxes, wire) || resolveMailbox(boxes, name);
         if (!made) throw new Error(`The server accepted "${name}" but does not list it`);
         return made;
       });
@@ -278,7 +283,10 @@ export async function handleApi(request, env, path, ctx, session) {
       return imapError(e, acct, env);
     }
     await noteMailbox(env, acct, box);
-    return json({ ok: true, name: folderNameFor(box) });
+    // `name` is the key mail is filed under, exactly as the server lists it;
+    // `label` is that name as a person reads it.
+    const key = folderNameFor(box);
+    return json({ ok: true, name: key, label: decodeMailboxName(key) });
   }
 
   if (path === "/api/folders/rename" && request.method === "POST") {
@@ -307,8 +315,10 @@ export async function handleApi(request, env, path, ctx, session) {
         if (box.delim && to.includes(box.delim)) {
           throw new Error(`Name cannot contain "${box.delim}"`);
         }
+        // The parent is already as the server lists it; only the new leaf
+        // was typed, and only it needs putting into IMAP's form.
         const cut = box.delim ? box.name.lastIndexOf(box.delim) : -1;
-        const path = cut === -1 ? to : box.name.slice(0, cut + 1) + to;
+        const path = (cut === -1 ? "" : box.name.slice(0, cut + 1)) + encodeMailboxName(to);
         if (path === box.name) return { was, now: was };
         await imapRename(im, box.name, path);
         // As with CREATE: RENAME accepted is not RENAME listed, and the app
@@ -338,7 +348,7 @@ export async function handleApi(request, env, path, ctx, session) {
     } catch (e) {
       return imapError(e, acct, env);
     }
-    return json({ ok: true, name: moved.now });
+    return json({ ok: true, name: moved.now, label: decodeMailboxName(moved.now) });
   }
 
   // POST /api/folders/empty { folder } — Trash or Spam only.
@@ -572,7 +582,10 @@ export async function handleApi(request, env, path, ctx, session) {
       out.push({ folder: name, n: 0, unread: 0 });
     }
     out.sort((a, b) => String(a.folder).localeCompare(String(b.folder)));
-    return json({ folders: out });
+    // `folder` is the key, as the server lists the mailbox: "R&AOk-unions".
+    // `label` is what that says: "Réunions". Only the label is for showing;
+    // everything that names a folder to this API uses the key.
+    return json({ folders: out.map((f) => ({ ...f, label: decodeMailboxName(f.folder) })) });
   }
 
   // GET /api/contacts — who you actually write to, most-written-to first.
