@@ -2271,6 +2271,26 @@ function renderAccounts() {
         </div>`;
       }).join("")
     : `<div class="sh-s">Nothing yet — connect one below.</div>`;
+
+  // The connect button says what it will do now, and sits where that puts
+  // it. With no account, or one Apple has stopped accepting, it is the next
+  // thing to press: first, and a full button. With an account that works it
+  // was still first of three equal buttons reading "Connect iCloud", as if
+  // nothing were connected; what it does then is replace the app password or
+  // add a second address, so it says that, quietly, under the other two.
+  const add = $("#addIcloud");
+  const settled = accounts.length > 0 && !broken;
+  add.textContent = !accounts.length
+    ? "Connect iCloud"
+    : broken ? "Reconnect iCloud" : "Change the app password, or add another account";
+  add.className = settled ? "ghost" : "cta";
+  add.style.cssText = settled
+    ? "width:100%;justify-content:center;min-height:34px;margin-top:6px"
+    : "background:var(--elev2);color:var(--t1)";
+  // Moved only when it is in the wrong place: this runs on every poll, and
+  // re-inserting a button takes the focus off it.
+  const before = settled ? $("#openBlocked") : $("#acctList");
+  if (before.nextElementSibling !== add) before.after(add);
 }
 
 /* ── folders ── */
