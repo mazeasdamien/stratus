@@ -695,7 +695,15 @@ export async function syncIcloud(env, account, tally = {}) {
           const parsed = await readLargeBody(im, uid, sizes.get(uid) || 0);
           // The readable part comes from the structure and knows nothing of
           // the headers; Reply-To is carried over from them.
-          doc = bodyFromParts({ ...parsed, attachments: parsed.attachments || attachments, replyTo: body.replyTo });
+          // So are the unsubscribe headers, which a large newsletter is the
+          // most likely message to have; they were dropped here.
+          doc = bodyFromParts({
+            ...parsed,
+            attachments: parsed.attachments || attachments,
+            replyTo: body.replyTo,
+            unsubscribe: body.unsubscribe,
+            unsubscribeOneClick: body.unsubscribeOneClick,
+          });
           // A headers-only fetch has no body to preview; take one from what the
           // structure yielded, or the list shows a blank under the subject.
           if (!row.snippet && parsed.html) {
