@@ -417,6 +417,21 @@ body.composing:not(.overlay) #scrim{opacity:0;pointer-events:none}
    finish, so it sits where the eye already is rather than at the far end of a
    message that can be any length. */
 .crow-actions .cta{width:auto;height:34px;min-width:92px;margin-top:0;padding:0 20px;font-size:14px}
+/* The title takes the room that is left and is the first thing to give way.
+   It used to hold its width, and on a phone that pushed Send, at the other
+   end of the row, off the edge of the screen. */
+#cTitle{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* A phone has 330 to 400px for a close button, a title and four controls.
+   The spacing tightens so "New message" is still said in full at 375px; the
+   toggles keep a 44px hit height through the ::after, as the pills do. */
+@media (max-width:480px){
+  #composeSheet .crow{gap:6px}
+  #cTitle{font-size:15px}
+  .crow-actions{gap:2px}
+  .crow-actions .ghost{padding:6px;position:relative}
+  .crow-actions .ghost::after{content:"";position:absolute;inset:-7px 0}
+  .crow-actions .cta{min-width:0;padding:0 15px}
+}
 .ghost{color:var(--t2);font-size:13px;padding:5px 9px;border-radius:6px;flex:none;
   transition:background .14s,color .14s,transform .08s}
 .ghost:active{background:var(--press2);transform:scale(.97)}
@@ -467,6 +482,11 @@ body.composing:not(.overlay) #scrim{opacity:0;pointer-events:none}
 .toolbar button::after{content:"";position:absolute;inset:-4px 0}
 .toolbar button.on,.toolbar button:active{background:var(--press2);color:var(--t1)}
 .toolbar .spacer{flex:1}
+/* The assistant and Discard travel as one piece. When a narrow screen runs
+   out of row they drop to the next line together and stay at the right edge,
+   Discard last, rather than breaking wherever the row happened to end. */
+.toolbar .tend{display:flex;align-items:center;gap:3px;margin-left:auto;flex:none}
+.toolbar .tsep{width:1px;height:18px;margin:0 5px;background:var(--line-strong);flex:none}
 .toolbar .ai{color:var(--acc);font-weight:600}
 .toolbar button:disabled{opacity:.35;pointer-events:none}
 /* Side padding so a caret at column 0 is not glued to the focus ring: the body
@@ -1667,12 +1687,6 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
     <div class="crow-actions">
       <button class="ghost" id="cCcToggle" title="Carbon copy: extra recipients who receive the message. Everyone can see who is on Cc.">+ Cc</button>
       <button class="ghost" id="cBccToggle" title="Blind carbon copy: recipients who receive the message without anyone else knowing they did.">+ Bcc</button>
-      <!-- Beside Send, where the actions on the message are. It used to sit in
-           the formatting toolbar between "Clear formatting" and "Fix", which
-           is nobody's idea of where a delete lives. -->
-      <button class="iconbtn" id="cDiscard" aria-label="Discard draft" title="Throw this draft away">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-      </button>
       <button class="ghost" id="cLater" title="Send later">Later</button>
       <button class="cta" id="cSend">Send</button>
     </div>
@@ -1723,9 +1737,20 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
     <input type="file" id="cFile" multiple hidden>
     <span class="dstate" id="cSaved"></span>
     <span class="spacer"></span>
-    <button class="ai" id="aiDraft" hidden title="Write this reply from the message you are answering, and from anything you have already typed">Draft</button>
-    <button class="ai" id="aiFix" title="Fix spelling and grammar">Fix</button>
-    <button class="ai" id="aiImprove" title="Rewrite more clearly">Improve</button>
+    <span class="tend">
+      <button class="ai" id="aiDraft" hidden title="Write this reply from the message you are answering, and from anything you have already typed">Draft</button>
+      <button class="ai" id="aiFix" title="Fix spelling and grammar">Fix</button>
+      <button class="ai" id="aiImprove" title="Rewrite more clearly">Improve</button>
+      <!-- Throwing the draft away: last, at the far corner, behind a rule of
+           its own. It has been between "Clear formatting" and "Fix", where it
+           read as formatting, and then in the header between Bcc and Send,
+           the busiest spot in the composer, where it also pushed Send off the
+           edge of a phone. -->
+      <span class="tsep" aria-hidden="true"></span>
+      <button id="cDiscard" aria-label="Discard draft" title="Throw this draft away">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+      </button>
+    </span>
   </div>
 </div>
 
