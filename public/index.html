@@ -642,10 +642,13 @@ textarea.field{width:100%;padding:11px 12px;font-size:14.5px;line-height:1.45;mi
 .tl-title{font-size:14px;font-weight:650;color:var(--t1);line-height:1.3}
 .tl-badge{font-size:11.5px;font-weight:700;padding:2px 7px;border-radius:8px;background:color-mix(in srgb,var(--acc) 14%,transparent);color:var(--acc);white-space:nowrap;flex:none}
 .tl-meta{font-size:12px;color:var(--t2);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.tl-actions{display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap}
-.tl-actions button{height:26px;padding:0 10px;font-size:11.5px;border-radius:13px}
+/* Accept, Maybe and Decline each write to the organiser. At 26px tall and
+   6px apart the wrong one was a near miss away, so they are a finger high
+   and stand clear of each other. */
+.tl-actions{display:flex;align-items:center;gap:10px;margin-top:4px;flex-wrap:wrap}
+.tl-actions button{height:36px;padding:0 14px;font-size:12.5px;border-radius:18px}
 .tl-actions button[aria-pressed="true"]{background:var(--acc);color:#fff;border-color:var(--acc)}
-.tl-join{background:var(--acc);color:var(--on-acc)!important;font-weight:600;display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 10px;border-radius:13px;font-size:11.5px;text-decoration:none}
+.tl-join{background:var(--acc);color:var(--on-acc)!important;font-weight:600;display:inline-flex;align-items:center;gap:5px;height:36px;padding:0 14px;border-radius:18px;font-size:12.5px;text-decoration:none}
 .tl-rsvp{font-size:11.5px;padding:2px 8px;border-radius:8px;background:var(--press);color:var(--t2);font-weight:600}
 .tl-rsvp.accepted{background:color-mix(in srgb,#22c55e 18%,transparent);color:#16a34a}
 .tl-rsvp.declined{background:color-mix(in srgb,var(--red) 18%,transparent);color:var(--red)}
@@ -6649,6 +6652,14 @@ $("#outboxList").addEventListener("click", async (e) => {
   const id = b.dataset.osend || b.dataset.oedit || b.dataset.ocancel;
   const act = b.dataset.osend ? "send" : "cancel";
   if (b.dataset.ocancel && !(await ask("Cancel this message?", "It will not be sent, and is not kept anywhere.", { ok: "Cancel it", danger: true }))) return;
+  // Asked, like Cancel beside it. A message that has gone cannot be taken
+  // back, and one tap on the wrong one of three small buttons sent it.
+  if (b.dataset.osend) {
+    const o = outbox.find((x) => String(x.id) === id) || {};
+    const to = o.to_line ? `To ${o.to_line}. ` : "";
+    const when = o.at ? ` instead of ${whenText(o.at)}` : "";
+    if (!(await ask("Send this message now?", `${to}It goes straight away${when}, and cannot be taken back.`, { ok: "Send now" }))) return;
+  }
   b.disabled = true;
   const res = await api(`/api/outbox/${id}/${act}`, { method: "POST" }).catch(() => null);
   const d = res ? await res.json().catch(() => ({})) : {};
@@ -7203,8 +7214,9 @@ function renderInvite(cur) {
   const who = inv.organizer ? inv.organizer.name || inv.organizer.email : "";
   let actions = "";
   if (inv.method === "REQUEST") {
+    const shown = rsvpShown(m.id, cur.rsvp);
     actions = ["accepted", "tentative", "declined"]
-      .map((s) => `<button class="ghost" data-rsvp="${s}" aria-pressed="${cur.rsvp === s}">${{ accepted: "Accept", tentative: "Maybe", declined: "Decline" }[s]}</button>`)
+      .map((s) => `<button class="ghost" data-rsvp="${s}" aria-pressed="${shown === s}">${{ accepted: "Accept", tentative: "Maybe", declined: "Decline" }[s]}</button>`)
       .join("");
   }
   if (ics >= 0) {
@@ -7229,30 +7241,80 @@ function renderInvite(cur) {
     (actions ? `<div class="ia">${actions}</div>` : "");
   box.hidden = false;
 }
-$("#rInvite").addEventListener("click", async (e) => {
-  const b = e.target.closest("[data-rsvp]");
-  if (!b || !current) return;
-  const id = current.message.id;
-  const status = b.dataset.rsvp;
-  for (const x of $("#rInvite").querySelectorAll("[data-rsvp]")) x.disabled = true;
+
+/**
+ * An answer to an invitation, with five seconds to take it back.
+ *
+ * Accept, Maybe and Decline each write to the organiser, and they used to do
+ * it on the tap: three small buttons side by side, and a thumb on the wrong
+ * one had told someone you were not coming before you had seen which it was.
+ * So an answer has the shape Send has. The button lights at once, the toast
+ * offers Undo (or z), and the message only leaves when the five seconds are
+ * up. Leaving the page meanwhile asks first, as it does for a send.
+ *
+ * One answer waits per message. A second tap replaces the first, so Accept
+ * and then Decline sends Decline, once.
+ */
+const pendingRsvp = new Map(); // message id → { status, timer }
+const RSVP_DOING = { accepted: "Accepting", tentative: "Answering maybe", declined: "Declining" };
+const RSVP_DONE = {
+  accepted: "Accepted — the organiser has been told",
+  tentative: "Answered maybe",
+  declined: "Declined — the organiser has been told",
+};
+/** The answer to light up: the one about to go, or else the one that went. */
+const rsvpShown = (id, stored) => (pendingRsvp.has(id) ? pendingRsvp.get(id).status : stored || "");
+/** Both places an invitation is drawn, since either may be showing it. */
+function paintRsvp(id) {
+  if (current && current.message.id === id) renderInvite(current);
+  renderTimeline();
+}
+function answerInvite(id, status) {
+  if (!RSVP_DOING[status]) return;
+  const old = pendingRsvp.get(id);
+  if (old) clearTimeout(old.timer);
+  const mine = { status, timer: setTimeout(() => sendRsvp(id, status), 5000) };
+  pendingRsvp.set(id, mine);
+  paintRsvp(id);
+  toast(RSVP_DOING[status], () => {
+    // Only this answer. The toast may outlive it by a moment, and by then a
+    // later one for the same invitation could be the one waiting.
+    if (pendingRsvp.get(id) !== mine) return;
+    clearTimeout(mine.timer);
+    pendingRsvp.delete(id);
+    paintRsvp(id);
+    toast("Not sent — the organiser has not been told");
+  });
+}
+async function sendRsvp(id, status) {
+  pendingRsvp.delete(id);
   const res = await api(`/api/messages/${id}/rsvp`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ status }),
   }).catch(() => null);
   const d = res ? await res.json().catch(() => ({})) : {};
-  for (const x of $("#rInvite").querySelectorAll("[data-rsvp]")) x.disabled = false;
-  if (!res || !res.ok) { toast(d.error || "Could not send the answer"); return; }
-  if (current && current.message.id === id) {
-    current.rsvp = status;
-    renderInvite(current);
+  if (res && res.ok) {
+    if (current && current.message.id === id) current.rsvp = status;
+    const ev = timelineEvents.find((x) => x.id === id);
+    if (ev) ev.rsvp = status;
   }
-  const tlEv = timelineEvents.find((x) => x.id === id);
-  if (tlEv) {
-    tlEv.rsvp = status;
-    renderTimeline();
-  }
-  toast({ accepted: "Accepted — the organiser has been told", tentative: "Answered maybe", declined: "Declined — the organiser has been told" }[status]);
+  // Repainted either way: on a failure the button goes back to what was
+  // last really sent.
+  paintRsvp(id);
+  toast(res && res.ok ? RSVP_DONE[status] : d.error || "Could not send the answer");
+}
+addEventListener("beforeunload", (e) => {
+  if (pendingRsvp.size) e.preventDefault();
+});
+$("#rInvite").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-rsvp]");
+  if (!b || !current) return;
+  const status = b.dataset.rsvp;
+  answerInvite(current.message.id, status);
+  // The card was redrawn; the keyboard stays on the button that was pressed.
+  const again = $("#rInvite").querySelector(`[data-rsvp="${status}"]`);
+  if (again) again.focus();
 });
 
 /* ── timeline: upcoming meetings ── */
@@ -7354,6 +7416,9 @@ function renderTimeline() {
       else if (ev.rsvp === "declined") rsvpPill = `<span class="tl-rsvp declined">Declined</span>`;
       else if (ev.rsvp === "tentative") rsvpPill = `<span class="tl-rsvp">Maybe</span>`;
       const join = meetingLink(ev.url);
+      // The pill says what the organiser has been told. The button also
+      // lights for an answer still inside its five seconds.
+      const shown = rsvpShown(ev.id, ev.rsvp);
 
       html +=
         `<div class="tl-card${isToday ? " today" : ""}${cancelled ? " cancelled" : ""}${isPast ? " past" : ""}" data-ev-id="${esc(ev.id)}" tabindex="0" role="button" aria-label="${esc(ev.summary || "Meeting")}">` +
@@ -7366,9 +7431,9 @@ function renderTimeline() {
         `<div class="tl-actions">` +
         (join ? `<a class="tl-join" href="${esc(join.href)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect width="14" height="14" x="1" y="5" rx="2" ry="2"/></svg>Join · ${esc(join.host)}</a>` : "") +
         rsvpPill +
-        `<button class="ghost" data-tl-rsvp="accepted" data-eid="${esc(ev.id)}" aria-pressed="${ev.rsvp === "accepted"}">Accept</button>` +
-        `<button class="ghost" data-tl-rsvp="tentative" data-eid="${esc(ev.id)}" aria-pressed="${ev.rsvp === "tentative"}">Maybe</button>` +
-        `<button class="ghost" data-tl-rsvp="declined" data-eid="${esc(ev.id)}" aria-pressed="${ev.rsvp === "declined"}">Decline</button>` +
+        `<button class="ghost" data-tl-rsvp="accepted" data-eid="${esc(ev.id)}" aria-pressed="${shown === "accepted"}">Accept</button>` +
+        `<button class="ghost" data-tl-rsvp="tentative" data-eid="${esc(ev.id)}" aria-pressed="${shown === "tentative"}">Maybe</button>` +
+        `<button class="ghost" data-tl-rsvp="declined" data-eid="${esc(ev.id)}" aria-pressed="${shown === "declined"}">Decline</button>` +
         `</div>` +
         `</div>`;
     }
@@ -7378,31 +7443,17 @@ function renderTimeline() {
   $("#timelineView").innerHTML = html;
 }
 
-$("#timelineView").addEventListener("click", async (e) => {
+$("#timelineView").addEventListener("click", (e) => {
   const rsvpBtn = e.target.closest("[data-tl-rsvp]");
   if (rsvpBtn) {
     e.stopPropagation();
     const id = rsvpBtn.dataset.eid;
     const status = rsvpBtn.dataset.tlRsvp;
-    for (const b of rsvpBtn.parentElement.querySelectorAll("[data-tl-rsvp]")) b.disabled = true;
-    const res = await api(`/api/messages/${id}/rsvp`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    }).catch(() => null);
-    for (const b of rsvpBtn.parentElement.querySelectorAll("[data-tl-rsvp]")) b.disabled = false;
-    if (res && res.ok) {
-      const ev = timelineEvents.find((x) => x.id === id);
-      if (ev) ev.rsvp = status;
-      if (current && current.message.id === id) {
-        current.rsvp = status;
-        renderInvite(current);
-      }
-      renderTimeline();
-      toast({ accepted: "Accepted — the organiser has been told", tentative: "Answered maybe", declined: "Declined — the organiser has been told" }[status] || "RSVP sent");
-    } else {
-      toast("Could not send answer");
-    }
+    // The same five seconds and the same Undo as the card in the reader.
+    answerInvite(id, status);
+    // The timeline was redrawn; the keyboard stays on the button pressed.
+    const again = [...$("#timelineView").querySelectorAll(`[data-tl-rsvp="${status}"]`)].find((b) => b.dataset.eid === id);
+    if (again) again.focus();
     return;
   }
   const card = e.target.closest("[data-ev-id]");
