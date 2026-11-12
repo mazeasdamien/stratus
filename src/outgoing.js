@@ -175,7 +175,9 @@ export async function deliver(env, b, { dryRun = false } = {}) {
 }
 
 /** What is said when a send may or may not have gone through. */
-export const UNCERTAIN = "The message may have been sent. Check Sent before sending it again.";
+// Not "check Sent": no copy is filed there when the outcome is unknown, so
+// Sent cannot say either way.
+export const UNCERTAIN = "The message may have been sent: iCloud did not confirm it. Press Send again only if you want to send it once more.";
 
 /**
  * Takes a scheduled message whose delivery ended that way out of the cron's

@@ -6071,6 +6071,11 @@ async function postSend(body, at, which = sendIdentity()) {
     const err = $("#cErr");
     err.textContent = why;
     err.classList.add("show");
+    // The server could not tell whether it went, and answers the same thing
+    // to the same key so that nothing retries on its own. Now that the
+    // warning is on screen, pressing Send again is a decision to send once
+    // more, and needs a key of its own to go through.
+    if (d.uncertain) sendKey = crypto.randomUUID();
     return null;
   }
   // The composer holds another message now. Its draft, its local copy and its
