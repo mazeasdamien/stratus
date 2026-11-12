@@ -269,7 +269,7 @@ for (let i = 0; i < 6; i++) await pass1("thread " + i);
 eq([row("<th1@x>")?.folder, row("<th2@x>")?.folder], ["inbox", "inbox"], "both messages of the thread are in the inbox");
 imap.move("INBOX", th2.uid, "Archive"); // on the phone, a moment before
 const filed = await api("POST", "/api/thread", { key: "<th1@x>", from: "inbox", folder: "trash" });
-eq([filed.status, filed.body?.n], [200, 1], "the move reports the one message it moved");
+eq([filed.status, filed.body?.n, filed.body?.ids], [200, 1, [row("<th1@x>").id]], "the move reports the one message it moved, by id");
 ok(holds("Deleted Messages", "<th1@x>") && row("<th1@x>").folder === "trash", "that message is in Trash at the provider and here");
 ok(holds("Archive", "<th2@x>") && row("<th2@x>").folder !== "trash", "the one moved elsewhere is not shown as binned");
 // Nothing left of the thread in the inbox at the provider: say so, change nothing.
@@ -277,6 +277,25 @@ DB.raw.prepare("UPDATE messages SET folder='inbox' WHERE mid='<th2@x>'").run();
 const none = await api("POST", "/api/thread", { key: "<th1@x>", from: "inbox", folder: "trash" });
 ok(none.status !== 200 && !!none.body?.error, "a thread the provider no longer has there is refused: " + JSON.stringify(none.body));
 eq(row("<th2@x>").folder, "inbox", "and its row is left where it was");
+
+// ── Filing a conversation leaves it unread, and Undo puts back exactly what moved ──
+imap.add("Archive", msg("<u0@x>", "Undo me"), [SEEN]); // filed there long before
+imap.add("INBOX", msg("<u1@x>", "Re: Undo me", "In-Reply-To: <u0@x>\r\nReferences: <u0@x>\r\n"));
+imap.add("INBOX", msg("<u2@x>", "Re: Undo me", "In-Reply-To: <u1@x>\r\nReferences: <u0@x> <u1@x>\r\n"), [SEEN]);
+for (let i = 0; i < 8; i++) await pass1("undo " + i);
+const uFolders = () => ["<u0@x>", "<u1@x>", "<u2@x>"].map((m) => row(m)?.folder);
+eq(uFolders(), ["archive", "inbox", "inbox"], "one message of the conversation is already archived, two are in the inbox");
+const archived = await api("POST", "/api/thread", { key: "<u0@x>", from: "inbox", folder: "archive" });
+eq([archived.status, archived.body?.n, [...(archived.body?.ids || [])].sort()], [200, 2, [row("<u1@x>").id, row("<u2@x>").id].sort()], "archiving moves the two and names them");
+eq([row("<u1@x>").unread, row("<u2@x>").unread], [1, 0], "an unread message is still unread after the move");
+ok(holds("Archive", "<u1@x>") && holds("Archive", "<u2@x>") && !holds("INBOX", "<u1@x>"), "both are in Archive at the provider");
+const noneNamed = await api("POST", "/api/thread", { key: "<u0@x>", from: "archive", folder: "inbox", ids: [] });
+const junkNamed = await api("POST", "/api/thread", { key: "<u0@x>", from: "archive", folder: "inbox", ids: ["nope", row("<a@x>").id] });
+eq([noneNamed.body?.n, junkNamed.body?.n, uFolders()], [0, 0, ["archive", "archive", "archive"]], "a list of ids that names none of the conversation's rows moves nothing");
+const undone = await api("POST", "/api/thread", { key: "<u0@x>", from: "archive", folder: "inbox", ids: archived.body.ids });
+eq([undone.status, undone.body?.n, uFolders()], [200, 2, ["archive", "inbox", "inbox"]], "Undo with those ids puts back the two and leaves the third archived");
+ok(holds("Archive", "<u0@x>") && holds("INBOX", "<u1@x>") && holds("INBOX", "<u2@x>") && !holds("Archive", "<u1@x>"), "at the provider as well");
+eq([row("<u1@x>").unread, row("<u2@x>").unread], [1, 0], "and the unread one is unread still");
 
 // ── A block rule never destroys mail you wrote ──
 DB.raw.prepare("INSERT INTO settings (key, value) VALUES ('aliases_acct1', ?)").run(JSON.stringify(["me@mydomain.example"]));

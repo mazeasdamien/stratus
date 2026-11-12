@@ -656,8 +656,12 @@ export async function handleApi(request, env, path, ctx, session) {
   // Scoped to the folder you are looking at rather than to every copy
   // everywhere: "delete this conversation" means the one in front of you, and
   // taking the replies out of Sent along with it is not what anybody meant.
-  // That scoping is also what makes Undo exact — the same call, the two
-  // folders swapped.
+  //
+  // Undo is the same call with the two folders swapped, and the `ids` the
+  // move answered with. Without them it took everything the conversation had
+  // in the destination, including what was already filed there before the
+  // move, so undoing an Archive emptied the archive of that conversation.
+  // `ids` limits the call to those rows; a list that names none acts on none.
   if (path === "/api/thread" && request.method === "POST") {
     const b = await request.json().catch(() => ({}));
     const key = String(b.key || "").slice(0, 300);
@@ -665,10 +669,13 @@ export async function handleApi(request, env, path, ctx, session) {
     const target = String(b.folder || "").slice(0, 100);
     if (!key || !from) return json({ error: "Which conversation, and from where?" }, 400);
     if (!b.purge && !target) return json({ error: "No destination folder" }, 400);
-    if (!b.purge && target === from) return json({ ok: true, n: 0 });
+    if (!b.purge && target === from) return json({ ok: true, n: 0, ids: [] });
 
-    const rows = await threadRowsIn(env, key, from);
-    if (!rows.length) return json({ ok: true, n: 0 });
+    const only = Array.isArray(b.ids)
+      ? new Set(b.ids.map((x) => String(x)).filter((x) => /^[a-f0-9]{16}$/.test(x)))
+      : null;
+    const rows = (await threadRowsIn(env, key, from)).filter((r) => !only || only.has(r.id));
+    if (!rows.length) return json({ ok: true, n: 0, ids: [] });
 
     const acct = await accountById(env, rows[0].account_id);
     if (!acct) return json({ error: "Unknown account" }, 404);
@@ -691,7 +698,7 @@ export async function handleApi(request, env, path, ctx, session) {
       // deleted as it can be, which is what the single purge route says too.
       await forgetMessages(env, ids);
       await env.DB.prepare(`DELETE FROM messages WHERE id IN (${ids.map(() => "?").join(",")})`).bind(...ids).run();
-      return json({ ok: true, n: ids.length, from });
+      return json({ ok: true, n: ids.length, from, ids });
     }
     // A move refiles only what moved. A message the server did not have in
     // this folder — moved on the phone a moment ago, or never matched — used
@@ -700,10 +707,13 @@ export async function handleApi(request, env, path, ctx, session) {
     if (!acted.length) {
       return json({ error: "iCloud no longer has this in that folder. It may have been moved on another device." }, 404);
     }
-    await env.DB.prepare(`UPDATE messages SET folder=?, unread=0 WHERE id IN (${acted.map(() => "?").join(",")})`)
+    // The folder and nothing else. This also marked every message read, here
+    // only: filing an unread conversation showed it read in the app while
+    // iCloud kept it unread, and moving a single message never did that.
+    await env.DB.prepare(`UPDATE messages SET folder=? WHERE id IN (${acted.map(() => "?").join(",")})`)
       .bind(target, ...acted)
       .run();
-    return json({ ok: true, n: acted.length, from });
+    return json({ ok: true, n: acted.length, from, ids: acted });
   }
 
   // GET /api/blocked — the rules, and what each one has destroyed.
