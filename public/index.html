@@ -3240,6 +3240,10 @@ addEventListener("keydown", (e) => {
   if (e.key === "k" || e.key === "ArrowUp") { e.preventDefault(); return step(-1); }
 
   if (!current) return;
+  // A key held a moment too long repeats, and each repeat is another action:
+  // the first binned this message, the next binned the one that took its
+  // place, and only the last toast's Undo was left.
+  if (e.repeat) return;
   switch (e.key) {
     // Delete and Backspace both bin it, with Undo in the toast. A keystroke is
     // easier to hit by accident than a button, so the safety net matters more.
@@ -3353,7 +3357,10 @@ async function fileThread(key, from, target, said) {
 }
 
 async function fileCurrent(target, said) {
-  if (!current) return;
+  // `current` still names this message until the next one has loaded, so a
+  // second press in that gap filed it twice and replaced the first Undo.
+  if (!current || current.filing) return;
+  current.filing = true;
   const id = current.message.id;
   const wasIn = current.message.folder || "inbox";
   const thread = currentThread;
