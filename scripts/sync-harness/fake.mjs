@@ -175,6 +175,8 @@ export class FakeImap {
       else if ((m = /^UID (\S+)$/.exec(crit))) {
         // n:* always names the highest message, as real servers do
         hits = b.msgs.filter((x) => this.inSet(m[1], x.uid, max)).map((x) => x.uid);
+      } else if ((m = /^FROM "(.*)"$/.exec(crit))) {
+        hits = b.msgs.filter((x) => (/^From: .*$/im.exec(x.raw)?.[0] || "").includes(m[1])).map((x) => x.uid);
       } else if ((m = /^HEADER "Message-ID" "(.*)"$/.exec(crit))) {
         hits = b.msgs.filter((x) => x.raw.includes(`Message-ID: ${m[1]}`)).map((x) => x.uid);
       }

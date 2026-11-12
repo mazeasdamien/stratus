@@ -271,5 +271,23 @@ const none = await api("POST", "/api/thread", { key: "<th1@x>", from: "inbox", f
 ok(none.status !== 200 && !!none.body?.error, "a thread the provider no longer has there is refused: " + JSON.stringify(none.body));
 eq(row("<th2@x>").folder, "inbox", "and its row is left where it was");
 
+// ── A block rule never destroys mail you wrote ──
+DB.raw.prepare("INSERT INTO settings (key, value) VALUES ('aliases_acct1', ?)").run(JSON.stringify(["me@mydomain.example"]));
+const ownRule = await api("POST", "/api/blocked", { pattern: "mydomain.example" });
+eq(ownRule.status, 400, "a rule covering an address you send as is refused");
+ok(!DB.raw.prepare("SELECT 1 FROM blocked_senders WHERE pattern='mydomain.example'").get(), "and not stored");
+// An address you answered as without listing it, and a rule that covers it.
+const asRelay = (id) => latin(`From: Me <me@relay.example>\r\nTo: z@x.fr\r\nSubject: Sent as a relay address\r\nDate: ${new Date((clock += 60_000)).toUTCString()}\r\nMessage-ID: ${id}\r\n\r\nhi\r\n`);
+DB.raw.prepare("INSERT INTO blocked_senders (pattern, created_at) VALUES ('relay.example', 1)").run();
+imap.add("Sent Messages", asRelay("<relay1@x>"), [SEEN]);
+imap.add("INBOX", asRelay("<relay2@x>"));
+for (let i = 0; i < 6; i++) await pass1("own mail " + i);
+ok(holds("Sent Messages", "<relay1@x>") && row("<relay1@x>")?.folder === "sent", "the sync leaves your Sent copy alone under a matching rule");
+ok(!holds("INBOX", "<relay2@x>") && !row("<relay2@x>"), "and still destroys what arrives from that address");
+DB.raw.prepare("DELETE FROM blocked_senders WHERE pattern='relay.example'").run();
+const late = await api("POST", "/api/blocked", { pattern: "relay.example" });
+eq(late.status, 200, "making the rule afterwards is accepted");
+ok(holds("Sent Messages", "<relay1@x>") && !!row("<relay1@x>"), "and clearing out what it matches spares Sent, at the provider and here");
+
 console.log(`${fail ? "✗" : "✓"} ${pass} assertions passées, ${fail} échec(s) (caps ${caps.join(" ")})`);
 process.exit(fail ? 1 : 0);

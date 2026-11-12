@@ -623,7 +623,7 @@ export async function syncIcloud(env, account, tally = {}) {
         // sits, before the body reaches R2 and before the row exists, so
         // there is no unread count to raise and nothing to notify about —
         // which is the whole point of blocking rather than filtering.
-        const rule = blockedBy(row.from_email, blocked);
+        const rule = WRITTEN_BY_YOU.has(app) ? "" : blockedBy(row.from_email, blocked);
         if (rule) {
           await imapPurge(im, uid);
           destroyed.set(rule, (destroyed.get(rule) || 0) + 1);
@@ -726,6 +726,17 @@ export async function syncIcloud(env, account, tally = {}) {
    Blocked senders: mail destroyed on sight rather than filed.
    ──────────────────────────────────────────────────────────────── */
 
+/**
+ * Where a block rule never reaches: the mail you wrote.
+ *
+ * A rule destroys by From address, and what sits in Sent and Drafts is from
+ * you — from an alias, your own domain, or an address a message was sent to
+ * and you answered as. Refusing a rule that names one of your addresses is
+ * the first guard; this is the one that still holds for an address nobody
+ * listed, and for a rule made before the first guard knew about aliases.
+ */
+const WRITTEN_BY_YOU = new Set(["sent", "drafts"]);
+
 /** Every rule, lowercase. */
 export async function loadBlocked(env) {
   const { results } = await env.DB.prepare("SELECT pattern FROM blocked_senders").all();
@@ -776,6 +787,7 @@ export async function purgeBlockedAtProvider(env, account, pattern, cap = 100) {
   try {
     for (const mb of await imapList(im)) {
       if (killed >= cap) break;
+      if (WRITTEN_BY_YOU.has(folderNameFor(mb))) continue;
       await imapSelect(im, mb.name);
       const uids = await imapSearch(im, `FROM "${needle}"`).catch(() => []);
       for (const uid of uids.slice(0, cap - killed)) {
@@ -799,7 +811,7 @@ export async function forgetBlockedLocally(env, pattern) {
   // but never shrink it, and every candidate is checked properly below.
   const tail = pattern.includes("@") ? pattern : `%${pattern}`;
   const { results } = await env.DB.prepare(
-    "SELECT id, from_email FROM messages WHERE from_email=? OR from_email LIKE ? LIMIT 2000"
+    "SELECT id, from_email FROM messages WHERE (from_email=? OR from_email LIKE ?) AND folder NOT IN ('sent', 'drafts') LIMIT 2000"
   )
     .bind(pattern, tail)
     .all();

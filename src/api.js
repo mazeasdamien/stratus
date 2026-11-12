@@ -723,9 +723,13 @@ export async function handleApi(request, env, path, ctx, session) {
     if (!isBlockPattern(pattern)) return json({ error: "Not an address or a domain" }, 400);
 
     // A rule matching one of your own addresses would expunge your sent mail
-    // on the next pass, one mailbox at a time, with nothing to stop it.
-    const mine = await env.DB.prepare("SELECT email FROM accounts").all();
-    if ((mine.results ?? []).some((a) => blockMatches(a.email, pattern))) {
+    // on the next pass, one mailbox at a time, with nothing to stop it. The
+    // addresses you send as count too: only the account's own was checked, so
+    // a rule for your own domain was accepted.
+    const mine = (await env.DB.prepare("SELECT id, email FROM accounts").all()).results ?? [];
+    const own = [];
+    for (const a of mine) own.push(a.email, ...(await aliasesOf(env, a)));
+    if (own.some((e) => blockMatches(e, pattern))) {
       return json({ error: "That rule would block your own address" }, 400);
     }
 
