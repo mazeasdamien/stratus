@@ -838,7 +838,27 @@ export async function handleApi(request, env, path, ctx, session) {
            FROM messages WHERE 1=1`
       : "SELECT id, account_id, thread_key, from_name, from_email, subject, snippet, date, unread, starred, folder, has_body, 1 AS n FROM messages WHERE 1=1";
     const vals = [];
-    if (folder !== "all") {
+    if (folder === "sent") {
+      // Everything you wrote, not only rows filed under Sent. Copy yourself
+      // (Cc, Bcc) and iCloud keeps two copies with one Message-ID — one in
+      // Sent, one delivered to you — which share one row here, and the
+      // delivered copy wins so it shows where it landed. That left most of
+      // what you send, the mail you copy yourself on, missing from Sent while
+      // Apple Mail listed it there. Binned, junked and unfinished mail stays
+      // out, as it does at Apple.
+      const accts = (await env.DB.prepare("SELECT * FROM accounts").all()).results ?? [];
+      const own = new Set();
+      for (const a of accts) {
+        if (account && a.id !== account) continue;
+        own.add(String(a.email).toLowerCase());
+        for (const x of await aliasesOf(env, a)) own.add(String(x).toLowerCase());
+      }
+      const mine = [...own].slice(0, 40);
+      sql += mine.length
+        ? ` AND (folder='sent' OR (lower(from_email) IN (${mine.map(() => "?").join(",")}) AND folder NOT IN ('trash','spam','drafts')))`
+        : " AND folder='sent'";
+      vals.push(...mine);
+    } else if (folder !== "all") {
       sql += " AND folder=?";
       vals.push(folder);
     }

@@ -206,5 +206,18 @@ imap.move("Sent Messages", own.uid, "Deleted Messages");
 for (let i = 0; i < 16; i++) await pass1("own deleted " + i);
 eq(row("<own@x>")?.folder, "trash", "deleted from Sent: in Trash");
 
+// ── Sent lists what you wrote, even when the copy to yourself was filed elsewhere ──
+const { handleApi } = await import("../../src/api.js");
+const fromMe = latin(`From: Me <me@example.com>\r\nTo: z@x.fr\r\nBcc: me@example.com\r\nSubject: Copied to myself\r\nDate: ${new Date((clock += 60_000)).toUTCString()}\r\nMessage-ID: <mine@x>\r\n\r\nhi\r\n`);
+imap.add("Sent Messages", fromMe, [SEEN]);
+imap.add("Archive", fromMe, [SEEN]);
+for (let i = 0; i < 6; i++) await pass1("copied " + i);
+eq(row("<mine@x>")?.folder, "archive", "the copy to yourself is filed in Archive");
+const listed = async (folder) =>
+  (await (await handleApi(new Request(`http://x/api/messages?folder=${folder}`), env, "/api/messages")).json()).messages.map((m) => m.subject);
+ok((await listed("sent")).includes("Copied to myself"), "and it is listed in Sent");
+ok((await listed("archive")).includes("Copied to myself"), "as well as in Archive");
+ok(!(await listed("sent")).includes("Dîner"), "mail from others stays out of Sent");
+
 console.log(`${fail ? "✗" : "✓"} ${pass} assertions passées, ${fail} échec(s) (caps ${caps.join(" ")})`);
 process.exit(fail ? 1 : 0);
