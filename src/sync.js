@@ -416,15 +416,22 @@ export async function reconcileMailbox(env, account, im, mb, cur, soleForApp) {
     const row = byPid.get(pidOf(g));
     // Only a row filed here. The same Message-ID in another mailbox — you on
     // the Cc of your own mail, a copy in Sent — belongs to that mailbox.
-    if (!row || row.folder !== app) continue;
+    //
+    // One exception: your Sent copy takes back a row whose other copy was
+    // binned. Bcc yourself, delete the inbox copy, and the shared row went to
+    // Trash with it — leaving Sent without the message you sent, forever,
+    // because nothing here ever looked at it again.
+    const reclaim = !!row && app === "sent" && (row.folder === "trash" || row.folder === "spam");
+    if (!row || (row.folder !== app && !reclaim)) continue;
     remapped.add(row.id);
     shift += f.unread - Number(row.unread);
     updates.push(
-      env.DB.prepare("UPDATE messages SET unread=?, starred=?, mailbox=?, uid=? WHERE id=?").bind(
+      env.DB.prepare("UPDATE messages SET unread=?, starred=?, mailbox=?, uid=?, folder=? WHERE id=?").bind(
         f.unread,
         f.starred,
         mb.name,
         g.uid,
+        app,
         row.id
       )
     );

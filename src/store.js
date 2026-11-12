@@ -77,7 +77,12 @@ export async function storeRows(env, accountId, rows) {
            -- erase the one a sync has already found for the same message.
            mailbox=CASE WHEN excluded.uid > 0 THEN excluded.mailbox ELSE messages.mailbox END,
            uid=CASE WHEN excluded.uid > 0 THEN excluded.uid ELSE messages.uid END
-         WHERE NOT (excluded.folder = 'sent' AND messages.folder <> 'sent')`
+         --
+         -- Except over a copy that was thrown away. Bcc yourself and the inbox
+         -- copy is the one you delete once you have seen it; the row followed
+         -- it to Trash and the message you sent vanished from Sent for good.
+         -- Your copy in Sent outranks a binned or junked duplicate of it.
+         WHERE NOT (excluded.folder = 'sent' AND messages.folder NOT IN ('sent', 'trash', 'spam'))`
       ).bind(
         await hashHex(`msg|${accountId}|${r.pid}`, 16),
         accountId,

@@ -188,5 +188,23 @@ if (caps.includes("UIDPLUS")) ok(expunges.every((l) => l.startsWith("UID EXPUNGE
 else ok(expunges.every((l) => l === "EXPUNGE"), "no UIDPLUS: plain EXPUNGE");
 ok(!row("<s@x>"), "blocked never stored");
 
+// ── Bcc to yourself, then the inbox copy deleted: Sent keeps the message ──
+imap.box("Deleted Messages", BS + "HasNoChildren " + BS + "Trash");
+const mine = msg("<bcc@x>", "Sent with a Bcc to me");
+imap.add("Sent Messages", mine, [SEEN]);
+const inboxCopy = imap.add("INBOX", mine, [SEEN]);
+for (let i = 0; i < 6; i++) await pass1("bcc " + i);
+eq(row("<bcc@x>")?.folder, "inbox", "the delivered copy shows in the inbox");
+imap.move("INBOX", inboxCopy.uid, "Deleted Messages");
+for (let i = 0; i < 16; i++) await pass1("bcc deleted " + i);
+eq([row("<bcc@x>")?.folder, row("<bcc@x>")?.mailbox], ["sent", "Sent Messages"], "binning the inbox copy leaves it in Sent");
+// A message you delete from Sent itself does go to Trash.
+const own = imap.add("Sent Messages", msg("<own@x>", "Sent, then deleted"), [SEEN]);
+for (let i = 0; i < 6; i++) await pass1("own " + i);
+eq(row("<own@x>")?.folder, "sent", "sent copy stored");
+imap.move("Sent Messages", own.uid, "Deleted Messages");
+for (let i = 0; i < 16; i++) await pass1("own deleted " + i);
+eq(row("<own@x>")?.folder, "trash", "deleted from Sent: in Trash");
+
 console.log(`${fail ? "✗" : "✓"} ${pass} assertions passées, ${fail} échec(s) (caps ${caps.join(" ")})`);
 process.exit(fail ? 1 : 0);
