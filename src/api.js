@@ -1155,8 +1155,19 @@ export async function handleApi(request, env, path, ctx, session) {
 
     let gone = false;
     try {
-      const done = await icloudAct(env, acct, msg.mid || msg.pid, msg.folder, (im, _b, _h, uid) =>
-        imapPurge(im, uid)
+      // Only in the folder the row is filed under. A Message-ID is not unique
+      // to one mailbox: mail you sent with yourself on the Bcc has a copy in
+      // Sent and a copy that was delivered, sharing this row. Searching every
+      // mailbox meant that once the binned copy had gone — Apple empties Trash
+      // on its own — "delete permanently" found the copy in Sent instead and
+      // expunged that, with nothing to bring it back.
+      const done = await icloudAct(
+        env,
+        acct,
+        msg.mid || msg.pid,
+        msg.folder,
+        (im, _b, _h, uid) => imapPurge(im, uid),
+        { onlyHint: true }
       );
       if (!done) return json({ error: "This account cannot delete permanently" }, 400);
     } catch (e) {

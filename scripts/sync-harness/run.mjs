@@ -219,5 +219,41 @@ ok((await listed("sent")).includes("Copied to myself"), "and it is listed in Sen
 ok((await listed("archive")).includes("Copied to myself"), "as well as in Archive");
 ok(!(await listed("sent")).includes("Dîner"), "mail from others stays out of Sent");
 
+// ── Routes that act at the provider, driven the way the app drives them ──
+const api = async (method, path, body, headers = {}) => {
+  const res = await handleApi(
+    new Request("http://x" + path, {
+      method,
+      headers: { "Content-Type": "application/json", ...headers },
+      body: body ? JSON.stringify(body) : undefined,
+    }),
+    env,
+    path.split("?")[0],
+    { waitUntil() {} },
+    { sub: "harness" }
+  );
+  return { status: res.status, body: await res.json().catch(() => null) };
+};
+const holds = (box, mid) => imap.box(box).msgs.some((m) => m.raw.includes(`Message-ID: ${mid}`));
+
+// ── Delete permanently only ever touches the folder the row is filed under ──
+// Sent with a Bcc to yourself, the delivered copy binned, and Apple has since
+// emptied Trash on its own: the row still says trash, the only copy is in Sent.
+imap.add("Sent Messages", msg("<twin@x>", "Bcc to me, binned copy already gone"), [SEEN]);
+DB.raw.prepare(
+  "INSERT INTO messages (id, account_id, pid, mid, thread_key, folder, subject, created_at) VALUES ('00000000000000a1','acct1','<twin@x>','<twin@x>','<twin@x>','trash','twin',1)"
+).run();
+const stale = await api("POST", "/api/messages/00000000000000a1/purge");
+eq([stale.status, stale.body?.alreadyGone], [200, true], "purging a row whose binned copy is gone reports it as already gone");
+ok(holds("Sent Messages", "<twin@x>"), "and the copy in Sent is not expunged in its place");
+ok(!row("<twin@x>"), "the stale row is dropped");
+// The ordinary case still deletes for good.
+imap.add("Deleted Messages", msg("<binned@x>", "Binned"), [SEEN]);
+for (let i = 0; i < 6; i++) await pass1("binned " + i);
+eq(row("<binned@x>")?.folder, "trash", "a binned message is stored under trash");
+const forGood = await api("POST", `/api/messages/${row("<binned@x>").id}/purge`);
+eq([forGood.status, forGood.body?.alreadyGone], [200, false], "purging it succeeds");
+ok(!holds("Deleted Messages", "<binned@x>") && !row("<binned@x>"), "and it is gone from Trash at the provider and here");
+
 console.log(`${fail ? "✗" : "✓"} ${pass} assertions passées, ${fail} échec(s) (caps ${caps.join(" ")})`);
 process.exit(fail ? 1 : 0);
