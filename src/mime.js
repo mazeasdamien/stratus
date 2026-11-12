@@ -537,10 +537,23 @@ const escHtml = (s) =>
 
 /** Plain text becomes minimal HTML: escaped, line breaks kept, links tappable. */
 export function textToHtml(t) {
-  const linked = escHtml(t).replace(
-    /(https?:\/\/[^\s<>"']+)/g,
-    '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
-  );
+  // A URL ends where the text around it begins. It is matched after
+  // escaping, so the `>` that closes `<https://…>` and the quote that closes
+  // "https://…" are entities by then, and an entity is spelled in characters
+  // a URL may hold: the link took them in and led nowhere. `&amp;` is the one
+  // entity that belongs to a URL. Sentence punctuation after it does not, nor
+  // a bracket that closes one opened before the URL began.
+  const linked = escHtml(t).replace(/https?:\/\/(?:[^\s<>"'&]|&amp;)+/g, (found) => {
+    let end = found.length;
+    for (;;) {
+      const c = found[end - 1] || "";
+      const opener = c === ")" ? "(" : c === "]" ? "[" : "";
+      if (/[.,;:!?]/.test(c) || (opener && !found.slice(0, end).includes(opener))) end--;
+      else break;
+    }
+    const url = found.slice(0, end);
+    return `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>${found.slice(end)}`;
+  });
   return `<div style="white-space:pre-wrap;word-break:break-word">${linked}</div>`;
 }
 

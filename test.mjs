@@ -217,6 +217,18 @@ console.log("\n── HTML désamorcé ─────────────�
   const t = textToHtml("ligne 1\nvoir https://exemple.fr/x?a=1 <fin>");
   ok(t.includes("&lt;fin&gt;"), "texte échappé");
   ok(t.includes('<a href="https://exemple.fr/x?a=1"'), "lien cliquable");
+
+  // Le lien s'arrête où le texte reprend : ni le chevron, ni le guillemet, ni
+  // la ponctuation de la phrase n'en font partie.
+  const bornes = textToHtml('voir <https://exemple.fr/a>, "https://exemple.fr/b" et (https://exemple.fr/c?x=1&y=2).');
+  ok(bornes.includes('<a href="https://exemple.fr/a" '), `chevrons hors du lien — ${bornes}`);
+  ok(bornes.includes('<a href="https://exemple.fr/b" '), `guillemets hors du lien — ${bornes}`);
+  ok(bornes.includes('<a href="https://exemple.fr/c?x=1&amp;y=2" '), `parenthèse et point hors du lien, & gardé — ${bornes}`);
+  ok(bornes.endsWith("</a>).</div>"), `ce qui suit le lien reste du texte — ${bornes}`);
+  ok(
+    textToHtml("https://fr.wikipedia.org/wiki/Paris_(homonymie)").includes('href="https://fr.wikipedia.org/wiki/Paris_(homonymie)"'),
+    "une parenthèse ouverte dans l'URL s'y referme"
+  );
 }
 
 console.log("\n── pixels espions, formes non guillemetées ──");
