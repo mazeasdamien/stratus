@@ -6864,7 +6864,14 @@ $("#list").addEventListener("click", (e) => {
  * Fetched every time rather than cached: a thread grows, and a stale copy of
  * it is worse than a second request nobody waits on.
  */
+/**
+ * Which toggle is the latest, the way listSeq and openSeq do it. Two counts
+ * tapped one after the other made two requests, and whichever answered last
+ * was shown: a slow first one opened its conversation over the second.
+ */
+let threadSeq = 0;
 async function toggleThread(key) {
+  const seq = ++threadSeq;
   if (!key || openThread === key) {
     openThread = "";
     threadRows = [];
@@ -6872,8 +6879,11 @@ async function toggleThread(key) {
     return;
   }
   const res = await api(`/api/messages?thread=${encodeURIComponent(key)}`).catch(() => null);
+  if (seq !== threadSeq) return;
   if (!res || !res.ok) return toast("Could not open this conversation");
-  threadRows = (await res.json()).messages || [];
+  const rows = (await res.json().catch(() => ({}))).messages || [];
+  if (seq !== threadSeq) return;
+  threadRows = rows;
   openThread = key;
   renderList();
 }
