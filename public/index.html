@@ -530,6 +530,20 @@ body.composing:not(.overlay) #scrim{opacity:0;pointer-events:none}
    Discard last, rather than breaking wherever the row happened to end. */
 .toolbar .tend{display:flex;align-items:center;gap:3px;margin-left:auto;flex:none}
 .toolbar .tsep{width:1px;height:18px;margin:0 5px;background:var(--line-strong);flex:none}
+/* On a phone the second row has to hold Attach, the saved state, the
+   assistant and Discard, or they spill onto a third and take it from the
+   message. Attach is its paperclip alone there, and the assistant's buttons,
+   whose names are longer than they were, sit closer together. */
+@media (max-width:480px){
+  #cAttach .lbl{display:none}
+  .toolbar .ai{padding:0 7px}
+}
+/* The narrowest phones are 30px short of that again; the gaps close up. */
+@media (max-width:380px){
+  .toolbar{column-gap:0}
+  .toolbar .tend{gap:0}
+  .toolbar button{min-width:33px;padding:0 6px}
+}
 .toolbar .ai{color:var(--acc);font-weight:600}
 .toolbar button:disabled{opacity:.35;pointer-events:none}
 /* Side padding so a caret at column 0 is not glued to the focus ring: the body
@@ -1023,7 +1037,15 @@ body.selmode .rowwrap .row{touch-action:pan-y}
 .chip.bad{border-color:var(--red);color:var(--red)}
 .field.afield{flex-wrap:wrap;min-height:44px;padding:6px 12px}
 .field.afield .chip{margin:2px 4px 2px 0}
-.field.afield input{min-width:120px;flex:1 1 120px;height:30px}
+/* The chips and the input are one wrapping row. The chips were a box of
+   their own, so the input could only sit beside the whole box: on a phone a
+   single chip filled the line and the empty input took a second row. Now the
+   input follows the last chip and wraps only when it runs out of room. Its
+   placeholder goes once there is a chip: it has said what it had to, and in
+   the room that is left it would be cut. */
+.field.afield .chips{display:contents}
+.field.afield input{min-width:64px;flex:1 1 64px;height:30px}
+.field.afield:has(.chip) input::placeholder{color:transparent}
 /* Drop target. Dragging a file over the composer has to say so, or you drop
    it on the desktop and wonder where it went. */
 #composeSheet.dropping{outline:2px dashed var(--acc);outline-offset:-8px}
@@ -1608,7 +1630,7 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
     <div class="sh-s" style="margin:12px 0 6px">Model</div>
     <div class="field"><select id="aiModel" aria-label="Model"></select></div>
     <button class="ghost" id="aiKeyTest" style="width:100%;justify-content:center;min-height:34px">Test the key and list the models</button>
-    <div class="sh-s" style="margin:8px 0 0;font-size:12px">Draft, Fix and Improve in the composer send that message to Anthropic's Claude API, and this is the key and the model they use. Select some text first and only that is rewritten. The key is checked with Anthropic before it is kept, sealed in the database like the iCloud password, and never shown again &mdash; only its last four characters. Test asks Anthropic what this key can actually reach; the menu only offers what came back.</div>
+    <div class="sh-s" style="margin:8px 0 0;font-size:12px">Write reply, Fix spelling and Improve in the composer send that message to Anthropic's Claude API, and this is the key and the model they use. Select some text first and only that is rewritten. The key is checked with Anthropic before it is kept, sealed in the database like the iCloud password, and never shown again &mdash; only its last four characters. Test asks Anthropic what this key can actually reach; the menu only offers what came back.</div>
   </section>
 
   <section class="setsec" data-set="notify" role="tabpanel" aria-label="Notifications" hidden>
@@ -1794,21 +1816,36 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
        last address field walked through the whole toolbar instead of landing
        where you were about to type. -->
   <div class="toolbar" id="cTools">
-    <button data-cmd="bold" title="Bold (Ctrl+B)"><b>B</b></button>
-    <button data-cmd="italic" title="Italic (Ctrl+I)"><i>I</i></button>
-    <button data-cmd="underline" title="Underline (Ctrl+U)"><u>U</u></button>
-    <button data-cmd="insertUnorderedList" title="Bulleted list">&bull;&nbsp;&#8212;</button>
-    <button data-cmd="insertOrderedList" title="Numbered list">1.&nbsp;&#8212;</button>
-    <button data-block="blockquote" title="Quote">&ldquo;&nbsp;&rdquo;</button>
+    <!-- Each one is named for a screen reader as well as for a mouse: "B" and
+         a drawing say nothing read aloud. The lists, the quote and the clear
+         are drawings of what they make. They were "•—", "1.—", two quotation
+         marks and the word "Clear", which beside Attach read as clearing the
+         message. -->
+    <button data-cmd="bold" title="Bold (Ctrl+B)" aria-label="Bold"><b>B</b></button>
+    <button data-cmd="italic" title="Italic (Ctrl+I)" aria-label="Italic"><i>I</i></button>
+    <button data-cmd="underline" title="Underline (Ctrl+U)" aria-label="Underline"><u>U</u></button>
+    <button data-cmd="insertUnorderedList" title="Bulleted list" aria-label="Bulleted list">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 6H20M9.5 12H20M9.5 18H20"/><circle cx="4.5" cy="6" r="1.3" fill="currentColor"/><circle cx="4.5" cy="12" r="1.3" fill="currentColor"/><circle cx="4.5" cy="18" r="1.3" fill="currentColor"/></svg>
+    </button>
+    <button data-cmd="insertOrderedList" title="Numbered list" aria-label="Numbered list">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 6H20M10.5 12H20M10.5 18H20"/><path d="M3.5 5 5 4v6M3.5 10h3" stroke-width="1.6"/><path d="M3.5 15.2c.4-.8 2.7-1 2.7.5 0 1.2-2.7 1.9-2.7 3.8h3" stroke-width="1.6"/></svg>
+    </button>
+    <button data-block="blockquote" title="Quote" aria-label="Quote">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5v14" stroke-width="2.6"/><path d="M10 7h10M10 12h10M10 17h6"/></svg>
+    </button>
     <button id="cLink" title="Insert link">Link</button>
-    <button data-cmd="removeFormat" title="Clear formatting">Clear</button>
-    <button id="cAttach" title="Attach a file">&#128206; Attach</button>
+    <button data-cmd="removeFormat" title="Clear formatting" aria-label="Clear formatting">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6V4.5h12V6M10 4.5V19M7.5 19h5"/><path d="m16 14 5 5M21 14l-5 5"/></svg>
+    </button>
+    <button id="cAttach" title="Attach a file" aria-label="Attach a file">&#128206;<span class="lbl"> Attach</span></button>
     <input type="file" id="cFile" multiple hidden>
     <span class="dstate" id="cSaved"></span>
     <span class="spacer"></span>
     <span class="tend">
-      <button class="ai" id="aiDraft" hidden title="Write this reply from the message you are answering, and from anything you have already typed">Draft</button>
-      <button class="ai" id="aiFix" title="Fix spelling and grammar">Fix</button>
+      <!-- Named for what they do. "Draft" sat a few buttons from "Saved to
+           Drafts" and read as "save this as a draft"; it writes the reply. -->
+      <button class="ai" id="aiDraft" hidden title="Write this reply from the message you are answering, and from anything you have already typed">Write reply</button>
+      <button class="ai" id="aiFix" title="Fix spelling and grammar">Fix spelling</button>
       <button class="ai" id="aiImprove" title="Rewrite more clearly">Improve</button>
       <!-- Throwing the draft away: last, at the far corner, behind a rule of
            its own. It has been between "Clear formatting" and "Fix", where it
@@ -5733,7 +5770,7 @@ async function refreshAiKey() {
     ? `Set here, ending ${d.tail}.`
     : d.secret
       ? `Using the deployed key, ending ${d.tail}. Anything saved here replaces it.`
-      : "No key set — Draft, Fix and Improve will say so when you press them.";
+      : "No key set — Write reply, Fix spelling and Improve will say so when you press them.";
   // Opening a menu to find one entry in it is not a menu. Only Anthropic knows
   // what this key can reach, so it is asked as the sheet opens rather than
   // only behind Test — quietly, and without holding anything up.
