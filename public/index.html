@@ -3767,7 +3767,11 @@ function replyTargets(msg, all) {
   const own = new Set([...identitiesOf(acctById(msg.account_id)), replyFrom(msg)].filter(Boolean));
   const from = String(msg.from_email || "").toLowerCase();
   const mine = !!me && own.has(from);
-  const first = mine ? addressesIn(msg.to_line) : [from];
+  // Reply-To, where the sender set one: a contact form writes From:
+  // noreply@site and Reply-To: the customer, and the reply went to noreply.
+  // It rides in the stored body, so it is known for the open message only.
+  const asked = !mine && current && current.message.id === msg.id ? addressesIn((current.body || {}).replyTo || "") : [];
+  const first = mine ? addressesIn(msg.to_line) : asked.length ? asked : [from];
   const rest = all
     ? mine
       ? addressesIn(msg.cc_line)
