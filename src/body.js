@@ -55,6 +55,7 @@ export function bodyFromParts({
   empty = false,
   missing = false,
   calendar = "",
+  replyTo = "",
 } = {}) {
   const body = {
     v: BODY_VERSION,
@@ -66,6 +67,12 @@ export function bodyFromParts({
     // for grey 8px text at the bottom of a newsletter.
     unsubscribe: String(unsubscribe || "").slice(0, 600),
     unsubscribeOneClick: !!unsubscribeOneClick,
+    // Where the sender asked for answers to go, already decoded. Nothing
+    // kept it, so a reply went to From: to the list or the no-reply address
+    // instead of the person. Here rather than in a column because the body
+    // is what a reply is written from. A body stored before this has no such
+    // field, and is not re-fetched for it.
+    replyTo: String(replyTo || "").slice(0, 500),
   };
 
   if (tooLarge) {

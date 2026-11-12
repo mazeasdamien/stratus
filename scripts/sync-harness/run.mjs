@@ -342,6 +342,20 @@ ok(asked >= 1 && asked <= 2, `a message that cannot be stored is retried once, n
 ok(!row("<dead@x>"), "and is not stored");
 imap.dead = null;
 
+// ── Reply-To travels with the stored body ──
+imap.add("INBOX", msg("<rt@x>", "From a list", "Reply-To: =?UTF-8?Q?Zo=C3=A9?= <zoe@list.example>\r\n"));
+// Past the size a Worker holds whole: only its headers and structure are read.
+imap.add("INBOX", msg("<rtbig@x>", "A very large one", "Reply-To: big@list.example\r\n", "x".repeat(2 * 1024 * 1024 + 1000)));
+for (let i = 0; i < 6; i++) await pass1("reply-to " + i);
+const storedBody = (mid) => JSON.parse(MAIL.map.get(`body/${row(mid).id}.json`));
+eq([storedBody("<rt@x>").replyTo, storedBody("<c@x>").replyTo], ["Zoé <zoe@list.example>", ""], "Reply-To is stored decoded, and empty when the message has none");
+eq((await api("GET", `/api/messages/${row("<rt@x>").id}?peek=1`)).body?.body?.replyTo, "Zoé <zoe@list.example>", "and comes back with the message");
+eq([storedBody("<rtbig@x>").tooLarge, storedBody("<rtbig@x>").replyTo], [true, "big@list.example"], "a message too large to hold keeps its Reply-To from the headers");
+// The same message read again on demand, as when its stored body is lost.
+MAIL.map.delete(`body/${row("<rtbig@x>").id}.json`);
+const reread = await api("GET", `/api/messages/${row("<rtbig@x>").id}?peek=1`);
+eq([reread.body?.body?.tooLarge, reread.body?.body?.replyTo], [true, "big@list.example"], "and when it is fetched again on opening");
+
 // ── Opening an invitation puts it on the timeline if it is not there yet ──
 imap.add(
   "INBOX",

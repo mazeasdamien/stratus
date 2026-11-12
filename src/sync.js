@@ -56,6 +56,7 @@ export function rowFromRaw({ uid, flags, raw }, folder) {
       blocked: defused.blocked,
       calendar: m.calendar || "",
       ...unsubFromHeaders(h),
+      replyTo: decodeWords(h["reply-to"] || ""),
     }),
     // Metadata only — the payload stays on Apple's server and is fetched by
     // part path when someone actually asks for it.
@@ -692,7 +693,9 @@ export async function syncIcloud(env, account, tally = {}) {
         // attachment be downloaded without dragging the message with it.
         if (oversized) {
           const parsed = await readLargeBody(im, uid, sizes.get(uid) || 0);
-          doc = bodyFromParts({ ...parsed, attachments: parsed.attachments || attachments });
+          // The readable part comes from the structure and knows nothing of
+          // the headers; Reply-To is carried over from them.
+          doc = bodyFromParts({ ...parsed, attachments: parsed.attachments || attachments, replyTo: body.replyTo });
           // A headers-only fetch has no body to preview; take one from what the
           // structure yielded, or the list shows a blank under the subject.
           if (!row.snippet && parsed.html) {

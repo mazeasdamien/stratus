@@ -4,7 +4,7 @@
 
 import { BODY_VERSION, bodyFromParts, unsubFromHeaders } from "./body.js";
 import { imapFetchHead, imapFetchMeta, imapFetchRaw } from "./imap.js";
-import { htmlToText } from "./mime.js";
+import { decodeWords, htmlToText } from "./mime.js";
 import { parseHeaders } from "./rfc822.js";
 import { MAX_BODY_BYTES, icloudAct } from "./mailbox.js";
 import { indexMessage } from "./store.js";
@@ -64,6 +64,7 @@ export async function fetchBodyNow(env, account, msg) {
         blocked: large.blocked,
         attachments: large.attachments,
         ...unsubFromHeaders(h),
+        replyTo: decodeWords(h["reply-to"] || ""),
         tooLarge: true,
       });
       return;

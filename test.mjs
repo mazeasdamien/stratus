@@ -706,6 +706,14 @@ console.log("\n── corps stockés : une seule forme ----------");
   eq(unsubFromHeaders({ "list-unsubscribe": "x".repeat(700) }).unsubscribe.length, 600,
      "l'en-tête est borné");
   eq(unsubFromHeaders({}).unsubscribe, "", "en-têtes absents : champs vides");
+
+  // Reply-To : l'adresse où l'expéditeur veut qu'on réponde. Rien ne la
+  // gardait, et une réponse partait vers From:, la liste ou le no-reply.
+  eq(base.replyTo, "", "Reply-To : chaîne vide, jamais absent");
+  const repondre = bodyFromParts({ html: "<p>ok</p>", replyTo: decodeWords("=?UTF-8?Q?Zo=C3=A9?= <zoe@x.fr>") });
+  eq(repondre.replyTo, "Zoé <zoe@x.fr>", "Reply-To conservé, décodé par l'appelant");
+  eq(bodyFromParts({ replyTo: "x".repeat(700) }).replyTo.length, 500, "Reply-To borné à 500 caractères");
+  eq(bodyFromParts({ ...repondre, empty: true }).replyTo, "Zoé <zoe@x.fr>", "il survit à un corps réassemblé");
 }
 
 console.log("\n── échec d'authentification : une seule voix -");
