@@ -19,7 +19,7 @@ import { zipStream } from "./zip.js";
 import { ensureBody } from "./bodies.js";
 import { accountById, aiKey, aiModel, aliasesOf, fileDraftCopy, forgetLocal, moveAtProvider, senderFor } from "./filing.js";
 import { folderNameFor, icloudAct, icloudPassword, mailboxList, renameCursor, resolveMailbox, theAccount, threadAct, threadRowsIn, withImap } from "./mailbox.js";
-import { deliver, outboxLease } from "./outgoing.js";
+import { deliver, outboxLease, parkIfUncertain } from "./outgoing.js";
 import { flagAccount, forgetMessages, ftsQuery, imapError, unindex } from "./store.js";
 import { countDestroyed, forgetBlockedLocally, mailboxNames, noteMailbox, purgeBlockedAtProvider, syncAccount } from "./sync.js";
 import { ATTACHMENT_HEADERS, FLAG_FLAGGED, FLAG_SEEN, bodyKey, hashHex, json } from "./util.js";
@@ -1652,10 +1652,18 @@ No invented facts, no commitment to anything the brief does not cover, and no br
     // go out is lost on the way back, the composer says "Could not send" and
     // you press Send again; the key makes that second press return the first
     // result instead of mailing everyone twice.
+    //
+    // A send that may or may not have gone leaves a receipt too. Its answer
+    // is not a success, so the second press gets the same 504 back and sends
+    // nothing; sending it again for real takes a new key, which is a
+    // decision and not a retry.
     const idem = String(request.headers.get("Idempotency-Key") || "").slice(0, 80);
     if (idem) {
       const seen = await env.DB.prepare("SELECT value FROM settings WHERE key=?").bind(`sent:${idem}`).first();
-      if (seen) return json({ ...JSON.parse(seen.value).res, repeat: true }, 202);
+      if (seen) {
+        const kept = JSON.parse(seen.value).res || {};
+        return json({ ...kept, repeat: true }, kept.uncertain ? 504 : 202);
+      }
     }
     const b = await request.json().catch(() => ({}));
 
@@ -1691,12 +1699,14 @@ No invented facts, no commitment to anything the brief does not cover, and no br
     }
 
     const res = await deliver(env, b);
-    if (idem && res.status === 202) {
+    if (idem && (res.status === 202 || res.status === 504)) {
       const body = await res.clone().json().catch(() => ({}));
-      await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)")
-        .bind(`sent:${idem}`, JSON.stringify({ at: Date.now(), res: body }))
-        .run()
-        .catch(() => {});
+      if (res.status === 202 || body.uncertain) {
+        await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)")
+          .bind(`sent:${idem}`, JSON.stringify({ at: Date.now(), res: body }))
+          .run()
+          .catch(() => {});
+      }
     }
     return res;
   }
@@ -1986,6 +1996,10 @@ No invented facts, no commitment to anything the brief does not cover, and no br
       if (res.status === 202) {
         await env.DB.prepare("DELETE FROM outbox WHERE id=?").bind(id).run();
         await env.MAIL.delete(`outbox/${id}.json`);
+      } else {
+        // It may have gone: the cron must not send it again at its appointed
+        // time. It stays listed, marked, until it is sent or cancelled by hand.
+        await parkIfUncertain(env, id, res);
       }
       return res;
     } finally {

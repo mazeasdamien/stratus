@@ -456,6 +456,45 @@ const edited = await api("POST", `/api/outbox/${kept.body.id}/cancel`);
 eq([edited.status, edited.body?.message?.subject, !!outboxRow(kept.body.id), wentOut("Kept")], [200, "Kept", false, 0], "Edit takes back one that is not being sent");
 eq(DB.raw.prepare("SELECT COUNT(*) n FROM settings WHERE key LIKE 'outbox_lock_%'").get().n, 0, "no lease outlives what it guarded");
 
+// ── A send whose answer never came is not reported as a failure, nor sent twice ──
+const { UNCERTAIN } = await import("../../src/outgoing.js");
+const direct = (subject) => ({ account_id: "acct1", to: "zoe@x.fr", subject, text: "hi" });
+smtp.drop = "after-data"; // the server takes the message, and the connection dies before its 250
+const lost = await api("POST", "/api/send", direct("Lost answer"), { "Idempotency-Key": "lost-answer" });
+smtp.drop = "";
+eq([lost.status, lost.body?.uncertain, lost.body?.error, wentOut("Lost answer")], [504, true, UNCERTAIN, 1], "a connection lost after the message was handed over is answered as uncertain");
+const pressedAgain = await api("POST", "/api/send", direct("Lost answer"), { "Idempotency-Key": "lost-answer" });
+eq([pressedAgain.status, pressedAgain.body?.uncertain, pressedAgain.body?.repeat, wentOut("Lost answer")], [504, true, true, 1], "a second press with the same key gets the same answer, and nothing is sent again");
+const decided = await api("POST", "/api/send", direct("Lost answer"), { "Idempotency-Key": "lost-answer-again" });
+eq([decided.status, wentOut("Lost answer")], [202, 2], "sending it again under a new key does send it");
+// A refusal is a plain failure: nothing went, nothing is remembered, and a retry sends.
+smtp.drop = "refuse";
+const refusedSend = await api("POST", "/api/send", direct("Refused"), { "Idempotency-Key": "refused" });
+smtp.drop = "";
+eq([refusedSend.status, !!refusedSend.body?.uncertain, wentOut("Refused")], [502, false, 0], "a message the server refuses is a failure, not an uncertainty: " + JSON.stringify(refusedSend.body));
+eq([(await api("POST", "/api/send", direct("Refused"), { "Idempotency-Key": "refused" })).status, wentOut("Refused")], [202, 1], "and pressing Send again sends it");
+// The cron does not try an uncertain delivery again by itself.
+const unsure = await api("POST", "/api/send", { ...later, subject: "Unsure" });
+DB.raw.prepare("UPDATE outbox SET at=? WHERE id=?").run(Date.now() - 1000, unsure.body.id);
+smtp.drop = "after-data";
+await flushOutbox(env);
+smtp.drop = "";
+eq([outboxRow(unsure.body.id)?.tries, outboxRow(unsure.body.id)?.last_error, wentOut("Unsure")], [5, UNCERTAIN, 1], "a scheduled message that may have gone stays listed, marked, and out of the cron's hands");
+DB.raw.prepare("UPDATE outbox SET at=? WHERE id=?").run(Date.now() - 1000, unsure.body.id);
+await flushOutbox(env);
+eq(wentOut("Unsure"), 1, "the next cron does not send it a second time");
+eq([(await api("POST", `/api/outbox/${unsure.body.id}/send`)).status, wentOut("Unsure"), !!outboxRow(unsure.body.id)], [202, 2, false], "Send now still does, when somebody decides to");
+// The same when it was "Send now" that lost the answer.
+const unsureNow = await api("POST", "/api/send", { ...later, subject: "Unsure now" });
+smtp.drop = "after-data";
+const nowLost = await api("POST", `/api/outbox/${unsureNow.body.id}/send`);
+smtp.drop = "";
+eq([nowLost.status, nowLost.body?.uncertain, outboxRow(unsureNow.body.id)?.tries], [504, true, 5], "Send now answers uncertain and parks the message");
+DB.raw.prepare("UPDATE outbox SET at=? WHERE id=?").run(Date.now() - 1000, unsureNow.body.id);
+await flushOutbox(env);
+eq(wentOut("Unsure now"), 1, "so the cron does not send it again at its appointed time");
+await api("POST", `/api/outbox/${unsureNow.body.id}/cancel`);
+
 // ── The list: the same answer as the query it replaced, and pages that skip nothing ──
 // A conversation with a mix of read, unread and starred messages in one folder.
 imap.add("INBOX", msg("<p1@x>", "Pager one"), [BS + "Flagged"]);

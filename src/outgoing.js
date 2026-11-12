@@ -163,10 +163,32 @@ export async function deliver(env, b, { dryRun = false } = {}) {
         return json({ error: "This account has no stored credential" }, 400);
       }
     } catch (e) {
+      // The connection failed between the message being handed over and the
+      // server's answer. It is not known whether it went, and saying "could
+      // not send" would have it sent twice. No copy is filed in Sent: that
+      // would claim something nobody knows.
+      if (e && e.afterData) return json({ error: UNCERTAIN, uncertain: true }, 504);
       return imapError(e, acct, env);
     }
     return json({ ok: true, filed, filedError }, 202);
   }
+}
+
+/** What is said when a send may or may not have gone through. */
+export const UNCERTAIN = "The message may have been sent. Check Sent before sending it again.";
+
+/**
+ * Takes a scheduled message whose delivery ended that way out of the cron's
+ * hands. It stays in Scheduled, marked with why; trying it again on a timer
+ * would mail everyone a second time if the first did arrive. "Send now"
+ * still sends it, because then somebody has decided to.
+ */
+export async function parkIfUncertain(env, id, res) {
+  if (res.status !== 504) return false;
+  const d = await res.clone().json().catch(() => ({}));
+  if (!d.uncertain) return false;
+  await env.DB.prepare("UPDATE outbox SET last_error=?, tries=5 WHERE id=?").bind(UNCERTAIN, id).run();
+  return true;
 }
 
 /**
@@ -282,7 +304,7 @@ export async function flushOutbox(env) {
       if (res.status === 202) {
         await env.DB.prepare("DELETE FROM outbox WHERE id=?").bind(row.id).run();
         await env.MAIL.delete(`outbox/${row.id}.json`);
-      } else {
+      } else if (!(await parkIfUncertain(env, row.id, res))) {
         const d = await res.json().catch(() => ({}));
         // Backing off: 10 minutes, then 20, 40, 80.
         await env.DB.prepare("UPDATE outbox SET last_error=?, at=? WHERE id=?")

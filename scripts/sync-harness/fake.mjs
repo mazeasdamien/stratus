@@ -314,7 +314,7 @@ export class FakeImap {
  * A tiny SMTP submission server: STARTTLS, AUTH, one message per connection.
  * What it accepted is kept in `sent`. With `drop` set to "after-data" it takes
  * the whole message and hangs up before answering, which is the case a sender
- * cannot tell from a failure.
+ * cannot tell from a failure; with "refuse" it answers the message with a 554.
  */
 export class FakeSmtp {
   constructor() {
@@ -346,6 +346,11 @@ export class FakeSmtp {
               const raw = pending.slice(0, end + 2).replace(/^\.\./gm, ".");
               pending = pending.slice(end + 5);
               inData = false;
+              // A plain refusal: the server says no, and nothing is sent.
+              if (self.drop === "refuse") {
+                send("554 5.7.1 message refused\r\n");
+                continue;
+              }
               self.sent.push({ from: env.from, to: [...env.to], raw });
               if (self.drop === "after-data") {
                 hungUp = true;

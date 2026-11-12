@@ -243,7 +243,25 @@ export async function smtpSend({ host, port, user, pass, from, to, raw }) {
     // truncated exactly there.
     const body = String(raw).replace(/\r?\n/g, CRLF).replace(/^\./gm, "..");
     await s.write(body + (body.endsWith(CRLF) ? "" : CRLF) + "." + CRLF);
-    await s.cmd(null, [250]);
+
+    // The whole message is with the server now, and only its answer says
+    // what became of it. A 4xx or 5xx is a refusal: nothing went. But a
+    // connection that drops or goes quiet here proves nothing either way —
+    // the server may have accepted the message and the 250 been lost. That
+    // failure is marked, so it is not reported as "could not send" to someone
+    // who will then send it again.
+    let reply;
+    try {
+      reply = await s.readReply();
+    } catch (e) {
+      e.afterData = true;
+      throw e;
+    }
+    if (reply.code !== 250) {
+      const e = new Error(`SMTP DATA: ${reply.lines.join(" ").slice(0, 160)}`);
+      if (!(reply.code >= 400 && reply.code < 600)) e.afterData = true;
+      throw e;
+    }
   } finally {
     await s.quit();
   }
