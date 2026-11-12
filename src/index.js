@@ -12,7 +12,7 @@
  * device name stamped into the token so a session list means something.
  */
 
-import { PUSH_SCOPE, clearCookie, getCookie, issueSession, readSession, renewedCookie, renewedHeaderToken, requestSession, revokeSession, safeEqual, sameOriginWrite, sessionCookie } from "./auth.js";
+import { AUTH_FAIL_WINDOW_MS, PUSH_SCOPE, checkBootstrapKey, clearCookie, getCookie, issueSession, readSession, renewedCookie, renewedHeaderToken, requestSession, revokeSession, sameOriginWrite, sessionCookie } from "./auth.js";
 import { runBackup } from "./backup.js";
 import { pushAll } from "./push.js";
 import { ensureSchema } from "./schema.js";
@@ -33,36 +33,31 @@ const CLIENT_SHELL = "v68";
 /**
  * One activation key, three ways in.
  *
- * `GET /auth?k=…` is the form a saved link takes and still works: check the
- * key, set the cookie, 302 to the app. `POST /auth` takes `{k, name?}` and
- * answers with JSON, which is what the activation page and any future client
- * wants. `GET /auth` with no key serves that page — and the page has to read
- * the key out of `location.hash`, because a fragment never reaches a server
- * and is therefore the one place a bootstrap key can travel in a URL without
- * landing in a log line. A paste field covers the case where the link was
- * copied without the fragment.
+ * `POST /auth` takes `{k, name?}` and answers with JSON, which is what the
+ * activation page and any future client wants. `GET /auth` serves that page
+ * — and the page has to read the key out of `location.hash`, because a
+ * fragment never reaches a server and is therefore the one place a bootstrap
+ * key can travel in a URL without landing in a log line. A paste field covers
+ * the case where the link was copied without the fragment.
+ *
+ * `GET /auth?k=…` is the form an old saved link takes. It used to check the
+ * key and set the cookie, which put the key in every log and history the
+ * request passed through, each time the link was opened. It no longer signs
+ * anyone in: it answers with a redirect to the fragment form, and the page
+ * posts the key from there, so the link still works.
  */
 async function route(request, env, ctx) {
   const url = new URL(request.url);
   const path = url.pathname;
 
   if (path === "/auth") {
-    const k = url.searchParams.get("k") || "";
     const ua = request.headers.get("User-Agent") || "";
-    if (k) {
-      if (!env.BOOTSTRAP_KEY || !safeEqual(k, env.BOOTSTRAP_KEY)) return denied();
-      const token = await issueSession(env.AUTH_SECRET, { userAgent: ua });
-      return new Response(null, {
-        status: 302,
-        headers: { Location: "/", "Set-Cookie": sessionCookie(token) },
-      });
-    }
     if (request.method === "POST") {
       const body = await request.json().catch(() => ({}));
       const key = String(body.k || body.key || "");
-      if (!env.BOOTSTRAP_KEY || !safeEqual(key, env.BOOTSTRAP_KEY)) {
-        return json({ error: "Wrong key" }, 401);
-      }
+      const tried = await checkBootstrapKey(request, env, key);
+      if (tried.retryAfter) return tooManyKeys(tried.retryAfter);
+      if (!tried.ok) return json({ error: "Wrong key" }, 401);
       const token = await issueSession(env.AUTH_SECRET, {
         name: String(body.name || "").slice(0, 40) || undefined,
         userAgent: ua,
@@ -73,6 +68,13 @@ async function route(request, env, ctx) {
           "Content-Type": "application/json; charset=utf-8",
           "Set-Cookie": sessionCookie(token),
         },
+      });
+    }
+    const k = url.searchParams.get("k") || "";
+    if (k) {
+      return new Response(null, {
+        status: 302,
+        headers: { Location: `/auth#k=${encodeURIComponent(k)}`, "Cache-Control": "no-store" },
       });
     }
     return new Response(ACTIVATION_PAGE, {
@@ -92,9 +94,9 @@ async function route(request, env, ctx) {
   if (path === "/api/extension/activate" && request.method === "POST") {
     const body = await request.json().catch(() => ({}));
     const key = String(body.k || body.key || "");
-    if (!env.BOOTSTRAP_KEY || !safeEqual(key, env.BOOTSTRAP_KEY)) {
-      return json({ error: "Wrong key" }, 401);
-    }
+    const tried = await checkBootstrapKey(request, env, key);
+    if (tried.retryAfter) return tooManyKeys(tried.retryAfter);
+    if (!tried.ok) return json({ error: "Wrong key" }, 401);
     return json({
       // Push-only: the badge is all the extension shows, so the unread count
       // is all its token can read.
@@ -294,6 +296,14 @@ export default {
           .catch(() => {})
       );
       ctx.waitUntil(
+        // Counts of wrong activation keys stop mattering when their window
+        // has passed.
+        env.DB.prepare("DELETE FROM settings WHERE key LIKE 'auth_fail:%' AND json_extract(value, '$.at') < ?")
+          .bind(Date.now() - AUTH_FAIL_WINDOW_MS)
+          .run()
+          .catch(() => {})
+      );
+      ctx.waitUntil(
         // A delivery that died before giving its lease back leaves the row
         // behind; it stopped meaning anything ten minutes later.
         env.DB.prepare("DELETE FROM settings WHERE key LIKE 'outbox_lock_%' AND CAST(value AS INTEGER) < ?")
@@ -361,6 +371,15 @@ export default {
     );
   },
 };
+
+/** The answer to an address that has sent too many wrong activation keys. */
+function tooManyKeys(seconds) {
+  return json(
+    { error: `Too many wrong keys. Try again in ${Math.ceil(seconds / 60)} min.` },
+    429,
+    { "Retry-After": String(seconds) }
+  );
+}
 
 function denied() {
   return new Response(

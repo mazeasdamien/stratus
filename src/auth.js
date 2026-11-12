@@ -1,8 +1,9 @@
 /**
  * Passwordless authentication.
  *
- * The idea: open /auth?k=<BOOTSTRAP_KEY> once on a device. The Worker then
- * sets an HMAC-SHA256 signed cookie. Nothing to type again on that device.
+ * The idea: open /auth#k=<BOOTSTRAP_KEY> once on a device. The page posts
+ * the key, and the Worker then sets an HMAC-SHA256 signed cookie. Nothing to
+ * type again on that device.
  *
  * A login redirect is NEVER returned, only a flat 401. That is deliberate:
  * an <audio src> handed an HTML redirect fails silently, with no error worth
@@ -82,6 +83,76 @@ export function safeEqual(a, b) {
 async function hashHex(s, len) {
   const d = await crypto.subtle.digest("SHA-256", enc.encode(s));
   return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, len);
+}
+
+/**
+ * Checks an activation key, a limited number of times per address.
+ *
+ * Nothing counted wrong keys, so the two endpoints that take the bootstrap
+ * key could be asked as fast as the network allows. Each client address now
+ * has a row in settings, `auth_fail:<hash>`, holding how many wrong keys it
+ * has sent and when the first of them came. AUTH_FAIL_MAX of them inside
+ * AUTH_FAIL_WINDOW_MS and that address is answered 429 until the window has
+ * passed, before the key is looked at, so a guess made while refused tells
+ * nothing. A right key under the limit clears the row.
+ *
+ * The address is hashed so the key has one shape whatever a client sends as
+ * its address. A database that cannot answer is taken as "not limited", as
+ * revoked() does: the alternative is the owner locked out of their own mail
+ * by a missing table.
+ *
+ * Returns { ok, retryAfter }: whether the key is right, and how many seconds
+ * to wait when the address is being refused.
+ */
+export const AUTH_FAIL_MAX = 10;
+export const AUTH_FAIL_WINDOW_MS = 10 * 60_000;
+
+export async function checkBootstrapKey(request, env, key) {
+  const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+  const row = `auth_fail:${await hashHex(ip, 16)}`;
+  const now = Date.now();
+
+  let seen = null;
+  try {
+    const got = env.DB ? await env.DB.prepare("SELECT value FROM settings WHERE key=?").bind(row).first() : null;
+    seen = got ? JSON.parse(got.value) : null;
+  } catch {
+    /* cannot tell: not limited */
+  }
+  if (seen && now - Number(seen.at) < AUTH_FAIL_WINDOW_MS && Number(seen.n) >= AUTH_FAIL_MAX) {
+    return { ok: false, retryAfter: Math.max(1, Math.ceil((Number(seen.at) + AUTH_FAIL_WINDOW_MS - now) / 1000)) };
+  }
+
+  if (env.BOOTSTRAP_KEY && safeEqual(key, env.BOOTSTRAP_KEY)) {
+    if (seen) {
+      try {
+        await env.DB.prepare("DELETE FROM settings WHERE key=?").bind(row).run();
+      } catch {
+        /* an old count left behind expires on its own */
+      }
+    }
+    return { ok: true, retryAfter: 0 };
+  }
+
+  // One statement, so two wrong keys arriving together count as two. A count
+  // whose window has passed starts again from this one.
+  try {
+    if (env.DB) {
+      await env.DB.prepare(
+        `INSERT INTO settings (key, value) VALUES (?, json_object('n', 1, 'at', ?))
+           ON CONFLICT(key) DO UPDATE SET value = CASE
+             WHEN json_extract(settings.value, '$.at') < ? THEN excluded.value
+             ELSE json_object('n', json_extract(settings.value, '$.n') + 1,
+                              'at', json_extract(settings.value, '$.at'))
+           END`
+      )
+        .bind(row, now, now - AUTH_FAIL_WINDOW_MS)
+        .run();
+    }
+  } catch {
+    /* not counted; the key was still refused */
+  }
+  return { ok: false, retryAfter: 0 };
 }
 
 /**

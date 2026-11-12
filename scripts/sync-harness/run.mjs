@@ -47,8 +47,10 @@ const smtp = new FakeSmtp();
 // Submission is the only thing on 587; everything else is IMAP.
 globalThis.__fakeConnect = (addr) => (addr?.port === 587 ? smtp.connect() : imap.connect());
 
-const ENC_KEY = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64");
-const env = { DB, MAIL, ENC_KEY, APP_URL: "http://x" };
+const random = (n) => Buffer.from(crypto.getRandomValues(new Uint8Array(n))).toString("base64");
+const ENC_KEY = random(32);
+// Made up on each run, like the sealing key: no real secret is ever written here.
+const env = { DB, MAIL, ENC_KEY, APP_URL: "http://x", AUTH_SECRET: random(32), BOOTSTRAP_KEY: random(24) };
 
 // An OLD database: the messages table as it was before this change, to prove
 // the heal runs before the index that needs its columns.
@@ -409,6 +411,65 @@ eq(snapshots(), [good.key], "and the last complete snapshot is still the one hel
 DB.raw.exec("DROP TABLE events");
 const grown = await runBackup(env, Date.now());
 eq([grown.counts.events, grown.counts.messages], [0, count()], "a table the database does not have yet is skipped, not fatal");
+
+// ── The activation key: never in a URL the server reads, and not guessable at speed ──
+const { AUTH_FAIL_MAX, AUTH_FAIL_WINDOW_MS } = await import("../../src/auth.js");
+const activate = async (key, ip, path = "/auth") => {
+  const res = await worker.fetch(
+    new Request("http://x" + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(ip ? { "CF-Connecting-IP": ip } : {}) },
+      body: JSON.stringify({ k: key }),
+    }),
+    env,
+    { waitUntil() {} }
+  );
+  return { status: res.status, cookie: res.headers.get("Set-Cookie") || "", retry: Number(res.headers.get("Retry-After")) || 0, body: await res.json().catch(() => null) };
+};
+const failRows = () => DB.raw.prepare("SELECT value FROM settings WHERE key LIKE 'auth_fail:%'").all().map((r) => JSON.parse(r.value));
+const oldLink = await worker.fetch(new Request(`http://x/auth?k=${encodeURIComponent(env.BOOTSTRAP_KEY)}`), env, { waitUntil() {} });
+eq([oldLink.status, oldLink.headers.get("Location")], [302, `/auth#k=${encodeURIComponent(env.BOOTSTRAP_KEY)}`], "an old ?k= link is sent on to the fragment form");
+ok(!oldLink.headers.get("Set-Cookie"), "and signs nobody in by itself");
+const signedIn = await activate(env.BOOTSTRAP_KEY, "203.0.113.1");
+ok(signedIn.status === 200 && /dmzs_session=/.test(signedIn.cookie), "the right key, posted, activates the device");
+eq(failRows(), [], "and leaves no count behind");
+// A few wrong keys, then the right one: accepted, and the count is cleared.
+for (let i = 0; i < 3; i++) await activate("wrong", "203.0.113.2");
+eq(failRows().map((r) => r.n), [3], "wrong keys are counted per address");
+eq([(await activate(env.BOOTSTRAP_KEY, "203.0.113.2")).status, failRows().length], [200, 0], "a right key under the limit is accepted and clears the count");
+// Too many: refused before the key is looked at, on both endpoints.
+const wrong = [];
+for (let i = 0; i < AUTH_FAIL_MAX; i++) wrong.push((await activate("wrong", "203.0.113.3")).status);
+ok(wrong.every((s) => s === 401), `the first ${AUTH_FAIL_MAX} wrong keys are each answered 401: ` + wrong.join(","));
+const locked = await activate(env.BOOTSTRAP_KEY, "203.0.113.3");
+ok(locked.status === 429 && !locked.cookie && locked.retry > 0 && locked.retry <= AUTH_FAIL_WINDOW_MS / 1000, "after that even the right key is answered 429 with Retry-After: " + JSON.stringify(locked));
+const lockedExt = await activate(env.BOOTSTRAP_KEY, "203.0.113.3", "/api/extension/activate");
+ok(lockedExt.status === 429 && !lockedExt.body?.token, "the extension's endpoint shares the count");
+eq((await activate(env.BOOTSTRAP_KEY, "203.0.113.1")).status, 200, "another address is not held up by it");
+const ext = await activate(env.BOOTSTRAP_KEY, "203.0.113.1", "/api/extension/activate");
+ok(ext.status === 200 && !!ext.body?.token, "and the extension still activates from it");
+eq((await activate("wrong", "203.0.113.1", "/api/extension/activate")).status, 401, "a wrong key there is refused");
+// The window passes: the address may try again.
+DB.raw.prepare("UPDATE settings SET value=json_set(value, '$.at', ?) WHERE key LIKE 'auth_fail:%' AND json_extract(value, '$.n') >= ?").run(Date.now() - AUTH_FAIL_WINDOW_MS - 1000, AUTH_FAIL_MAX);
+eq((await activate("wrong", "203.0.113.3")).status, 401, "once the window has passed a wrong key is a 401 again");
+eq((await activate(env.BOOTSTRAP_KEY, "203.0.113.3")).status, 200, "and the right key is accepted");
+// A database that cannot answer locks nobody out.
+const prepareBeforeAuth = DB.prepare;
+DB.prepare = (sql) => {
+  if (/settings/.test(sql)) throw new Error("D1_ERROR: no such table: settings");
+  return prepareBeforeAuth(sql);
+};
+const blind = [await activate("wrong", "203.0.113.4"), await activate(env.BOOTSTRAP_KEY, "203.0.113.4")].map((r) => r.status);
+DB.prepare = prepareBeforeAuth;
+eq(blind, [401, 200], "with the settings table unreadable the right key still activates");
+// The nightly run sweeps counts whose window has passed, and only those.
+DB.raw.prepare("DELETE FROM settings WHERE key LIKE 'auth_fail:%'").run();
+await activate("wrong", "203.0.113.5");
+DB.raw.prepare("INSERT INTO settings (key, value) VALUES ('auth_fail:stale', ?)").run(JSON.stringify({ n: 4, at: Date.now() - AUTH_FAIL_WINDOW_MS - 1000 }));
+const nightly = [];
+await worker.scheduled({ cron: "17 3 * * *" }, env, { waitUntil: (p) => nightly.push(p) });
+await Promise.all(nightly);
+eq(failRows().map((r) => r.n), [1], "the nightly run drops the counts that have expired and keeps the live one");
 
 console.log(`${fail ? "✗" : "✓"} ${pass} assertions passées, ${fail} échec(s) (caps ${caps.join(" ")})`);
 process.exit(fail ? 1 : 0);
