@@ -3746,20 +3746,34 @@ $("#rDelete").addEventListener("click", async () => {
 
 $("#rStar").addEventListener("click", async () => {
   if (!current) return;
+  const id = current.message.id;
   const on = !Number(current.message.starred);
-  current.message.starred = on ? 1 : 0;
-  $("#rStar").classList.toggle("on", on);
-  $("#rStar").setAttribute("aria-pressed", String(on));
-  for (const r of [messages, threadRows]) {
-    const hit = r.find((m) => m.id === current.message.id);
-    if (hit) hit.starred = on ? 1 : 0;
-  }
-  renderList();
-  await api(`/api/messages/${current.message.id}/flag`, {
+  // Painted twice when the server says no: once on the click, so the star
+  // answers at once, and once more to take it back. By id, because the reader
+  // may be on another message by the time the answer is in.
+  const paint = (v) => {
+    if (current && current.message.id === id) {
+      current.message.starred = v ? 1 : 0;
+      $("#rStar").classList.toggle("on", v);
+      $("#rStar").setAttribute("aria-pressed", String(v));
+    }
+    for (const r of [messages, threadRows]) {
+      const hit = r.find((m) => m.id === id);
+      if (hit) hit.starred = v ? 1 : 0;
+    }
+    renderList();
+  };
+  paint(on);
+  const res = await api(`/api/messages/${id}/flag`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ starred: on }),
-  }).catch(() => {});
+  }).catch(() => null);
+  if (res && res.ok) return;
+  // The answer used to be ignored, so a star that was never stored stayed lit
+  // until the next reload quietly put it out.
+  paint(!on);
+  toast(on ? "Could not star this message" : "Could not remove the star");
 });
 
 $("#rUnread").addEventListener("click", async () => {
@@ -3767,17 +3781,28 @@ $("#rUnread").addEventListener("click", async () => {
   const id = current.message.id;
   closeReader();
   const sub = threadRows.find((m) => m.id === id);
-  if (sub) sub.unread = 1;
   const key = (sub || {}).thread_key || "";
   const parent = messages.find((m) => m.id === id || (key && m.thread_key === key));
+  // What the rows said before, in case the server does not take it.
+  const was = [sub && sub.unread, parent && parent.unread];
+  if (sub) sub.unread = 1;
   // Putting it back is the same sum, the other way round.
   if (parent) parent.unread = Number(parent.n || 1) > 1 ? Number(parent.unread || 0) + 1 : 1;
   renderList();
-  await api(`/api/messages/${id}/flag`, {
+  const res = await api(`/api/messages/${id}/flag`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ unread: true }),
-  }).catch(() => {});
+  }).catch(() => null);
+  if (!res || !res.ok) {
+    // It said "Marked unread" whatever came back, and the row stayed bold
+    // over a message that was still read everywhere else.
+    if (sub) sub.unread = was[0];
+    if (parent) parent.unread = was[1];
+    renderList();
+    toast("Could not mark it unread");
+    return;
+  }
   toast("Marked unread");
   refreshCounts();
 });
