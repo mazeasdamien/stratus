@@ -302,6 +302,23 @@ ok(!!row("<after@x>") && !!row("<elsewhere@x>"), "mail behind a refused message 
 eq(row("<refused@x>")?.subject, "The server will not read this one back", "and the refused one is listed from its headers");
 imap.broken = null;
 
+// ── Mail the provider has, with no row here, is fetched again ──
+// The row of a message in Sent is lost here (its twin in Trash was deleted
+// for good, say) while the copy in Sent is still at the provider.
+ok(holds("Sent Messages", "<h@x>") && !!row("<h@x>"), "H is in Sent at the provider and here");
+DB.raw.prepare("DELETE FROM messages WHERE mid='<h@x>'").run();
+for (let i = 0; i < 10; i++) await pass1("orphan " + i);
+eq([row("<h@x>")?.folder, row("<h@x>")?.mailbox], ["sent", "Sent Messages"], "a message the provider still has comes back");
+// One that can never be stored is asked for again once, not on every pass.
+const dead = imap.add("INBOX", msg("<dead@x>", "Neither body nor headers can be read back"));
+imap.dead = new Set([`INBOX:${dead.uid}`]);
+imap.log.length = 0;
+for (let i = 0; i < 10; i++) await pass1("dead " + i);
+const asked = imap.log.filter((l) => l === `UID FETCH ${dead.uid} (FLAGS BODY.PEEK[])`).length;
+ok(asked >= 1 && asked <= 2, `a message that cannot be stored is retried once, not every pass: asked ${asked} times in 10 passes`);
+ok(!row("<dead@x>"), "and is not stored");
+imap.dead = null;
+
 // ── Opening an invitation puts it on the timeline if it is not there yet ──
 imap.add(
   "INBOX",

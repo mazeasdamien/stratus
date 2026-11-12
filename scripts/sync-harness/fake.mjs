@@ -192,6 +192,8 @@ export class FakeImap {
       let since = 0;
       // A message the server cannot read back: `broken` holds "mailbox:uid".
       if (items.includes("BODY.PEEK[]") && this.broken?.has(`${b.name}:${set}`)) return no("[SERVERBUG] Internal error occurred");
+      // `dead` is the same, and its headers cannot be read back either.
+      if ((items.includes("BODY.PEEK[]") || items.includes("BODY.PEEK[HEADER]")) && this.dead?.has(`${b.name}:${set}`)) return no("[SERVERBUG] Internal error occurred");
       const cs = /\s*\(CHANGEDSINCE (\d+)\)$/.exec(items);
       if (cs) {
         if (!this.caps.includes("CONDSTORE")) return send(`${tag} BAD no condstore\r\n`);

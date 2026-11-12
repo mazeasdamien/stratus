@@ -288,6 +288,8 @@ export async function dropMessages(env, ids) {
 }
 
 export const MAX_FORGET = 500; // rows a single visit may delete; the rest wait a pass
+const MAX_AGAIN = 40; // messages with no row waiting to be fetched again, per mailbox
+const RETRY_ORPHANS_MS = 3_600_000; // how often one of them may be tried again
 
 /**
  * Brings one mailbox's stored rows into line with what the server has now:
@@ -402,6 +404,7 @@ export async function reconcileMailbox(env, account, im, mb, cur, soleForApp) {
   }
 
   const remapped = new Set();
+  const orphans = []; // on the server, in the range already fetched, with no row here at all
   for (const g of got) {
     const f = flagState(g.flags);
     const placed = byUid.get(g.uid);
@@ -414,6 +417,7 @@ export async function reconcileMailbox(env, account, im, mb, cur, soleForApp) {
       continue;
     }
     const row = byPid.get(pidOf(g));
+    if (!row) orphans.push(g.uid);
     // Only a row filed here. The same Message-ID in another mailbox — you on
     // the Cc of your own mail, a copy in Sent — belongs to that mailbox.
     //
@@ -439,6 +443,24 @@ export async function reconcileMailbox(env, account, im, mb, cur, soleForApp) {
   if (updates.length) {
     const res = await env.DB.batch(updates);
     for (const [i, sign] of unreadFlips) shift += sign * Number(res[i]?.meta?.changes || 0);
+  }
+
+  // Mail the server has in the range already fetched, and no row for it here:
+  // a message skipped when it arrived, or a row deleted here while a copy
+  // stayed there — the Sent copy of mail you sent yourself, once the copy in
+  // Trash was deleted for good. The sync only looks forward and would never
+  // come back for it, so it is handed to the next pass to fetch again.
+  //
+  // Once an hour at most for any one message: `given` holds what was already
+  // handed back, so a message that can never be stored does not take a fetch
+  // out of every pass for ever.
+  if (Date.now() - Number(cur.gt || 0) > RETRY_ORPHANS_MS) {
+    cur.given = [];
+    cur.gt = Date.now();
+  }
+  if (orphans.length) {
+    const given = new Set(cur.given || []);
+    cur.again = [...new Set([...(cur.again || []), ...orphans.filter((u) => !given.has(u))])].slice(0, MAX_AGAIN);
   }
 
   // Expunged elsewhere: rows placed in this window whose UID the server no
@@ -585,6 +607,14 @@ export async function syncIcloud(env, account, tally = {}) {
         targets = (await imapSearch(im, "ALL")).slice(-budget);
       }
 
+      // Then what reconciling found on the server with no row here (see
+      // reconcileMailbox), ahead of history: it is mail that should already
+      // be showing.
+      const again = (carry.again || [])
+        .filter((u) => !targets.includes(u))
+        .slice(0, Math.max(0, budget - targets.length));
+      if (again.length) targets = again.concat(targets);
+
       // Spare budget walks backwards through what has not been fetched yet, so
       // history fills in over successive passes instead of never arriving —
       // except for Trash and Junk, which only ever take what is new.
@@ -696,6 +726,10 @@ export async function syncIcloud(env, account, tally = {}) {
         uidvalidity: sel.uidvalidity || prev.uidvalidity || 0,
         last_uid: Math.max(last, ...targets, 0),
         first_uid: targets.length ? Math.min(first || Infinity, ...targets) : first,
+        // Asked for again this pass: off the waiting list whether or not they
+        // could be stored, and remembered so they are not asked for at once.
+        again: (carry.again || []).filter((u) => !again.includes(u)),
+        given: [...(carry.given || []), ...again].slice(-500),
       };
     }
     state.cursor = (start + Math.max(1, advanced)) % Math.max(1, boxes.length);
