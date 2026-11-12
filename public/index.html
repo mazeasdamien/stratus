@@ -198,12 +198,15 @@ main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior
 .row{display:flex;gap:11px;padding:11px 16px;position:relative;align-items:flex-start;touch-action:pan-y;
   transition:background-color .16s ease}
 .row:active{background:var(--press);transform:scale(.995)}
-/* Unread is the state you scan for, so it colours the whole row rather than
-   hiding in a dot. Two signals, not one: a filled band you notice with your
-   eyes unfocused, and a solid stripe down the leading edge that survives even
-   when the tint is washed out by hover or selection. */
+/* Unread is the state you scan for, and it is said three times without a
+   fill: a solid stripe down the leading edge, heavier text, and the date in
+   the accent. The row used to be filled as well, at 14% against the open
+   row's 25%, and the two could not be told apart: five unread messages read
+   as five selected ones, and the one that was open was lost among them. The
+   fill now means one thing, the message you have open. What is left here is
+   a wash too faint to be taken for it. */
 .row.unread{
-  background:color-mix(in srgb,var(--acc) 14%,transparent);
+  background:color-mix(in srgb,var(--acc) 4%,transparent);
   box-shadow:inset 3px 0 0 var(--acc);
 }
 .row.unread .from{font-weight:700;color:var(--t1)}
@@ -911,7 +914,7 @@ html.busy #bar{opacity:1}
 }
 .rowwrap.dragging .row{transition:none;will-change:transform}
 .rowwrap .row.unread{
-  background:color-mix(in srgb,var(--acc) 14%,var(--bg))}
+  background:color-mix(in srgb,var(--acc) 4%,var(--bg))}
 .rowwrap.open .row,.rowwrap .row.sel{background:color-mix(in srgb,var(--acc) 25%,var(--bg))}
 
 /* Selection mode replaces the row's swipe behaviour with a checkbox. */
