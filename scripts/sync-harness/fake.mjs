@@ -50,19 +50,41 @@ export function makeD1(log = []) {
 
 export function makeR2() {
   const m = new Map();
+  // What a put said about the object, kept apart so `map` stays key → text.
+  const meta = new Map();
   return {
     map: m,
-    async put(k, v) {
+    // Keys per listing. R2 stops at 1000; a test lowers it to see the cursor used.
+    pageSize: 1000,
+    async put(k, v, opts = {}) {
       m.set(k, String(v));
+      meta.set(k, { uploaded: new Date(), customMetadata: opts.customMetadata });
     },
     async get(k) {
       return m.has(k) ? { text: async () => m.get(k) } : null;
     },
     async delete(k) {
-      for (const key of Array.isArray(k) ? k : [k]) m.delete(key);
+      const keys = Array.isArray(k) ? k : [k];
+      if (keys.length > 1000) throw new Error("R2 deletes at most 1000 keys a call");
+      for (const key of keys) m.delete(key), meta.delete(key);
     },
-    async list({ prefix = "" } = {}) {
-      return { objects: [...m.keys()].filter((k) => k.startsWith(prefix)).map((key) => ({ key, size: m.get(key).length })) };
+    // In key order, a page at a time, as R2 does: `truncated` and a `cursor`
+    // to hand back. customMetadata only when the listing asks for it.
+    async list({ prefix = "", cursor, include = [] } = {}) {
+      const keys = [...m.keys()].filter((k) => k.startsWith(prefix)).sort();
+      const from = cursor ? keys.findIndex((k) => k > cursor) : 0;
+      const page = from === -1 ? [] : keys.slice(from, from + this.pageSize);
+      const truncated = from !== -1 && from + this.pageSize < keys.length;
+      return {
+        objects: page.map((key) => ({
+          key,
+          size: Buffer.byteLength(m.get(key)),
+          uploaded: meta.get(key)?.uploaded,
+          ...(include.includes("customMetadata") ? { customMetadata: meta.get(key)?.customMetadata } : {}),
+        })),
+        truncated,
+        ...(truncated ? { cursor: page[page.length - 1] } : {}),
+      };
     },
   };
 }

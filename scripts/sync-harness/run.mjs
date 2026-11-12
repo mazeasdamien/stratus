@@ -492,11 +492,23 @@ eq(found.map((m) => m.n), [1, 1, 1, 1, 1], "a search lists each matching message
 eq((await pageThrough("folder=all&q=Pager", true)).map((m) => m.id), found.map((m) => m.id), "and paging through it returns each once, in order");
 
 // ── The nightly snapshot never replaces a complete one with a partial one ──
-const { runBackup } = await import("../../src/backup.js");
-const snapshots = () => [...MAIL.map.keys()].filter((k) => k.startsWith("backup/"));
+const { runBackup, latestBackup, restoreBackup } = await import("../../src/backup.js");
+const backupKeys = () => [...MAIL.map.keys()].filter((k) => k.startsWith("backup/")).sort();
+const manifests = () => backupKeys().filter((k) => k.endsWith("/manifest.json"));
+const folderOf = (manifestKey) => manifestKey.replace(/manifest\.json$/, "");
+const held = (key) => JSON.parse(MAIL.map.get(key));
+// A table longer than one part, so the split is the real one.
+DB.raw.exec("WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i < 4100) INSERT INTO contacts_hidden (email, created_at) SELECT 'bulk' || i || '@x.fr', i FROM n");
 const good = await runBackup(env, Date.now() - 86_400_000);
 eq(good.counts.messages, count(), "a snapshot holds every message row");
 ok(["image_senders", "revoked_sessions", "events"].every((t) => t in good.counts), "and the tables a restore needs: " + Object.keys(good.counts).join(","));
+// Written in parts, with the manifest naming each of them.
+const manifest = held(good.key);
+eq([manifests(), backupKeys().length], [[good.key], manifest.parts.length + 1], "a snapshot is its parts and one manifest, all under one stamp");
+ok(backupKeys().every((k) => k.startsWith(folderOf(good.key))), "nothing else is held under backup/");
+eq(manifest.parts.filter((p) => p.table === "contacts_hidden").map((p) => p.rows), [2000, 2000, 100], "a table of 4100 rows is written as parts of at most 2000");
+ok(manifest.parts.every((p) => held(p.key).length === p.rows && p.rows <= 2000), "each part holds the rows the manifest says it does");
+eq(manifest.parts.filter((p) => p.table === "messages").reduce((n, p) => n + p.rows, 0), count(), "the parts of messages add up to every message");
 const realPrepare = DB.prepare;
 DB.prepare = (sql) => {
   if (/FROM messages WHERE rowid/.test(sql)) throw new Error("D1_ERROR: Network connection lost");
@@ -505,10 +517,49 @@ DB.prepare = (sql) => {
 const partial = await runBackup(env, Date.now()).then(() => "written", (e) => String(e.message));
 DB.prepare = realPrepare;
 ok(/connection lost/.test(partial), "a read that fails halfway fails the snapshot: " + partial);
-eq(snapshots(), [good.key], "and the last complete snapshot is still the one held");
+eq(manifests(), [good.key], "and the last complete snapshot is still the one held");
+ok(backupKeys().every((k) => k.startsWith(folderOf(good.key))), "with none of the failed run's parts left beside it");
+// Parts a run left behind without a manifest are not a snapshot.
+MAIL.map.set("backup/9999-01-01T00-00-00-000Z/messages-0.json", "[]");
+const latest = (await api("GET", "/api/backup")).body.latest;
+eq([latest.key, latest.messages, latest.kept], [good.key, count(), 1], "the newest manifest is the snapshot held, whatever lies beside it");
+eq(latest.bytes, backupKeys().filter((k) => k.startsWith(folderOf(good.key))).reduce((n, k) => n + Buffer.byteLength(MAIL.map.get(k)), 0), "its size is the size of all its parts");
+// Restoring brings back what has gone missing, a part at a time, and nothing else.
+const beforeLoss = count();
+DB.raw.exec("DELETE FROM messages WHERE folder='archive'");
+DB.raw.exec("DELETE FROM contacts_hidden WHERE created_at > 1500");
+ok(count() < beforeLoss, "some rows are lost");
+const back = await api("POST", "/api/backup/restore", { confirm: "restore" });
+eq([back.status, back.body?.key, count(), back.body?.restored?.contacts_hidden], [200, good.key, beforeLoss, 2600], "a restore puts back exactly the rows that were missing");
+eq((await restoreBackup(env)).restored.messages, 0, "and a second one changes nothing");
+// A part that is gone is said, before anything is written.
+const lostPart = manifest.parts.find((p) => p.table === "messages").key;
+const lostBody = MAIL.map.get(lostPart);
+MAIL.map.delete(lostPart);
+DB.raw.exec("DELETE FROM contacts_hidden WHERE created_at > 4000");
+const incomplete = await api("POST", "/api/backup/restore", { confirm: "restore" });
+ok(incomplete.status === 502 && /incomplete/.test(incomplete.body?.error || ""), "a snapshot with a part missing is refused: " + JSON.stringify(incomplete.body));
+eq(DB.raw.prepare("SELECT COUNT(*) n FROM contacts_hidden").get().n, 4000, "and nothing was restored from the rest of it");
+MAIL.map.set(lostPart, lostBody);
+// A single file from before this layout is still restored when it is the newest thing held.
+MAIL.map.delete("backup/9999-01-01T00-00-00-000Z/messages-0.json");
+const legacyKey = `backup/dmzs-mail-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+await MAIL.put(legacyKey, JSON.stringify({ version: 1, takenAt: "then", tables: { contacts_added: [{ email: "old@x.fr", name: "Old", created_at: 1 }] } }), { customMetadata: { messages: "7" } });
+const legacyLatest = await latestBackup(env);
+eq([legacyLatest.key, legacyLatest.messages, legacyLatest.kept], [legacyKey, 7, 2], "a newer single-file snapshot is the latest");
+const fromLegacy = await restoreBackup(env);
+eq([fromLegacy.key, fromLegacy.restored.contacts_added, !!DB.raw.prepare("SELECT 1 FROM contacts_added WHERE email='old@x.fr'").get()], [legacyKey, 1, true], "and it is restored from");
+// The next good snapshot replaces all of it, however many listings that takes.
+MAIL.pageSize = 3;
 DB.raw.exec("DROP TABLE events");
 const grown = await runBackup(env, Date.now());
+MAIL.pageSize = 1000;
 eq([grown.counts.events, grown.counts.messages], [0, count()], "a table the database does not have yet is skipped, not fatal");
+eq(manifests(), [grown.key], "the new snapshot is the only one left");
+ok(backupKeys().every((k) => k.startsWith(folderOf(grown.key))) && grown.removed === manifest.parts.length + 2, "the old parts and the single file are pruned, across listing pages: removed " + grown.removed);
+MAIL.pageSize = 3;
+eq((await latestBackup(env))?.key, grown.key, "and it is found through a listing that comes in pages");
+MAIL.pageSize = 1000;
 
 // ── The activation key: never in a URL the server reads, and not guessable at speed ──
 const { AUTH_FAIL_MAX, AUTH_FAIL_WINDOW_MS } = await import("../../src/auth.js");
