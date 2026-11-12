@@ -361,11 +361,13 @@ export function htmlToText(html) {
     .replace(/<li\b[^>]*>/gi, "- ")
     .replace(/<[^>]+>/g, "")
     .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">")
     .replace(/&quot;/gi, '"')
     .replace(/&#39;|&apos;/gi, "'")
+    // Last, so it is decoded once: first, "&amp;lt;" — an "&lt;" someone
+    // wrote out — became "&lt;" and then "<" on the next line.
+    .replace(/&amp;/gi, "&")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }

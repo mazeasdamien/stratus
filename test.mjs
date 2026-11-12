@@ -164,6 +164,7 @@ console.log("\n── message HTML sortant ────────────�
 
   eq(htmlToText("<ul><li>a</li><li>b</li></ul>"), "- a\n- b", "listes en texte");
   eq(htmlToText("a &amp; b &lt;c&gt;"), "a & b <c>", "entités décodées");
+  eq(htmlToText("écrire &amp;lt;b&amp;gt; pour du gras"), "écrire &lt;b&gt; pour du gras", "une entité écrite en toutes lettres n'est décodée qu'une fois");
 }
 
 console.log("\n── pièces jointes ──────────────────────────");
