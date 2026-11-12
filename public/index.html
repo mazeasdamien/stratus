@@ -6239,6 +6239,8 @@ async function resumeDraft(id) {
   const res = await api(`/api/messages/${id}`).catch(() => null);
   if (!res || !res.ok) return toast("Could not open this draft");
   const d = await res.json();
+  /** Files on the draft at Apple that this composer will not be holding. */
+  const carried = (d.body.attachments || []).length;
 
   openCompose({
     title: "Draft",
@@ -6248,8 +6250,12 @@ async function resumeDraft(id) {
     cc: d.message.cc_line || "",
     subject: d.message.subject || "",
     html: d.body.html || "",
-    // Saving again supersedes this copy rather than adding a second one.
-    pid: d.message.mid || "",
+    // Saving again supersedes this copy rather than adding a second one —
+    // unless this copy has files. They are not loaded into the composer, so
+    // the copy that superseded it had none: fixing a typo in a draft started
+    // on the phone deleted its attachment on every device. Such a draft is
+    // left as it is, and what is written here is saved beside it.
+    pid: carried ? "" : d.message.mid || "",
     rowId: id,
   });
   // Kept on the row rather than read back out of the body, and put back here
@@ -6264,8 +6270,8 @@ async function resumeDraft(id) {
   // Said rather than hidden: the files are still on the draft at Apple, but
   // they are not in this composer, and sending from here would quietly leave
   // them behind.
-  const n = (d.body.attachments || []).length;
-  if (n) toast(`${n} attachment${n > 1 ? "s" : ""} not carried over — attach again before sending`);
+  const n = carried;
+  if (n) toast(`${n} attachment${n > 1 ? "s" : ""} not carried over — attach again before sending. The original draft keeps ${n > 1 ? "them" : "it"}.`);
 }
 
 async function refreshAll(spin = false) {
