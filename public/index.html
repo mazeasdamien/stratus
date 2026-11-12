@@ -2284,11 +2284,27 @@ function fmtFull(ms) {
 }
 
 /* ── accounts ── */
+/**
+ * True once the server has said which accounts there are, even if none.
+ *
+ * `accounts` starts empty and stays empty when the request fails, and an
+ * empty list used to mean one thing: nothing connected. So a cold start with
+ * no network greeted you with "Welcome. Connect your iCloud mailbox", and
+ * Compose answered "Connect an account first", on a mailbox that had been
+ * connected for months.
+ */
+let accountsKnown = false;
+/** Why there is no account to act with: none connected, or none loaded. */
+const noAccountWhy = () =>
+  accountsKnown ? "Connect an account first" : "Your accounts could not be loaded — check the connection";
+
 async function loadAccounts() {
   try {
     const res = await api("/api/accounts");
-    if (!res.ok) return;
-    accounts = (await res.json()).accounts || [];
+    if (res.ok) {
+      accounts = (await res.json()).accounts || [];
+      accountsKnown = true;
+    }
   } catch (e) { if (String(e.message) === "401") return; }
 
   // The default account leads the list and is preselected when composing.
@@ -2302,6 +2318,10 @@ async function loadAccounts() {
 
   renderAccounts();
   fillIdentity();
+  // Nothing has been heard from the server yet, and the list may never have
+  // been painted: it is only drawn when its own request succeeds. Drawn here
+  // so that what it says is "could not load" rather than nothing at all.
+  if (!accountsKnown) renderList();
 }
 
 const acctById = (id) => accounts.find((a) => a.id === id);
@@ -2349,7 +2369,11 @@ function renderAccounts() {
   // folder's unread, so "5 unread" over "Inbox 4" looked like a miscount.
   parts.push(total ? `<b class="unread-n">${Number(total)} unread</b> in all folders` : "All read");
   if (broken) parts.push(`${Number(broken)} need${broken > 1 ? "" : "s"} attention`);
-  $("#hmeta").innerHTML = accounts.length ? parts.join(" · ") : "No account connected yet";
+  $("#hmeta").innerHTML = accounts.length
+    ? parts.join(" · ")
+    : accountsKnown
+    ? "No account connected yet"
+    : "Could not load your mail";
   // Rewritten twice a minute by the poll; as a live region it re-read "N
   // unread" every time. Now it speaks only when the count goes up.
   if (total > lastSaidUnread && lastSaidUnread >= 0) say(`${total} unread`);
@@ -2385,7 +2409,9 @@ function renderAccounts() {
           <button class="side" data-delacc="${a.id}" style="color:var(--red)">Remove</button>
         </div>`;
       }).join("")
-    : `<div class="sh-s">Nothing yet — connect one below.</div>`;
+    : `<div class="sh-s">${
+        accountsKnown ? "Nothing yet — connect one below." : "Your accounts could not be loaded. Check the connection, then refresh."
+      }</div>`;
 
   // The connect button says what it will do now, and sits where that puts
   // it. With no account, or one Apple has stopped accepting, it is the next
@@ -2955,7 +2981,11 @@ function patchList(list, items) {
 
 function emptyHtml() {
   return `<div class="empty">${
-        !accounts.length
+        // No answer about the accounts is not the same as an answer of none:
+        // the first is a connection to check, the second a mailbox to connect.
+        !accounts.length && !accountsKnown
+          ? `<b>Could not load your mail.</b>The server did not answer. Check the connection.<button class="morebtn" data-retry>Try again</button>`
+          : !accounts.length
           ? `<b>Welcome.</b>Connect your iCloud mailbox to start.<button class="morebtn" data-connect>Connect iCloud</button>`
           : // Connected, nothing synced yet: an empty inbox here is not
             // "Inbox zero", it is the first sync still on its way.
@@ -5305,6 +5335,8 @@ $("#icShow").addEventListener("click", (e) => {
 });
 $("#list").addEventListener("click", (e) => {
   if (e.target.closest("[data-connect]")) $("#addIcloud").click();
+  // "Try again", under "Could not load your mail".
+  if (e.target.closest("[data-retry]")) refreshAll(true);
 });
 $("#acctList").addEventListener("click", async (e) => {
   const prim = e.target.closest("[data-primary]");
@@ -6447,7 +6479,7 @@ $("#contactList").addEventListener("click", async (e) => {
   toast(`Removed ${email}`);
 });
 $("#composeBtn").addEventListener("click", () => {
-  if (!accounts.length) { toast("Connect an account first"); return; }
+  if (!accounts.length) { toast(noAccountWhy()); return; }
   openCompose();
 });
 $("#cAccounts").addEventListener("click", (e) => {
@@ -7237,7 +7269,7 @@ function fillIdentity() {
 }
 $("#idSave").addEventListener("click", async (e) => {
   const a = accounts[0];
-  if (!a) { toast("Connect an account first"); return; }
+  if (!a) { toast(noAccountWhy()); return; }
   const btn = e.currentTarget;
   btn.disabled = true;
   const res = await api(`/api/accounts/${a.id}/identity`, {
@@ -8030,7 +8062,7 @@ function openFromUrl() {
   history.replaceState(null, "", location.pathname);
   if (q.has("search")) { $("#q").focus(); return; }
   if (!q.has("compose") && !q.has("to")) return;
-  if (!accounts.length) { toast("Connect an account first"); return; }
+  if (!accounts.length) { toast(noAccountWhy()); return; }
   const m = parseMailto(q.get("to") || "");
   const html = m.body ? m.body.split(/\r?\n/).map((l) => `<div>${esc(l) || "<br>"}</div>`).join("") : undefined;
   openCompose({ to: m.to, cc: m.cc, subject: m.subject, html });
