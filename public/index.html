@@ -3013,11 +3013,20 @@ function frameDoc(body, images) {
   // The iframe is the security boundary: no scripts, no same-origin. What
   // arrives here was already defused server-side; this wrapper just makes
   // it readable and opens links in a new tab.
+  //
+  // A message that is only prose is held to a readable measure. On a wide
+  // window its lines ran the full width of the pane, 200 characters and more,
+  // and the eye lost its place coming back to the next one. 62ch is about 78
+  // characters: a ch is the width of a zero, wider than the average letter.
+  // Left-aligned, where the text already starts. A message laid out with
+  // tables has decided its own width and is left alone; so is everything on
+  // a phone, which is narrower than the cap.
   return `<!doctype html><html><head><meta charset="utf-8">
 ${frameCsp(images)}
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <base target="_blank">
 <style>body{margin:14px;font:15px/1.5 -apple-system,Segoe UI,system-ui,sans-serif;color:#111;background:#fff;word-break:break-word}
+body:not(:has(table,center)){max-width:62ch}
 img{max-width:100%;height:auto}a{color:#1a63c9}</style></head><body>${body}</body></html>`;
 }
 
