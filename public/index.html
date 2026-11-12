@@ -2941,7 +2941,11 @@ async function resolveInlineImages(html, id, atts) {
   // Every distinct cid the HTML asks for, in the order it asks.
   const refs = [];
   for (const m of html.matchAll(/cid:([^"'\s>)]+)/gi)) {
-    const cid = decodeURIComponent(m[1]);
+    // A Content-ID is not always a well-formed escape: "cid:50%off@shop" has
+    // a % that begins nothing, and decodeURIComponent throws on it. Taken as
+    // written then, which is also how it has to be found again below.
+    let cid = m[1];
+    try { cid = decodeURIComponent(m[1]); } catch {}
     if (!refs.some((r) => r.toLowerCase() === cid.toLowerCase())) refs.push(cid);
   }
   if (!refs.length) return html;
@@ -3201,7 +3205,11 @@ async function renderBody() {
   // second frame follow — a message should never wait on its pictures to
   // become readable, but it should not be drawn twice for pictures that were
   // nearly there either.
-  const pictures = resolveInlineImages(html, m.id, current.body.attachments || []);
+  //
+  // And never fail on them. A rejection here was awaited before the frame
+  // was touched, so the message did not appear at all: the header changed
+  // and the body of the one read before it stayed on screen underneath.
+  const pictures = resolveInlineImages(html, m.id, current.body.attachments || []).catch(() => html);
   const first = await Promise.race([pictures, new Promise((r) => setTimeout(() => r(null), 350))]);
   if (!current || current.message.id !== m.id) return;
   // The pane behind the frame takes the same colour the frame is about to,
