@@ -4692,7 +4692,11 @@ $("#rUnsub").addEventListener("click", async () => {
   if (!current) return;
   const id = current.message.id;
   const res = await api(`/api/messages/${id}/unsubscribe`, { method: "POST" }).catch(() => null);
-  const d = res ? await res.json().catch(() => ({})) : {};
+  // No answer at all is not "this message has no way to unsubscribe", which
+  // is what a dropped connection used to be told. It reads as final, and the
+  // option is right there the next time the request gets through.
+  if (!res) { toast("Could not reach the server — you are not unsubscribed"); return; }
+  const d = await res.json().catch(() => ({}));
 
   if (d.ok) {
     // RFC 8058 one-click: the Worker made the request, nothing to open.
@@ -4716,7 +4720,7 @@ $("#rUnsub").addEventListener("click", async () => {
     }
     return;
   }
-  toast(d.error || "No unsubscribe option in this message");
+  toast(d.error || (res.ok ? "No unsubscribe option in this message" : "Could not unsubscribe — the server refused"));
 });
 
 /* ── downloads ──
