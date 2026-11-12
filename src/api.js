@@ -1593,7 +1593,17 @@ No invented facts, no commitment to anything the brief does not cover, and no br
       )
         .bind(id, String(b.account_id || ""), Math.floor(at), String(b.subject || "").slice(0, 300), String(b.to || "").slice(0, 500), Date.now())
         .run();
-      return json({ ok: true, scheduled: Math.floor(at), id }, 202);
+      const queued = { ok: true, scheduled: Math.floor(at), id };
+      // The same receipt a send leaves. Without it a "Send later" whose
+      // answer was lost was queued again by the second press, and the
+      // message went out twice at the appointed time.
+      if (idem) {
+        await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)")
+          .bind(`sent:${idem}`, JSON.stringify({ at: Date.now(), res: queued }))
+          .run()
+          .catch(() => {});
+      }
+      return json(queued, 202);
     }
 
     const res = await deliver(env, b);

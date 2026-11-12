@@ -289,6 +289,13 @@ const late = await api("POST", "/api/blocked", { pattern: "relay.example" });
 eq(late.status, 200, "making the rule afterwards is accepted");
 ok(holds("Sent Messages", "<relay1@x>") && !!row("<relay1@x>"), "and clearing out what it matches spares Sent, at the provider and here");
 
+// ── "Send later" pressed twice for one message queues it once ──
+const later = { account_id: "acct1", to: "zoe@x.fr", subject: "Later", text: "hi", at: Date.now() + 3_600_000 };
+const first = await api("POST", "/api/send", later, { "Idempotency-Key": "one-message" });
+const again = await api("POST", "/api/send", later, { "Idempotency-Key": "one-message" });
+eq([first.status, again.status, again.body?.repeat, again.body?.id], [202, 202, true, first.body?.id], "the second press gets the first answer back");
+eq(DB.raw.prepare("SELECT COUNT(*) n FROM outbox").get().n, 1, "and one message waits in the outbox, not two");
+
 // ── The nightly snapshot never replaces a complete one with a partial one ──
 const { runBackup } = await import("../../src/backup.js");
 const snapshots = () => [...MAIL.map.keys()].filter((k) => k.startsWith("backup/"));
