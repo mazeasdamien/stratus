@@ -651,7 +651,14 @@ textarea.field{width:100%;padding:11px 12px;font-size:14.5px;line-height:1.45;mi
 .tl-card.cancelled{opacity:.6}
 .tl-card.cancelled .tl-title{text-decoration:line-through}
 .tl-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
-.tl-title{font-size:14px;font-weight:650;color:var(--t1);line-height:1.3}
+.tl-title{font-size:14px;font-weight:650;color:var(--t1);line-height:1.3;
+  flex:1;min-width:0;display:block;text-align:left}
+/* The title is the button that opens the message, stretched over the whole
+   card so the card is still one big target. The card is the positioned box
+   it stretches to; Join and the three answers sit above it and keep their
+   own clicks. */
+.tl-title::after{content:"";position:absolute;inset:0}
+.tl-actions a,.tl-actions button{position:relative;z-index:1}
 .tl-badge{font-size:11.5px;font-weight:700;padding:2px 7px;border-radius:8px;background:color-mix(in srgb,var(--acc) 14%,transparent);color:var(--acc);white-space:nowrap;flex:none}
 .tl-meta{font-size:12px;color:var(--t2);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 /* Accept, Maybe and Decline each write to the organiser. At 26px tall and
@@ -7677,10 +7684,16 @@ function renderTimeline() {
       // lights for an answer still inside its five seconds.
       const shown = rsvpShown(ev.id, ev.rsvp);
 
+      // The card is a plain box and its title is the button that opens the
+      // message. The card used to be the button itself, with Join, Accept,
+      // Maybe and Decline inside it: a button holding other buttons, which a
+      // screen reader reads out as one control named after the meeting. The
+      // title's button is stretched over the card in CSS, so a click
+      // anywhere on it still opens the message.
       html +=
-        `<div class="tl-card${isToday ? " today" : ""}${cancelled ? " cancelled" : ""}${isPast ? " past" : ""}" data-ev-id="${esc(ev.id)}" tabindex="0" role="button" aria-label="${esc(ev.summary || "Meeting")}">` +
+        `<div class="tl-card${isToday ? " today" : ""}${cancelled ? " cancelled" : ""}${isPast ? " past" : ""}" data-ev-id="${esc(ev.id)}">` +
         `<div class="tl-head">` +
-        `<div class="tl-title">${cancelled ? "Cancelled: " : ""}${esc(ev.summary || "Meeting")}</div>` +
+        `<button class="tl-title" type="button" data-tl-open>${cancelled ? "Cancelled: " : ""}${esc(ev.summary || "Meeting")}</button>` +
         `<div class="tl-badge">${esc(eventTimeText(ev))}</div>` +
         `</div>` +
         (ev.location ? `<div class="tl-meta"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>${esc(ev.location)}</div>` : "") +
@@ -7715,20 +7728,11 @@ $("#timelineView").addEventListener("click", (e) => {
     if (again) again.focus();
     return;
   }
-  const card = e.target.closest("[data-ev-id]");
-  if (card && !e.target.closest("a, button")) {
-    openMsg(card.dataset.evId);
-  }
-});
-
-$("#timelineView").addEventListener("keydown", (e) => {
-  if (e.key === "Enter" || e.key === " ") {
-    const card = e.target.closest("[data-ev-id]");
-    if (card && !e.target.closest("button, a")) {
-      e.preventDefault();
-      openMsg(card.dataset.evId);
-    }
-  }
+  // The title is the card's one way in. It is a real button, so Enter and
+  // Space reach here as a click and need no key handler of their own.
+  const open = e.target.closest("[data-tl-open]");
+  const card = open && open.closest("[data-ev-id]");
+  if (card) openMsg(card.dataset.evId);
 });
 
 /* ── summary, snooze, .eml ── */
