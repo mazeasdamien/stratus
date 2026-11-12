@@ -6048,6 +6048,10 @@ $("#outboxList").addEventListener("click", async (e) => {
     }
     attached = (m.attachments || []).map((x) => ({ ...x, bytes: Math.round((x.data.length * 3) / 4) }));
     renderAtts();
+    // The server has just deleted its copy, so the composer holds the only
+    // one. Opened like any other message it counted as unchanged, and closing
+    // it kept nothing: the message was then in no outbox and no Drafts.
+    queueDraftSave();
     toast("Taken out of the schedule — send it or schedule it again");
   } else {
     toast(b.dataset.osend ? "Sent" : "Cancelled");
