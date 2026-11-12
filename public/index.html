@@ -2254,6 +2254,9 @@ $("#folderList").addEventListener("click", async (e) => {
   // The open message belongs to the list being left. Another folder is another
   // list: leaving the body up over it reads as if the message had come along.
   if (folder !== wasFolder || starredOnly !== wasStarred) closeReader();
+  // So does the selection. Its bar stayed up over the new folder saying
+  // "3 selected", and Delete then binned three messages no longer on screen.
+  if (document.body.classList.contains("selmode")) exitSelmode();
   closeSheets();
   renderFolders();
   loadList();
@@ -2346,6 +2349,8 @@ async function emptyFolder(which) {
 $("#q").addEventListener("input", (e) => {
   query = e.target.value.trim();
   $("#searchWrap").classList.toggle("has", query.length > 0);
+  // A search is another list, and the rows that were picked may not be in it.
+  if (document.body.classList.contains("selmode")) exitSelmode();
   clearTimeout(searchTimer);
   // Debounced: typing a word should be one query, not six.
   searchTimer = setTimeout(loadList, 220);
