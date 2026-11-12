@@ -292,6 +292,16 @@ const late = await api("POST", "/api/blocked", { pattern: "relay.example" });
 eq(late.status, 200, "making the rule afterwards is accepted");
 ok(holds("Sent Messages", "<relay1@x>") && !!row("<relay1@x>"), "and clearing out what it matches spares Sent, at the provider and here");
 
+// ── One message the server refuses to hand over does not stop the mail behind it ──
+const refused = imap.add("INBOX", msg("<refused@x>", "The server will not read this one back"));
+imap.broken = new Set([`INBOX:${refused.uid}`]);
+imap.add("INBOX", msg("<after@x>", "Arrives after it"));
+imap.add("Archive", msg("<elsewhere@x>", "Arrives in another folder"));
+for (let i = 0; i < 6; i++) await pass1("refused " + i);
+ok(!!row("<after@x>") && !!row("<elsewhere@x>"), "mail behind a refused message still arrives, in its folder and in others");
+eq(row("<refused@x>")?.subject, "The server will not read this one back", "and the refused one is listed from its headers");
+imap.broken = null;
+
 // ── Opening an invitation puts it on the timeline if it is not there yet ──
 imap.add(
   "INBOX",

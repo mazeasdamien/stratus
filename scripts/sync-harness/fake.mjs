@@ -190,6 +190,8 @@ export class FakeImap {
       const set = m[1];
       let items = m[2];
       let since = 0;
+      // A message the server cannot read back: `broken` holds "mailbox:uid".
+      if (items.includes("BODY.PEEK[]") && this.broken?.has(`${b.name}:${set}`)) return no("[SERVERBUG] Internal error occurred");
       const cs = /\s*\(CHANGEDSINCE (\d+)\)$/.exec(items);
       if (cs) {
         if (!this.caps.includes("CONDSTORE")) return send(`${tag} BAD no condstore\r\n`);

@@ -495,6 +495,13 @@ export async function reconcileMailbox(env, account, im, mb, cur, soleForApp) {
 }
 
 /**
+ * True when the server answered a fetch with NO or BAD, as imap.js words it.
+ * The connection is still in step after one of those; after anything else —
+ * silence, a hang-up, a literal too large to read — it is not.
+ */
+const fetchRefused = (e) => /^IMAP UID FETCH\b/.test(String((e && e.message) || ""));
+
+/**
  * One IMAP pass over every mailbox.
  *
  * Whole messages are fetched rather than headers alone, which is what lets a
@@ -594,7 +601,26 @@ export async function syncIcloud(env, account, tally = {}) {
       );
       for (const uid of targets) {
         const oversized = (sizes.get(uid) || 0) > MAX_BODY_BYTES;
-        const msg = oversized ? await imapFetchHead(im, uid) : await imapFetchRaw(im, uid);
+        // One message the server will not hand over must not stop the folder
+        // either. A NO to the fetch threw out of the pass before any cursor
+        // was saved, so the next minute asked for the same message, was
+        // refused again, and no mail arrived in any folder from then on. Its
+        // headers are tried instead — the body is fetched again when it is
+        // opened — and failing that it is skipped. Only a refusal of this
+        // command: a timeout or a closed connection still ends the pass.
+        let msg;
+        try {
+          msg = oversized ? await imapFetchHead(im, uid) : await imapFetchRaw(im, uid);
+        } catch (e) {
+          if (!fetchRefused(e)) throw e;
+          console.log(`sync: ${mb.name} uid ${uid} refused (${e.message}), trying headers`);
+          msg = oversized
+            ? null
+            : await imapFetchHead(im, uid).catch((again) => {
+                if (!fetchRefused(again)) throw again;
+                return null;
+              });
+        }
         if (!msg?.raw) continue;
         // One message the parser cannot read must not stop the folder. It
         // used to throw straight out of the pass before the cursor was saved,
