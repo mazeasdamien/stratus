@@ -3827,7 +3827,12 @@ $("#rDelete").addEventListener("click", async () => {
   if (here !== "trash" && here !== "spam") return fileCurrent("trash", "Deleted");
 
   const thread = currentThread;
-  const many = thread ? thread.n : 1;
+  // What the scope chip says, read once and used for both the question and
+  // the deletion. The question used to count the whole conversation even
+  // with the chip on "This message": it asked about "All 3 messages" and
+  // then deleted one.
+  const whole = !!thread && thread.whole !== false;
+  const many = whole ? thread.n : 1;
   // Taken before the question, not after: whatever is open when you answer
   // is not necessarily what the question was about.
   const id = current.message.id;
@@ -3843,7 +3848,7 @@ $("#rDelete").addEventListener("click", async () => {
   if (next) openMsg(next.id, next);
   else closeReader();
 
-  if (thread && thread.whole !== false) {
+  if (whole) {
     const r = await api("/api/thread", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
