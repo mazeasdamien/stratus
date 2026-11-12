@@ -705,7 +705,15 @@ textarea.field{width:100%;padding:11px 12px;font-size:14.5px;line-height:1.45;mi
 .frow.on.unread .grow{color:var(--acc)}
 .frow .grow{flex:1;min-width:0}
 .frow .side{font-size:12px;color:var(--t3);flex:none}
-.ftools{display:none;gap:12px;align-items:center;flex:none}
+/* A folder's row is a box with the folder's own button in it, and its
+   actions beside that button. The box keeps the pointer and the highlight;
+   the button inside is what takes the keyboard. */
+.frow{cursor:pointer}
+.fgo{flex:1;min-width:0;min-height:40px;gap:10px;justify-content:flex-start;text-align:left}
+/* The actions are buttons now, so they get a button's target: 32px tall with
+   room either side, in place of the 12px gap bare words needed. */
+.ftools{display:none;gap:2px;align-items:center;flex:none}
+.ftools .side{min-height:32px;padding:0 7px;border-radius:var(--r-s)}
 .fcount{display:flex;gap:9px;align-items:center;flex:none}
 .fcount .n{flex:none}
 /* The total is the quiet one of the two numbers. It was the size of the
@@ -728,6 +736,10 @@ body.fedit .frow.actionable .fcount{display:none}
   .frow.actionable:hover .ftools{display:flex}
   .frow.actionable:hover .fcount{display:none}
 }
+/* And for the keyboard, which has neither a hover nor a reason to find Edit
+   first: Tab onto a folder brings its actions out, as the next stops. */
+.frow.actionable:focus-within .ftools{display:flex}
+.frow.actionable:focus-within .fcount{display:none}
 .ftools .side:hover{text-decoration:underline}
 /* Separated from the folders by a rule, because it makes a folder rather than
    choosing one — a different kind of act from everything above it. */
@@ -2507,20 +2519,29 @@ function renderFolders() {
   // Both the count and the actions are always rendered; CSS decides which you
   // see. On a desktop the actions appear on hover, so renaming a folder does
   // not require first discovering a mode.
+  //
+  // The actions are buttons of their own, beside the folder's button and not
+  // inside it. As spans inside a button they could not take the keyboard at
+  // all, so renaming a folder needed a mouse or a finger, and a control
+  // nested in a button is read out as part of that button's name. Each is
+  // labelled with its folder: "Delete" five times over says nothing about
+  // which. The row around them keeps the highlight and the whole-row click.
   const row = (key, attr, name, count, unread, editable, raw) => {
+    const tool = (what, label, danger) =>
+      `<button class="side" type="button" data-${what}="${esc(raw)}" aria-label="${label} ${esc(name)}"${danger ? ' style="color:var(--red)"' : ""}>${label}</button>`;
     const tools = editable
-      ? `<span class="ftools">
-           <span class="side" data-ren="${esc(raw)}">Rename</span>
-           <span class="side" data-del="${esc(raw)}" style="color:var(--red)">Delete</span>
-         </span>`
+      ? `<span class="ftools">${tool("ren", "Rename")}${tool("del", "Delete", true)}</span>`
       : raw === "trash" || raw === "spam"
-      ? `<span class="ftools"><span class="side" data-empty="${esc(raw)}" style="color:var(--red)">Empty</span></span>`
+      ? `<span class="ftools">${tool("empty", "Empty", true)}</span>`
       : "";
-    return `<button class="frow${key ? " on" : ""}${unread ? " unread" : ""}${tools ? " actionable" : ""}" ${attr}${key ? ' aria-current="true"' : ""}>
-       <span class="grow">${esc(name)}</span>
+    const said = `${name}, ${Number(count)} message${Number(count) === 1 ? "" : "s"}${unread ? `, ${Number(unread)} unread` : ""}`;
+    return `<div class="frow${key ? " on" : ""}${unread ? " unread" : ""}${tools ? " actionable" : ""}" ${attr}>
+       <button class="fgo" type="button" aria-label="${esc(said)}"${key ? ' aria-current="true"' : ""}>
+         <span class="grow">${esc(name)}</span>
+         <span class="fcount">${unread ? `<span class="n num">${unread}</span>` : ""}<span class="side num">${count}</span></span>
+       </button>
        ${tools}
-       <span class="fcount">${unread ? `<span class="n num">${unread}</span>` : ""}<span class="side num">${count}</span></span>
-     </button>`;
+     </div>`;
   };
 
   $("#folderList").innerHTML =
