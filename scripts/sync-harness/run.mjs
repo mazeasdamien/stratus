@@ -29,7 +29,7 @@ if (!process.argv[2]) {
 
 // Must precede the import of src/index.js, which imports cloudflare:sockets.
 register("./hooks.mjs", import.meta.url);
-const { makeD1, makeR2, FakeImap, BS } = await import("./fake.mjs");
+const { makeD1, makeR2, FakeImap, FakeSmtp, BS } = await import("./fake.mjs");
 const caps = process.argv[2].split(",");
 const { default: worker } = await import("../../src/index.js");
 const { seal } = await import("../../src/crypto.js");
@@ -43,7 +43,9 @@ const sqlLog = [];
 const DB = makeD1(sqlLog);
 const MAIL = makeR2();
 const imap = new FakeImap({ caps });
-globalThis.__fakeConnect = () => imap.connect();
+const smtp = new FakeSmtp();
+// Submission is the only thing on 587; everything else is IMAP.
+globalThis.__fakeConnect = (addr) => (addr?.port === 587 ? smtp.connect() : imap.connect());
 
 const ENC_KEY = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64");
 const env = { DB, MAIL, ENC_KEY, APP_URL: "http://x" };
@@ -352,6 +354,42 @@ const first = await api("POST", "/api/send", later, { "Idempotency-Key": "one-me
 const again = await api("POST", "/api/send", later, { "Idempotency-Key": "one-message" });
 eq([first.status, again.status, again.body?.repeat, again.body?.id], [202, 202, true, first.body?.id], "the second press gets the first answer back");
 eq(DB.raw.prepare("SELECT COUNT(*) n FROM outbox").get().n, 1, "and one message waits in the outbox, not two");
+
+// ── A scheduled message is delivered by one hand at a time ──
+const { flushOutbox, OUTBOX_LEASE_MS } = await import("../../src/outgoing.js");
+const waiting = first.body.id;
+const lease = `outbox_lock_${waiting}`;
+const holdLease = (at) => DB.raw.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(lease, String(at));
+const leaseHeld = () => !!DB.raw.prepare("SELECT 1 FROM settings WHERE key=?").get(lease);
+const outboxRow = (id) => DB.raw.prepare("SELECT * FROM outbox WHERE id=?").get(id);
+const wentOut = (subject) => smtp.sent.filter((m) => m.raw.includes(`Subject: ${subject}`)).length;
+holdLease(Date.now()); // a delivery of it is under way
+const busySend = await api("POST", `/api/outbox/${waiting}/send`);
+const busyEdit = await api("POST", `/api/outbox/${waiting}/cancel`);
+eq([busySend.status, busyEdit.status], [409, 409], "Send now and Edit are refused while the message is being sent");
+ok(/being sent/.test(busySend.body?.error || "") && !busyEdit.body?.message, "with the reason, and without handing the message back");
+ok(!!outboxRow(waiting) && MAIL.map.has(`outbox/${waiting}.json`) && wentOut("Later") === 0, "nothing was sent or removed");
+DB.raw.prepare("UPDATE outbox SET at=? WHERE id=?").run(Date.now() - 1000, waiting);
+await flushOutbox(env);
+eq([outboxRow(waiting)?.tries, wentOut("Later"), leaseHeld()], [0, 0, true], "the cron leaves a row someone else is delivering exactly as it is");
+// A lease left by a delivery that died does not hold the message for ever.
+holdLease(Date.now() - OUTBOX_LEASE_MS - 1000);
+const sentNow = await api("POST", `/api/outbox/${waiting}/send`);
+eq([sentNow.status, wentOut("Later")], [202, 1], "Send now sends it once the lease has expired");
+ok(!outboxRow(waiting) && !leaseHeld(), "and leaves neither the row nor the lease behind");
+ok(holds("Sent Messages", smtp.sent.at(-1).raw.match(/^Message-ID: (.*)$/m)?.[1].trim()), "the copy is filed in Sent at the provider");
+const sentAgain = await api("POST", `/api/outbox/${waiting}/send`);
+await flushOutbox(env);
+eq([sentAgain.status, wentOut("Later")], [404, 1], "a second press, and the next cron, send nothing more");
+// The cron's own delivery, and Edit, give the lease back when they are done.
+const due = await api("POST", "/api/send", { ...later, subject: "Due" });
+const kept = await api("POST", "/api/send", { ...later, subject: "Kept" });
+DB.raw.prepare("UPDATE outbox SET at=? WHERE id=?").run(Date.now() - 1000, due.body.id);
+await flushOutbox(env);
+eq([wentOut("Due"), !!outboxRow(due.body.id)], [1, false], "a message that has come due is sent by the cron");
+const edited = await api("POST", `/api/outbox/${kept.body.id}/cancel`);
+eq([edited.status, edited.body?.message?.subject, !!outboxRow(kept.body.id), wentOut("Kept")], [200, "Kept", false, 0], "Edit takes back one that is not being sent");
+eq(DB.raw.prepare("SELECT COUNT(*) n FROM settings WHERE key LIKE 'outbox_lock_%'").get().n, 0, "no lease outlives what it guarded");
 
 // ── The nightly snapshot never replaces a complete one with a partial one ──
 const { runBackup } = await import("../../src/backup.js");

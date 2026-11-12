@@ -293,6 +293,14 @@ export default {
           .run()
           .catch(() => {})
       );
+      ctx.waitUntil(
+        // A delivery that died before giving its lease back leaves the row
+        // behind; it stopped meaning anything ten minutes later.
+        env.DB.prepare("DELETE FROM settings WHERE key LIKE 'outbox_lock_%' AND CAST(value AS INTEGER) < ?")
+          .bind(Date.now() - 86_400_000)
+          .run()
+          .catch(() => {})
+      );
       // A failed snapshot used to vanish into .catch(() => {}). It is kept
       // where Settings can show it, and cleared by the next good one.
       ctx.waitUntil(

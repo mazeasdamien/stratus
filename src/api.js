@@ -19,7 +19,7 @@ import { zipStream } from "./zip.js";
 import { ensureBody } from "./bodies.js";
 import { accountById, aiKey, aiModel, aliasesOf, fileDraftCopy, forgetLocal, moveAtProvider, senderFor } from "./filing.js";
 import { folderNameFor, icloudAct, icloudPassword, mailboxList, renameCursor, resolveMailbox, theAccount, threadAct, threadRowsIn, withImap } from "./mailbox.js";
-import { deliver } from "./outgoing.js";
+import { deliver, outboxLease } from "./outgoing.js";
 import { flagAccount, forgetMessages, ftsQuery, imapError, unindex } from "./store.js";
 import { countDestroyed, forgetBlockedLocally, mailboxNames, noteMailbox, purgeBlockedAtProvider, syncAccount } from "./sync.js";
 import { ATTACHMENT_HEADERS, FLAG_FLAGGED, FLAG_SEEN, bodyKey, hashHex, json } from "./util.js";
@@ -1880,22 +1880,37 @@ No invented facts, no commitment to anything the brief does not cover, and no br
   const outAct = path.match(/^\/api\/outbox\/([0-9a-f-]{36})\/(cancel|send)$/);
   if (outAct && request.method === "POST") {
     const [, id, act] = outAct;
-    const row = await env.DB.prepare("SELECT * FROM outbox WHERE id=?").bind(id).first();
-    if (!row) return json({ error: "Already sent or cancelled" }, 404);
-    const obj = await env.MAIL.get(`outbox/${id}.json`);
-    const payload = obj ? JSON.parse(await obj.text()) : null;
-    if (act === "cancel") {
-      await env.DB.prepare("DELETE FROM outbox WHERE id=?").bind(id).run();
-      await env.MAIL.delete(`outbox/${id}.json`);
-      return json({ ok: true, message: payload });
+    const gone = () => json({ error: "Already sent or cancelled" }, 404);
+    if (!(await env.DB.prepare("SELECT 1 FROM outbox WHERE id=?").bind(id).first())) return gone();
+    // Both hold the lease the cron holds while it delivers. Without it "Send
+    // now" sent a message the cron was sending at that moment a second time,
+    // and Edit handed back one that was already on its way out.
+    const release = await outboxLease(env, id);
+    if (!release) {
+      return json({ error: "This message is being sent right now. Check Sent in a moment." }, 409);
     }
-    if (!payload) return json({ error: "The scheduled message is missing" }, 410);
-    const res = await deliver(env, payload);
-    if (res.status === 202) {
-      await env.DB.prepare("DELETE FROM outbox WHERE id=?").bind(id).run();
-      await env.MAIL.delete(`outbox/${id}.json`);
+    try {
+      // Read again under the lease: the delivery that held it a moment ago
+      // may have finished and removed the row.
+      const row = await env.DB.prepare("SELECT * FROM outbox WHERE id=?").bind(id).first();
+      if (!row) return gone();
+      const obj = await env.MAIL.get(`outbox/${id}.json`);
+      const payload = obj ? JSON.parse(await obj.text()) : null;
+      if (act === "cancel") {
+        await env.DB.prepare("DELETE FROM outbox WHERE id=?").bind(id).run();
+        await env.MAIL.delete(`outbox/${id}.json`);
+        return json({ ok: true, message: payload });
+      }
+      if (!payload) return json({ error: "The scheduled message is missing" }, 410);
+      const res = await deliver(env, payload);
+      if (res.status === 202) {
+        await env.DB.prepare("DELETE FROM outbox WHERE id=?").bind(id).run();
+        await env.MAIL.delete(`outbox/${id}.json`);
+      }
+      return res;
+    } finally {
+      await release();
     }
-    return res;
   }
 
   return json({ error: "Unknown route" }, 404);

@@ -110,6 +110,8 @@ export class FakeImap {
     const send = (s) => ctrl.enqueue(enc(s));
     let sel = null;
     let pending = "";
+    // An APPEND whose bytes are still arriving: { tag, box, flags, need }.
+    let lit = null;
     const readable = new ReadableStream({
       start(c) {
         ctrl = c;
@@ -119,10 +121,31 @@ export class FakeImap {
     const writable = new WritableStream({
       write(chunk) {
         pending += Buffer.from(chunk).toString("latin1");
-        let i;
-        while ((i = pending.indexOf("\r\n")) !== -1) {
+        for (;;) {
+          if (lit) {
+            if (pending.length < lit.need + 2) return;
+            self.add(lit.box, pending.slice(0, lit.need), lit.flags);
+            pending = pending.slice(lit.need + 2);
+            send(`${lit.tag} OK APPEND completed\r\n`);
+            lit = null;
+            continue;
+          }
+          const i = pending.indexOf("\r\n");
+          if (i === -1) return;
           const line = pending.slice(0, i);
           pending = pending.slice(i + 2);
+          // The one command with a literal: `+`, then the message itself.
+          const ap = /^(\S+) APPEND "(.*)" \((.*)\) \{(\d+)\}$/.exec(line);
+          if (ap) {
+            self.log.push(`APPEND "${ap[2]}"`);
+            if (!self.boxes.has(ap[2])) {
+              send(`${ap[1]} NO [TRYCREATE] no such mailbox\r\n`);
+              continue;
+            }
+            lit = { tag: ap[1], box: ap[2], flags: ap[3].split(" ").filter(Boolean), need: Number(ap[4]) };
+            send("+ go ahead\r\n");
+            continue;
+          }
           self.handle(line, send, () => sel, (b) => (sel = b));
         }
       },
@@ -241,6 +264,73 @@ export class FakeImap {
       return ok();
     }
     return send(`${tag} BAD unhandled ${cmd.slice(0, 40)}\r\n`);
+  }
+}
+
+/**
+ * A tiny SMTP submission server: STARTTLS, AUTH, one message per connection.
+ * What it accepted is kept in `sent`. With `drop` set to "after-data" it takes
+ * the whole message and hangs up before answering, which is the case a sender
+ * cannot tell from a failure.
+ */
+export class FakeSmtp {
+  constructor() {
+    this.sent = [];
+    this.drop = "";
+  }
+  connect() {
+    const self = this;
+    const env = { from: "", to: [] };
+    // One half per socket: the plain one, then the one startTls() hands back.
+    const half = (greet) => {
+      let ctrl;
+      let pending = "";
+      let inData = false;
+      let hungUp = false;
+      const send = (s) => hungUp || ctrl.enqueue(Uint8Array.from(s, (c) => c.charCodeAt(0) & 0xff));
+      const readable = new ReadableStream({
+        start(c) {
+          ctrl = c;
+        },
+      });
+      const writable = new WritableStream({
+        write(chunk) {
+          pending += Buffer.from(chunk).toString("latin1");
+          for (;;) {
+            if (inData) {
+              const end = pending.indexOf("\r\n.\r\n");
+              if (end === -1) return;
+              const raw = pending.slice(0, end + 2).replace(/^\.\./gm, ".");
+              pending = pending.slice(end + 5);
+              inData = false;
+              self.sent.push({ from: env.from, to: [...env.to], raw });
+              if (self.drop === "after-data") {
+                hungUp = true;
+                return ctrl.close();
+              }
+              send("250 queued\r\n");
+              continue;
+            }
+            const i = pending.indexOf("\r\n");
+            if (i === -1) return;
+            const line = pending.slice(0, i);
+            pending = pending.slice(i + 2);
+            let m;
+            if (/^EHLO /.test(line)) send("250-fake\r\n250 AUTH PLAIN\r\n");
+            else if (line === "STARTTLS") send("220 go ahead\r\n");
+            else if (/^AUTH PLAIN /.test(line)) send("235 ok\r\n");
+            else if ((m = /^MAIL FROM:<(.*)>$/.exec(line))) (env.from = m[1]), send("250 ok\r\n");
+            else if ((m = /^RCPT TO:<(.*)>$/.exec(line))) env.to.push(m[1]), send("250 ok\r\n");
+            else if (line === "DATA") (inData = true), send("354 go ahead\r\n");
+            else if (line === "QUIT") send("221 bye\r\n");
+            else send("500 unhandled\r\n");
+          }
+        },
+      });
+      if (greet) queueMicrotask(() => send("220 fake smtp\r\n"));
+      return { readable, writable, close: async () => {}, startTls: () => half(false) };
+    };
+    return half(true);
   }
 }
 

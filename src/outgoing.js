@@ -214,13 +214,45 @@ export async function wakeSnoozed(env) {
 }
 
 /**
+ * One hand on a scheduled message at a time.
+ *
+ * The cron claims a row by moving its time on, which keeps a second cron
+ * off it. "Send now" did not look at that claim, so pressing it while the
+ * cron was delivering the same row sent the message twice; and Edit could
+ * take back a message that was already going out. A lease row in settings
+ * decides who has it, the way sync_lock_<id> does for a sync pass: whoever
+ * delivers a row or takes it out of the queue holds the lease while doing
+ * so. One left by a delivery that died expires after OUTBOX_LEASE_MS.
+ *
+ * Returns a function that gives the lease back, or null when someone else
+ * holds it.
+ */
+export const OUTBOX_LEASE_MS = 10 * 60_000;
+
+export async function outboxLease(env, id) {
+  const key = `outbox_lock_${id}`;
+  const now = Date.now();
+  const got = await env.DB.prepare(
+    `INSERT INTO settings (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value=excluded.value
+       WHERE CAST(settings.value AS INTEGER) < ?`
+  )
+    .bind(key, String(now), now - OUTBOX_LEASE_MS)
+    .run();
+  if (!got.meta?.changes) return null;
+  return () =>
+    env.DB.prepare("DELETE FROM settings WHERE key=? AND value=?").bind(key, String(now)).run().catch(() => {});
+}
+
+/**
  * Sends what has come due. Every minute, after the sync.
  *
  * Each message is claimed before it is touched, by moving its time ten
  * minutes on in the same statement that checks it has not moved: a second
  * cron overlapping this one finds nothing to claim, so nothing goes twice.
- * A failure is kept with its reason and tried again later, five times in
- * all; after that it stays in Scheduled, marked, for you to see.
+ * The lease above is taken first, so a row "Send now" is delivering is left
+ * exactly as it is. A failure is kept with its reason and tried again later,
+ * five times in all; after that it stays in Scheduled, marked, for you to see.
  */
 export async function flushOutbox(env) {
   const now = Date.now();
@@ -230,27 +262,35 @@ export async function flushOutbox(env) {
     .bind(now)
     .all();
   for (const row of results ?? []) {
-    const claimed = await env.DB.prepare("UPDATE outbox SET at=?, tries=tries+1 WHERE id=? AND at=?")
-      .bind(now + 10 * 60_000, row.id, row.at)
-      .run();
-    if (!claimed.meta?.changes) continue;
-    const obj = await env.MAIL.get(`outbox/${row.id}.json`);
-    if (!obj) {
-      await env.DB.prepare("UPDATE outbox SET last_error=?, tries=5 WHERE id=?")
-        .bind("The scheduled message is missing", row.id)
+    const release = await outboxLease(env, row.id);
+    if (!release) continue;
+    try {
+      // Also what notices a row sent or cancelled since the SELECT above: it
+      // is gone, so there is nothing to claim.
+      const claimed = await env.DB.prepare("UPDATE outbox SET at=?, tries=tries+1 WHERE id=? AND at=?")
+        .bind(now + 10 * 60_000, row.id, row.at)
         .run();
-      continue;
-    }
-    const res = await deliver(env, JSON.parse(await obj.text())).catch((e) => json({ error: String(e.message || e) }, 500));
-    if (res.status === 202) {
-      await env.DB.prepare("DELETE FROM outbox WHERE id=?").bind(row.id).run();
-      await env.MAIL.delete(`outbox/${row.id}.json`);
-    } else {
-      const d = await res.json().catch(() => ({}));
-      // Backing off: 10 minutes, then 20, 40, 80.
-      await env.DB.prepare("UPDATE outbox SET last_error=?, at=? WHERE id=?")
-        .bind(String(d.error || `HTTP ${res.status}`).slice(0, 300), now + 10 * 60_000 * 2 ** row.tries, row.id)
-        .run();
+      if (!claimed.meta?.changes) continue;
+      const obj = await env.MAIL.get(`outbox/${row.id}.json`);
+      if (!obj) {
+        await env.DB.prepare("UPDATE outbox SET last_error=?, tries=5 WHERE id=?")
+          .bind("The scheduled message is missing", row.id)
+          .run();
+        continue;
+      }
+      const res = await deliver(env, JSON.parse(await obj.text())).catch((e) => json({ error: String(e.message || e) }, 500));
+      if (res.status === 202) {
+        await env.DB.prepare("DELETE FROM outbox WHERE id=?").bind(row.id).run();
+        await env.MAIL.delete(`outbox/${row.id}.json`);
+      } else {
+        const d = await res.json().catch(() => ({}));
+        // Backing off: 10 minutes, then 20, 40, 80.
+        await env.DB.prepare("UPDATE outbox SET last_error=?, at=? WHERE id=?")
+          .bind(String(d.error || `HTTP ${res.status}`).slice(0, 300), now + 10 * 60_000 * 2 ** row.tries, row.id)
+          .run();
+      }
+    } finally {
+      await release();
     }
   }
 }
