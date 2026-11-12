@@ -8024,6 +8024,15 @@ function enterSelmode() {
 }
 function exitSelmode() {
   picked.clear();
+  // Unticked by hand, the way togglePick ticked them. The repaint below keeps
+  // every row whose markup is what it was first drawn with, and a row ticked
+  // in place still is: it stayed ticked after Done, and the next selection
+  // opened showing it chosen while the count and the actions left it out.
+  for (const w of document.querySelectorAll("#list .rowwrap.picked")) {
+    w.classList.remove("picked");
+    const box = w.querySelector(".selbox");
+    if (box) box.setAttribute("aria-pressed", "false");
+  }
   moveBulk = false;
   document.body.classList.remove("selmode");
   $("#bulkbar").classList.remove("up");
