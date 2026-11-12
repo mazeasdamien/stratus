@@ -4463,6 +4463,9 @@ function saveDraftLocal() {
   if (!document.body.classList.contains("composing")) return;
   const d = draftSnapshot();
   const slot = draftSlot();
+  // The files themselves stay out (see above), but their names go in, so a
+  // message resumed from this copy can say what it no longer has.
+  const files = attached.map((a) => a.filename);
   if (draftEmpty(d)) {
     localStorage.removeItem(slot);
     setSaved("");
@@ -4472,7 +4475,7 @@ function saveDraftLocal() {
     // Why the copy at Apple did not happen, carried with the draft rather than
     // announced once and forgotten. A save that failed at midnight is still
     // failing at nine, and a toast nobody caught is not a diagnosis.
-    localStorage.setItem(slot, JSON.stringify({ ...d, why: draftWhy }));
+    localStorage.setItem(slot, JSON.stringify({ ...d, why: draftWhy, files }));
     setSaved("Kept");
   } catch {
     // Out of quota, and nearly always for one reason: the pictures quoted
@@ -4482,7 +4485,7 @@ function saveDraftLocal() {
     // a mail with three photos used to have no local copy whatever.
     try {
       const lean = d.html.replace(/(<img\b[^>]*?\ssrc=")data:[^"]*"/gi, '$1"');
-      localStorage.setItem(slot, JSON.stringify({ ...d, html: lean, why: draftWhy }));
+      localStorage.setItem(slot, JSON.stringify({ ...d, html: lean, why: draftWhy, files }));
       setSaved("Kept, without its pictures");
     } catch {
       // Said out loud rather than swallowed: silently stopping is how someone
@@ -4567,6 +4570,11 @@ function resumeKept(d) {
   saveDraftLocal();
   if (d.slot && d.slot !== draftSlot()) localStorage.removeItem(d.slot);
   setSaved(d.why ? `Not saved to Drafts: ${d.why}` : "Kept", !!d.why);
+  // The local copy holds words, not files. Said, because the message looks
+  // complete and would otherwise be sent without them.
+  if (Array.isArray(d.files) && d.files.length) {
+    toast(`Not kept with it — attach again: ${d.files.join(", ")}`);
+  }
 }
 for (const id of ["#cTo", "#cCc", "#cBcc", "#cSubj", "#cBody"]) {
   $(id).addEventListener("input", queueDraftSave);
