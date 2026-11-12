@@ -30,6 +30,9 @@
   --t1:#16161a; --t2:#5b5b66; --t3:#6b6b75;
   /* Darker blue than the dark theme's: #5aa7f0 on white fails contrast. */
   --acc:#1f6fd0; --red:#c8352f; --on-acc:#ffffff;
+  /* What is written on a red surface, as --on-acc is for the accent. White
+     here; the dark theme's red is a light one, and white on it was 3.2:1. */
+  --on-red:#ffffff;
   --press:rgba(0,0,0,.045); --press2:#dedee6;
   --glass:rgba(255,255,255,.97); --sheet:#ffffff; --input:#ffffff;
   /* The toast inverts against the page, so its tokens flip with the theme. */
@@ -70,6 +73,8 @@
        quiet tier is still readable rather than decorative. */
     --t1:#f4f4f5; --t2:#8b8b93; --t3:#7c7c86;
     --acc:#5aa7f0; --red:#f2615c; --on-acc:#06121f;
+    /* Near-black on the light red, 6:1, the way --on-acc is on the blue. */
+    --on-red:#1f0605;
     --press:rgba(255,255,255,.045); --press2:#2a2a30;
       --glass:rgba(24,24,28,.97); --sheet:#17171b; --input:#0e0e11;
     --toast-bg:rgba(240,240,245,.96); --toast-fg:#101014; --undo:#0a58c2;
@@ -85,7 +90,7 @@
   --bg:#09090b; --elev:#141417; --elev2:#1d1d21;
   --line:rgba(255,255,255,.075); --line-strong:rgba(255,255,255,.13);
   --t1:#f4f4f5; --t2:#8b8b93; --t3:#7c7c86;
-  --acc:#5aa7f0; --red:#f2615c; --on-acc:#06121f;
+  --acc:#5aa7f0; --red:#f2615c; --on-acc:#06121f; --on-red:#1f0605;
   --press:rgba(255,255,255,.045); --press2:#2a2a30;
   --glass:rgba(24,24,28,.97); --sheet:#17171b; --input:#0e0e11;
   --toast-bg:rgba(240,240,245,.96); --toast-fg:#101014; --undo:#0a58c2;
@@ -509,7 +514,9 @@ body.composing:not(.overlay) #scrim{opacity:0;pointer-events:none}
 #rInvite .iw{color:var(--t1);font-size:var(--t-m)}
 #rInvite .im{color:var(--t2);font-size:var(--t-s,12px);overflow-wrap:anywhere}
 #rInvite .ia{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
-#rInvite .ia button[aria-pressed="true"]{background:var(--acc);color:#fff;border-color:var(--acc)}
+/* --on-acc rather than white, here and on the timeline's buttons: white on
+   the dark theme's accent was 2.6:1. */
+#rInvite .ia button[aria-pressed="true"]{background:var(--acc);color:var(--on-acc);border-color:var(--acc)}
 #rInvite.cancelled .it{text-decoration:line-through;color:var(--t2)}
 #rSummary{flex:none;display:flex;gap:8px;align-items:flex-start;padding:10px 16px;border-bottom:1px solid var(--line);
   background:color-mix(in srgb,var(--acc) 7%,var(--bg))}
@@ -599,7 +606,7 @@ textarea.field{width:100%;padding:11px 12px;font-size:14.5px;line-height:1.45;mi
 .cta:active{transform:scale(.99);opacity:.85}
 .cta:disabled{opacity:.28;pointer-events:none}
 /* Reserved for the one action in the app that destroys mail outright. */
-.cta.danger{background:var(--red);color:#fff}
+.cta.danger{background:var(--red);color:var(--on-red)}
 /* Whether what you are writing is safe yet. Quiet on purpose: it is a
    reassurance, not an instruction, and it sits where the eye already is. */
 /* The line introducing a quoted message, outside the blockquote so it does
@@ -647,7 +654,7 @@ textarea.field{width:100%;padding:11px 12px;font-size:14.5px;line-height:1.45;mi
    and stand clear of each other. */
 .tl-actions{display:flex;align-items:center;gap:10px;margin-top:4px;flex-wrap:wrap}
 .tl-actions button{height:36px;padding:0 14px;font-size:12.5px;border-radius:18px}
-.tl-actions button[aria-pressed="true"]{background:var(--acc);color:#fff;border-color:var(--acc)}
+.tl-actions button[aria-pressed="true"]{background:var(--acc);color:var(--on-acc);border-color:var(--acc)}
 .tl-join{background:var(--acc);color:var(--on-acc)!important;font-weight:600;display:inline-flex;align-items:center;gap:5px;height:36px;padding:0 14px;border-radius:18px;font-size:12.5px;text-decoration:none}
 .tl-rsvp{font-size:11.5px;padding:2px 8px;border-radius:8px;background:var(--press);color:var(--t2);font-weight:600}
 .tl-rsvp.accepted{background:color-mix(in srgb,#22c55e 18%,transparent);color:#16a34a}
@@ -781,7 +788,7 @@ html.busy #bar{opacity:1}
 .att.primary .ic{color:inherit;opacity:.8}
 .att button{width:22px;height:22px;border-radius:50%;color:var(--t3);font-size:15px;line-height:1;
   flex:none;margin-right:-5px;transition:background .12s,color .12s}
-.att button:hover{background:var(--red);color:#fff}
+.att button:hover{background:var(--red);color:var(--on-red)}
 
 /* pasted images */
 .editor img{max-width:100%;height:auto;border-radius:4px;cursor:pointer}
@@ -956,7 +963,7 @@ html.busy #bar{opacity:1}
 #sessionOver{position:fixed;inset:0;z-index:300;display:flex;align-items:center;justify-content:center;
   padding:24px;background:rgba(0,0,0,.45)}
 #sessionOver a{color:var(--acc)}
-.rbtn.danger{background:var(--red);color:#fff;border-color:transparent}
+.rbtn.danger{background:var(--red);color:var(--on-red);border-color:transparent}
 
 /* Slides up from below rather than fading in place: a toast that appears
    under the thumb is one the eye already finds. */
@@ -1067,7 +1074,7 @@ body.selmode .rowwrap .row{touch-action:pan-y}
 .chip .x{
   width:22px;height:22px;border-radius:50%;color:var(--t2);font-size:15px;line-height:1;flex:none;
   display:flex;align-items:center;justify-content:center}
-.chip .x:hover{background:var(--red);color:#fff}
+.chip .x:hover{background:var(--red);color:var(--on-red)}
 /* 22-28px to look at, 44px to hit: the target grows, the drawing does not. */
 .chip .x,.att button,#qClear{position:relative}
 .chip .x::after,.att button::after,#qClear::after{content:"";position:absolute;inset:-11px}
@@ -1313,7 +1320,7 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
   background:linear-gradient(180deg,rgba(255,255,255,.26),rgba(255,255,255,0) 60%),var(--red);
   border-color:color-mix(in srgb,var(--red) 80%,#000);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 6px 18px color-mix(in srgb,var(--red) 26%,transparent);
-  color:#fff}
+  color:var(--on-red)}
 #rAtts{padding:8px 16px 0}
 /* On a phone the files are one row that scrolls sideways. Wrapped, each file
    took a line of its own under "Download all", and two attachments cost the
@@ -1393,13 +1400,13 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
       color-mix(in srgb,var(--acc) 12%,var(--g-fill));color:var(--acc)}
   .rgroup .rbtn:hover{background:color-mix(in srgb,var(--t1) 7%,transparent);border-color:transparent;color:var(--acc)}
   #rDelete:hover,#cDiscard:hover{background:color-mix(in srgb,var(--red) 14%,transparent);color:var(--red)}
-  .rowdel:hover{background:var(--red);color:#fff}
+  .rowdel:hover{background:var(--red);color:var(--on-red)}
   .rbtn.acc:hover,#composeBtn:hover{background:linear-gradient(180deg,rgba(255,255,255,.3),rgba(255,255,255,0) 60%),
     color-mix(in srgb,var(--acc) 88%,#fff)}
   #composeBtn:hover{color:var(--on-acc)}
   .pill:hover{background:color-mix(in srgb,var(--acc) 12%,var(--fill));border-color:transparent}
   .rbtn.acc.danger:hover{background:linear-gradient(180deg,rgba(255,255,255,.26),rgba(255,255,255,0) 60%),
-    color-mix(in srgb,var(--red) 88%,#fff);color:#fff}
+    color-mix(in srgb,var(--red) 88%,#fff);color:var(--on-red)}
 }
 
 /* Reduce Transparency means it. Every piece of glass becomes the solid
