@@ -705,9 +705,19 @@ textarea.field{width:100%;padding:11px 12px;font-size:14.5px;line-height:1.45;mi
 .ftools{display:none;gap:12px;align-items:center;flex:none}
 .fcount{display:flex;gap:9px;align-items:center;flex:none}
 .fcount .n{flex:none}
+/* The total is the quiet one of the two numbers. It was the size of the
+   badge's digits and, on the current folder, tinted with the accent, so
+   "4 128" read as two counts of equal weight. Smaller and grey on every
+   row, in a column of its own width so the badges line up beside it. */
+.frow .fcount .side,.frow.on .fcount .side{font-size:11px;color:var(--t3);min-width:2.4em;text-align:right}
 /* The popover is anchored to the list pane, so cap it there rather than
-   letting a long folder name push it over the reader. */
-#folderSheet{max-width:min(320px,calc(var(--left,430px) - 32px))}
+   letting a long folder name push it over the reader. Only where it is a
+   popover: on a phone it is a bottom sheet like the others, and the cap left
+   it 320px wide against the left edge with a strip of the list showing
+   beside it. */
+@media (min-width:900px){
+  #folderSheet{max-width:min(320px,calc(var(--left,430px) - 32px))}
+}
 /* Explicit mode, for touch where there is no hover to rely on. */
 body.fedit .frow.actionable .ftools{display:flex}
 body.fedit .frow.actionable .fcount{display:none}
