@@ -966,6 +966,13 @@ export async function handleApi(request, env, path, ctx, session) {
       }
     }
 
+    // An invitation is put on the timeline when it is opened, for the ones
+    // stored before the timeline existed and older than its one-time seeding
+    // reached. This sat after the return below, where it never ran.
+    if (body.calendar) {
+      await indexEvent(env, msg.id, msg.account_id, body.calendar, msg.subject);
+    }
+
     return json({
       message: { ...msg, unread: peek ? msg.unread : 0 },
       account: { id: acct.id, provider: acct.provider, email: acct.email },
@@ -977,9 +984,6 @@ export async function handleApi(request, env, path, ctx, session) {
         : "",
       body: { ...body, calendar: undefined },
     });
-    if (body.calendar) {
-      await indexEvent(env, msg.id, msg.account_id, body.calendar, msg.subject);
-    }
   }
 
   // GET /api/messages/:id/attachment/:n — the file itself.

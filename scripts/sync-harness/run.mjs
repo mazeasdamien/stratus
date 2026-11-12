@@ -289,6 +289,26 @@ const late = await api("POST", "/api/blocked", { pattern: "relay.example" });
 eq(late.status, 200, "making the rule afterwards is accepted");
 ok(holds("Sent Messages", "<relay1@x>") && !!row("<relay1@x>"), "and clearing out what it matches spares Sent, at the provider and here");
 
+// ── Opening an invitation puts it on the timeline if it is not there yet ──
+imap.add(
+  "INBOX",
+  latin(
+    `From: Zoé <zoe@x.fr>\r\nTo: me@example.com\r\nSubject: Point\r\nDate: ${new Date((clock += 60_000)).toUTCString()}\r\nMessage-ID: <inv@x>\r\n` +
+      `Content-Type: multipart/alternative; boundary="b1"\r\n\r\n--b1\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nYou are invited\r\n` +
+      `--b1\r\nContent-Type: text/calendar; method=REQUEST; charset=utf-8\r\n\r\nBEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:ev1\r\n` +
+      `DTSTART:20270115T100000Z\r\nDTEND:20270115T110000Z\r\nSUMMARY:Point\r\nORGANIZER:mailto:zoe@x.fr\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n--b1--\r\n`
+  )
+);
+for (let i = 0; i < 6; i++) await pass1("invite " + i);
+const inv = row("<inv@x>");
+const onTimeline = () => !!DB.raw.prepare("SELECT 1 FROM events WHERE id=?").get(inv?.id);
+ok(!!inv && onTimeline(), "an invitation is indexed when it arrives");
+// One stored before the timeline existed has no event row.
+DB.raw.prepare("DELETE FROM events WHERE id=?").run(inv.id);
+const opened = await api("GET", `/api/messages/${inv.id}?peek=1`);
+eq([opened.status, opened.body?.invite?.summary], [200, "Point"], "opening it returns the invitation");
+ok(onTimeline(), "and puts it on the timeline");
+
 // ── "Send later" pressed twice for one message queues it once ──
 const later = { account_id: "acct1", to: "zoe@x.fr", subject: "Later", text: "hi", at: Date.now() + 3_600_000 };
 const first = await api("POST", "/api/send", later, { "Idempotency-Key": "one-message" });
