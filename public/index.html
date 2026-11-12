@@ -4076,14 +4076,49 @@ function replyTargets(msg, all, replyTo = "") {
  * with an allowlist of what a quote can need: no scripts or handlers, no
  * <style> blocks (their rules would restyle the whole app while the composer
  * is open), and no link that runs code.
+ *
+ * Nor anything that lets a quote pass for a piece of the app. An id of
+ * "toast" or "modal" in a message answered $("#toast") before the real one
+ * did, and a style of position:fixed drew the message over the whole window.
  */
 const DROP_TAGS = "script,style,iframe,frame,frameset,object,embed,form,input,button,select,textarea,link,meta,base,svg,math,template,noscript,portal";
+/** Attributes that name an element, hide it, or make it take the keyboard. */
+const DROP_ATTRS = ["id", "name", "contenteditable", "hidden", "tabindex"];
+/**
+ * The two classes the composer writes itself and looks for again: the
+ * signature and the line above a quote. Kept only outside a blockquote, which
+ * is where the composer puts them. Inside one they belong to the message
+ * being quoted, and a message must not be able to pose as either.
+ */
+const OWN_CLASSES = ["quote-head", "sig"];
+/**
+ * Takes out of an inline style what could move an element off its place in
+ * the text or fetch something: position and its offsets, z-index, and any
+ * value with a URL in it. Read through the browser's own parser rather than
+ * as text, so `posi\74ion` is seen as the `position` it will be applied as.
+ */
+function quietStyle(el) {
+  const st = el.style;
+  for (const prop of [...st]) {
+    if (/^(?:position|z-index|top|right|bottom|left|inset.*)$/.test(prop) ||
+        /url\(|image-set\(/i.test(st.getPropertyValue(prop))) st.removeProperty(prop);
+  }
+  if (!st.length) el.removeAttribute("style");
+}
 function cleanHtml(html) {
   const doc = new DOMParser().parseFromString(`<body>${html || ""}`, "text/html");
   doc.body.querySelectorAll(DROP_TAGS).forEach((el) => el.remove());
   for (const el of doc.body.querySelectorAll("*")) {
     for (const { name, value } of [...el.attributes]) {
       const n = name.toLowerCase();
+      if (DROP_ATTRS.includes(n)) { el.removeAttribute(name); continue; }
+      if (n === "class") {
+        const own = el.closest("blockquote") ? [] : OWN_CLASSES.filter((c) => el.classList.contains(c));
+        if (own.length) el.setAttribute("class", own.join(" "));
+        else el.removeAttribute(name);
+        continue;
+      }
+      if (n === "style") { quietStyle(el); continue; }
       // Leading spaces and control characters do not survive the URL parser.
       const v = value.replace(/[\x00-\x20]+/g, "").toLowerCase();
       const runs = /^(?:javascript|vbscript):/.test(v) || (n !== "src" && v.startsWith("data:"));
@@ -4116,7 +4151,11 @@ function quotedHistory(m, body) {
   // What the reader is showing, in preference to what is stored: its cid:
   // references have been resolved to the pictures themselves, and remote
   // images are in whichever state you chose to read the message in.
-  const inner = (body && (body.shown || body.html)) || `<p>${esc(m.snippet || "")}</p>`;
+  //
+  // Cleaned on its own before it is wrapped, which also closes whatever it
+  // left open: a stray </blockquote> in a message ended the quote early, and
+  // the rest of that message then sat outside it as if it had been typed here.
+  const inner = cleanHtml((body && (body.shown || body.html)) || `<p>${esc(m.snippet || "")}</p>`);
   // <div><br></div> rather than <p><br></p>: pressing Enter here makes a
   // div, so the gap above a quote is the same element as every other blank
   // line in the message — and not a paragraph, which Word gives a blank
@@ -4196,7 +4235,9 @@ function forwardedBody(m, html) {
     line("Date:", new Date(m.date).toLocaleString()) +
     line("To:", m.to_line) +
     line("Cc:", m.cc_line) +
-    `</div><blockquote>${html}</blockquote><div><br></div>`
+    // Cleaned on its own first, for the reason quotedHistory gives: a message
+    // must not be able to close the quote it is forwarded in.
+    `</div><blockquote>${cleanHtml(html)}</blockquote><div><br></div>`
   );
 }
 
