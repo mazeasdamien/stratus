@@ -23,6 +23,7 @@ export const DEFAULT_MODEL = "claude-opus-5-5";
 // fallback and older models do not know the parameter, so it is only sent
 // where it is understood.
 const FALLBACK_MODELS = new Set([
+  "claude-fable-5-2",
   "claude-fable-5-1",
   "claude-opus-5-5",
   "claude-opus-5",
