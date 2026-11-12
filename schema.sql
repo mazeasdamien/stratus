@@ -150,6 +150,7 @@ CREATE TABLE IF NOT EXISTS events (
   start_ms    INTEGER NOT NULL,
   end_ms      INTEGER NOT NULL,
   all_day     INTEGER NOT NULL DEFAULT 0,
+  floating    INTEGER NOT NULL DEFAULT 0,   -- a time with no zone: the hour as written, wherever it is read
   status      TEXT NOT NULL DEFAULT '',     -- CONFIRMED, CANCELLED, etc.
   organizer   TEXT NOT NULL DEFAULT '',     -- CN or email
   created_at  INTEGER NOT NULL

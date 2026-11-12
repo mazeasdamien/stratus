@@ -58,8 +58,12 @@ const OLD = SCHEMA.map((s) =>
   s
     .replace(/^\s*-- First References[\s\S]*?thread_key  TEXT NOT NULL DEFAULT '',\n\s*refs .*\n/m, "  thread_key  TEXT NOT NULL DEFAULT '',\n")
     .replace(/\n\s*-- Where the provider has it[\s\S]*?uid         INTEGER NOT NULL DEFAULT 0,/m, "")
+    // And the events table from before it told a floating time from a fixed one.
+    .replace(/\n\s*floating    INTEGER[^\n]*/, "")
 );
 for (const s of OLD) DB.raw.exec(s);
+const eventCols = () => DB.raw.prepare("SELECT name FROM pragma_table_info('events')").all().map((r) => r.name);
+ok(eventCols().includes("all_day") && !eventCols().includes("floating"), "old schema has an events table without floating: " + eventCols().join(","));
 const cols = DB.raw.prepare("SELECT name FROM pragma_table_info('messages')").all().map((r) => r.name);
 ok(!cols.includes("uid") && !cols.includes("refs"), "old schema really lacks the new columns: " + cols.join(","));
 
@@ -415,6 +419,25 @@ const sqlBefore = sqlLog.length;
 const timeline = await api("GET", "/api/timeline");
 eq(timeline.body?.events?.find((e) => e.id === inv.id)?.rsvp, "accepted", "the timeline shows the answer given to an invitation");
 eq(sqlLog.slice(sqlBefore).filter((s) => /FROM settings WHERE key=\?/.test(s)).length, 0, "without one query per event");
+// A time written with no zone is that hour wherever it is read, and the
+// timeline has to be told so. The column is one an older database lacks.
+ok(eventCols().includes("floating"), "the heal added events.floating to the old database");
+const invite = (id, uid, dtstart) =>
+  latin(
+    `From: Zoé <zoe@x.fr>\r\nTo: me@example.com\r\nSubject: ${uid}\r\nDate: ${new Date((clock += 60_000)).toUTCString()}\r\nMessage-ID: ${id}\r\n` +
+      `Content-Type: multipart/alternative; boundary="b2"\r\n\r\n--b2\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nYou are invited\r\n` +
+      `--b2\r\nContent-Type: text/calendar; method=REQUEST; charset=utf-8\r\n\r\nBEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:${uid}\r\n` +
+      `${dtstart}\r\nSUMMARY:${uid}\r\nORGANIZER:mailto:zoe@x.fr\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n--b2--\r\n`
+  );
+imap.add("INBOX", invite("<floats@x>", "floats", "DTSTART:20270115T090000"));
+imap.add("INBOX", invite("<fixed@x>", "fixed", "DTSTART:20270115T090000Z"));
+for (let i = 0; i < 6; i++) await pass1("floating " + i);
+const shown = (await api("GET", "/api/timeline")).body?.events ?? [];
+const startOf = (mid) => shown.find((e) => e.id === row(mid)?.id)?.start;
+eq([startOf("<floats@x>")?.floating, startOf("<floats@x>")?.ms], [true, Date.UTC(2027, 0, 15, 9)], "a time with no zone reaches the timeline marked floating, at the hour written");
+eq(startOf("<fixed@x>")?.floating, false, "and a time in UTC does not");
+// Events indexed before the column existed are indexed again, once.
+ok(DB.raw.prepare("SELECT value FROM settings WHERE key='migrations'").get().value.includes("events_floating"), "the timeline is re-seeded once so older invitations get the flag");
 // An event indexed before links were held to https still has what it was given.
 const eventUrl = async (stored) => {
   DB.raw.prepare("UPDATE events SET url=? WHERE id=?").run(stored, inv.id);

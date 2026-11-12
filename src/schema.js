@@ -186,6 +186,7 @@ export const SCHEMA = [
   start_ms    INTEGER NOT NULL,
   end_ms      INTEGER NOT NULL,
   all_day     INTEGER NOT NULL DEFAULT 0,
+  floating    INTEGER NOT NULL DEFAULT 0,   -- a time with no zone: the hour as written, wherever it is read
   status      TEXT NOT NULL DEFAULT '',     -- CONFIRMED, CANCELLED, etc.
   organizer   TEXT NOT NULL DEFAULT '',     -- CN or email
   created_at  INTEGER NOT NULL
@@ -226,6 +227,9 @@ export const HEAL_COLUMNS = {
     sync_state: "TEXT",
     last_error: "TEXT",
   },
+  events: {
+    floating: "INTEGER NOT NULL DEFAULT 0",
+  },
 };
 
 /**
@@ -256,6 +260,11 @@ export const MIGRATIONS = [
   // took its key from a secret kept a working Google credential sealed away
   // where nothing shows it and nobody remembers to revoke it.
   ["drop_gemini_key", `DELETE FROM settings WHERE key IN ('ai_key', 'ai_model')`],
+  // Events indexed before `floating` existed all read 0, so a meeting given as
+  // "09:00" with no zone still showed shifted in the timeline. Forgetting that
+  // the timeline was seeded makes its next opening index the recent
+  // invitations again, this time with the flag.
+  ["events_floating", `DELETE FROM settings WHERE key='events_seeded'`],
 ];
 
 /** What schema.sql looks like on disk, comments and all. */

@@ -335,8 +335,8 @@ export async function indexEvent(env, messageId, accountId, calendarText, fallba
   const endMs = inv.end ? inv.end.ms : (inv.start.ms + 3600_000);
   const status = inv.method === "CANCEL" || inv.status === "CANCELLED" ? "CANCELLED" : (inv.status || "CONFIRMED");
   await env.DB.prepare(
-    `INSERT INTO events (id, account_id, uid, summary, location, description, url, start_ms, end_ms, all_day, status, organizer, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO events (id, account_id, uid, summary, location, description, url, start_ms, end_ms, all_day, floating, status, organizer, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        summary=excluded.summary,
        location=excluded.location,
@@ -345,6 +345,7 @@ export async function indexEvent(env, messageId, accountId, calendarText, fallba
        start_ms=excluded.start_ms,
        end_ms=excluded.end_ms,
        all_day=excluded.all_day,
+       floating=excluded.floating,
        status=excluded.status,
        organizer=excluded.organizer`
   ).bind(
@@ -358,6 +359,10 @@ export async function indexEvent(env, messageId, accountId, calendarText, fallba
     inv.start.ms,
     endMs,
     inv.start.allDay ? 1 : 0,
+    // A time with no zone means that hour wherever it is read. Kept, or the
+    // timeline moves it by the reader's own offset, as the reader's card
+    // once did.
+    inv.start.floating ? 1 : 0,
     status,
     org.slice(0, 200),
     Date.now()

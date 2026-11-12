@@ -1942,8 +1942,11 @@ No invented facts, no commitment to anything the brief does not cover, and no br
         // Checked on the way out as well: an event indexed before the
         // invitation's link was held to https still has what it was given.
         url: httpsUrl(ev.url),
-        start: { ms: ev.start_ms, allDay: !!ev.all_day },
-        end: { ms: ev.end_ms, allDay: !!ev.all_day },
+        // `floating` with both ends: a time written with no zone is shown as
+        // written. The timeline had no such flag and moved it by the
+        // reader's offset — 09:00 became 17:00 in Singapore.
+        start: { ms: ev.start_ms, allDay: !!ev.all_day, floating: !!ev.floating },
+        end: { ms: ev.end_ms, allDay: !!ev.all_day, floating: !!ev.floating },
         status: ev.status,
         organizer: ev.organizer,
         from_name: ev.from_name,
