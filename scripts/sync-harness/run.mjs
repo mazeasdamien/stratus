@@ -218,6 +218,9 @@ const listed = async (folder) =>
 ok((await listed("sent")).includes("Copied to myself"), "and it is listed in Sent");
 ok((await listed("archive")).includes("Copied to myself"), "as well as in Archive");
 ok(!(await listed("sent")).includes("Dîner"), "mail from others stays out of Sent");
+const page = async (limit) =>
+  (await (await handleApi(new Request(`http://x/api/messages?folder=all&limit=${limit}`), env, "/api/messages")).json()).messages.length;
+eq([await page(2), await page(-1)], [2, 1], "a page is as long as asked, and a negative limit is not the whole mailbox");
 
 // ── Routes that act at the provider, driven the way the app drives them ──
 const api = async (method, path, body, headers = {}) => {

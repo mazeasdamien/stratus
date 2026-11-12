@@ -813,7 +813,9 @@ export async function handleApi(request, env, path, ctx, session) {
     const account = p.get("account") || "";
     const term = (p.get("q") || "").trim().slice(0, 120);
     const before = Number(p.get("before")) || 0;
-    const limit = Math.min(100, Number(p.get("limit")) || 50);
+    // Floored at 1: to SQLite a negative LIMIT means no limit at all, so
+    // ?limit=-1 answered with the whole mailbox in one response.
+    const limit = Math.max(1, Math.min(100, Math.floor(Number(p.get("limit"))) || 50));
 
     // One conversation, oldest first — the shape you read it in. Not filtered
     // by folder: a reply you sent is part of the exchange, and it lives in
