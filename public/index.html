@@ -939,6 +939,11 @@ html.busy #bar{opacity:1}
 #modalInput{margin-top:14px;width:100%}
 .mactions{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
 .mactions .rbtn{margin-left:0;min-width:92px}
+/* The session has ended. Above everything, the toast and the loading bar
+   included, with the page left in place and dimmed behind it. */
+#sessionOver{position:fixed;inset:0;z-index:300;display:flex;align-items:center;justify-content:center;
+  padding:24px;background:rgba(0,0,0,.45)}
+#sessionOver a{color:var(--acc)}
 .rbtn.danger{background:var(--red);color:#fff;border-color:transparent}
 
 /* Slides up from below rather than fading in place: a toast that appears
@@ -1902,6 +1907,17 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
   </div>
 </dialog>
 
+<!-- The session has ended. Laid over the page, not put in its place: what was
+     on screen, a half-written message included, is still underneath. -->
+<div id="sessionOver" role="alertdialog" aria-modal="true" aria-labelledby="sessionOverTitle" hidden>
+  <div class="mcard">
+    <div class="mtitle" id="sessionOverTitle">Session expired</div>
+    <div class="mdetail">Open your activation link again, or <a id="sessionOverLink" href="/auth">enter the key here</a>.</div>
+    <div class="mdetail" id="sessionOverKept" hidden>What you were writing is kept in this browser, and is offered again once you are back.</div>
+    <div class="mactions"><button class="rbtn" id="sessionOverBack">Back to the page</button></div>
+  </div>
+</div>
+
 <!-- Not a live region: say() announces every toast, and both together read
      each one out twice. -->
 <div id="toast"></div>
@@ -2118,6 +2134,47 @@ function busy(delta) {
  */
 const CLIENT = "v68";
 
+/**
+ * How long a request may go unanswered before it is given up on.
+ *
+ * A fetch has no timeout of its own. One that the network swallowed never
+ * settled, so the refresh button spun until the tab was closed, and the poll,
+ * which arms its next tick when the last one finishes, stopped for good.
+ * A minute is far longer than anything here takes when it is working.
+ */
+const API_TIMEOUT = 60_000;
+/**
+ * The requests that are allowed to take as long as they take: a send and a
+ * draft save upload their attachments, a scheduled message sent now is a send
+ * too, a download is as long as the file, the assistant and a summary wait on
+ * a model, and the three repair jobs in Settings walk a whole mailbox. Giving
+ * up on one of these would report a failure for something still under way.
+ */
+const UNTIMED = [
+  /^POST \/api\/send$/,
+  /^POST \/api\/draft$/,
+  /^POST \/api\/outbox\/[^/]+\/send$/,
+  /^GET \/api\/messages\/[^/]+\/(?:attachment\/\d+|attachments\.zip)$/,
+  /^POST \/api\/assist$/,
+  /^POST \/api\/messages\/[^/]+\/summary$/,
+  /^POST \/api\/(?:backup|backup\/restore|repair\/self-copies)$/,
+];
+/** The caller's own abort signal, if any, joined with the timeout. */
+function apiSignal(path, opts) {
+  const what = `${String(opts.method || "GET").toUpperCase()} ${String(path).split("?")[0]}`;
+  if (!AbortSignal.timeout || UNTIMED.some((re) => re.test(what))) return opts.signal;
+  const limit = AbortSignal.timeout(API_TIMEOUT);
+  if (!opts.signal) return limit;
+  if (AbortSignal.any) return AbortSignal.any([opts.signal, limit]);
+  // Before AbortSignal.any existed: one controller that follows both.
+  const both = new AbortController();
+  for (const s of [opts.signal, limit]) {
+    if (s.aborted) both.abort(s.reason);
+    else s.addEventListener("abort", () => both.abort(s.reason), { once: true });
+  }
+  return both.signal;
+}
+
 async function api(path, opts = {}) {
   busy(1);
   let res;
@@ -2125,6 +2182,7 @@ async function api(path, opts = {}) {
     res = await fetch(path, {
       credentials: "same-origin",
       ...opts,
+      signal: apiSignal(path, opts),
       headers: { ...(opts.headers || {}), "X-Client": CLIENT },
     });
   } finally {
@@ -2140,14 +2198,46 @@ async function api(path, opts = {}) {
     // answer rebuilding this same page under whatever you were reading.
     sessionGone = true;
     clearTimeout(pollTimer);
-    document.body.innerHTML =
-      `<div style="height:100%;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--t2)">
-         <div><strong style="display:block;color:var(--t1);font-size:17px;margin-bottom:6px">Session expired</strong>
-         Open your activation link again, or <a href="/auth" style="color:var(--t1)">enter the key here</a>.</div></div>`;
+    sessionExpired();
     throw new Error("401");
   }
   return res;
 }
+
+/**
+ * Says the session has ended, over the page rather than in place of it.
+ *
+ * It used to be written into document.body, which threw the page away, and a
+ * message being written went with it: the composer, its recipients and every
+ * word not yet saved. Now the page stays as it was underneath, and what the
+ * composer holds is written to this browser first, so it is offered again
+ * once the key has been entered and the page has loaded afresh.
+ */
+let sessionInert = [];
+function sessionExpired() {
+  let kept = false;
+  if (document.body.classList.contains("composing")) {
+    try { saveDraftLocal(); kept = !!keptDraft(); } catch {}
+  }
+  const over = $("#sessionOver");
+  if (!over.hidden) return;
+  $("#sessionOverKept").hidden = !kept;
+  // A question still open belongs to a page that can no longer act on it.
+  if ($("#modal").open) closeModal(null);
+  over.hidden = false;
+  // Nothing underneath takes a click or the keyboard while this is up. Only
+  // what was not inert already is marked, so it alone is released again.
+  sessionInert = [...document.body.children].filter((el) => el !== over && !el.inert);
+  for (const el of sessionInert) el.inert = true;
+  $("#sessionOverLink").focus();
+}
+// Back to the page as it was, to read or copy what is on it. Nothing there
+// can reach the server any more; the next attempt brings this up again.
+$("#sessionOverBack").addEventListener("click", () => {
+  $("#sessionOver").hidden = true;
+  for (const el of sessionInert) el.inert = false;
+  sessionInert = [];
+});
 
 /**
  * Says the page is out of date, once, and offers the only fix.
