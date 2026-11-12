@@ -4842,6 +4842,10 @@ function openCompose(opts = {}) {
   // the header stays in reach while you write, so the pencil — or Reply on the
   // message beside it — overwrote a half-written message with nothing saved.
   // keepDraft reads the fields before it yields, so it is safe not to wait.
+  // A send still inside its five seconds is taken back first, as it is when
+  // the composer is closed: otherwise the message would go and be kept as a
+  // draft as well.
+  cancelPendingSend(true);
   if (document.body.classList.contains("composing")) keepDraft();
   replyTo = opts.reply || null;
   composeAcct = opts.account || composeAcct || (accounts[0] && accounts[0].id) || "";
@@ -5903,17 +5907,39 @@ function outgoing() {
 
 /** Hands a message to the server — now, or at `at`. Leaves the composer on failure. */
 async function postSend(body, at) {
+  // Which message this is, taken before the wait. A large attachment takes a
+  // while to upload, and by the time the answer is back the composer may have
+  // been closed, or be holding the next message.
+  const session = draftSession;
+  const pid = draftPid;
   const res = await api("/api/send", {
     method: "POST",
     headers: { "Content-Type": "application/json", "Idempotency-Key": sendKey },
     body: JSON.stringify(at ? { ...body, at } : body),
   }).catch(() => null);
   const d = res ? await res.json().catch(() => ({})) : {};
+  const moved = draftSession !== session;
   if (!res || !res.ok) {
+    const why = d.error || (at ? "Could not schedule" : "Could not send");
+    // The error line belongs to the composer. With the composer closed or on
+    // another message nobody would see it there, and a send that failed
+    // looked exactly like one that went.
+    if (moved || !document.body.classList.contains("composing")) {
+      toast(`Not sent — ${why}`);
+      return null;
+    }
     const err = $("#cErr");
-    err.textContent = d.error || (at ? "Could not schedule" : "Could not send");
+    err.textContent = why;
     err.classList.add("show");
     return null;
+  }
+  // The composer holds another message now. Its draft, its local copy and its
+  // place on screen are not this send's to clear: doing so deleted the draft
+  // of the message being written and closed it unsaved. Only the draft of the
+  // message that went is removed.
+  if (moved) {
+    if (pid) api(`/api/draft/${encodeURIComponent(pid)}`, { method: "DELETE" }).catch(() => null);
+    return d;
   }
   // It has gone, or it is queued at the server, so the draft of it has no
   // reason to survive — in this browser or in Drafts on every device.
