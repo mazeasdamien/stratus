@@ -1733,6 +1733,7 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
     <dt><kbd>#</kbd> <kbd>Delete</kbd></dt><dd>Delete</dd>
     <dt><kbd>s</kbd></dt><dd>Star</dd>
     <dt><kbd>u</kbd></dt><dd>Mark unread</dd>
+    <dt><kbd>x</kbd></dt><dd>Select the message, to act on several at once</dd>
     <dt><kbd>v</kbd></dt><dd>Move to a folder</dd>
     <dt><kbd>b</kbd></dt><dd>Snooze until later</dd>
     <dt><kbd>r</kbd> <kbd>a</kbd> <kbd>f</kbd></dt><dd>Reply, reply all, forward</dd>
@@ -3641,6 +3642,9 @@ addEventListener("keydown", (e) => {
     if (e.target === $("#q") && query) { $("#qClear").click(); return; }
     if (document.body.classList.contains("overlay")) closeOverlays();
     else if (document.querySelector(".sheet.up")) closeSheets();
+    // A selection is a layer too, and x below is the keyboard's way into
+    // one: this is its way out, without tabbing down to Done.
+    else if (document.body.classList.contains("selmode")) exitSelmode();
     else if ($("#reader").classList.contains("up")) closeReader();
     return;
   }
@@ -3678,6 +3682,26 @@ addEventListener("keydown", (e) => {
 
   if (e.key === "j" || e.key === "ArrowDown") { e.preventDefault(); return step(1); }
   if (e.key === "k" || e.key === "ArrowUp") { e.preventDefault(); return step(-1); }
+
+  // x ticks a message, and starts a selection if there is none. A selection
+  // could only be started by a long press, which a keyboard does not have and
+  // a mouse does not either, so acting on several messages at once was out of
+  // reach of both. The row is the one the keyboard is on, or else the one
+  // whose message is open.
+  if (e.key === "x" && !e.repeat) {
+    const on = document.activeElement && document.activeElement.closest
+      ? document.activeElement.closest("#list .rowwrap")
+      : null;
+    const open = current
+      ? [...$("#list").querySelectorAll(".row")].find((r) => r.dataset.id === current.message.id)
+      : null;
+    const wrap = on || (open ? open.closest(".rowwrap") : null);
+    if (!wrap) return;
+    e.preventDefault();
+    if (!document.body.classList.contains("selmode")) enterSelmode();
+    togglePick(wrap);
+    return;
+  }
 
   if (!current) return;
   // A key held a moment too long repeats, and each repeat is another action:
