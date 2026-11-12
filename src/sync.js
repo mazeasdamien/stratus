@@ -14,13 +14,25 @@ import { flagAccount, forgetMessages, indexMessage, storeRows } from "./store.js
 import { indexEvent } from "./ics.js";
 import { bodyKey, defuse, hashHex, json } from "./util.js";
 
+/**
+ * A plain-text body as the reader's HTML, in the shape defuse() returns.
+ *
+ * Not put through the defuser. textToHtml escapes every character of the
+ * text and adds nothing but its own http(s) links, so there is nothing in it
+ * to defuse — and the defuser's attribute rules read text as if it were
+ * markup: a message that merely said "src=https://…" lost the opening tag of
+ * the link made from that address, and one ending "href=javascript:x" lost
+ * the wrapper's closing tag.
+ */
+const plainHtml = (text) => ({ html: textToHtml(text), blocked: 0 });
+
 /** Raw message → a messages row plus its defused body. */
 export function rowFromRaw({ uid, flags, raw }, folder) {
   const m = parseMessage(raw);
   const h = m.headers;
   const from = parseAddress(h.from || "");
   const mid = String(h["message-id"] || "").trim();
-  const defused = m.html ? defuse(m.html) : defuse(textToHtml(m.text || ""));
+  const defused = m.html ? defuse(m.html) : plainHtml(m.text || "");
   // htmlToText rather than a bare tag-strip: the latter leaves the contents of
   // <style> behind, which is why list previews read "#outlook a { padding:0; }
   // body { margin:0 …" instead of the first line of the message.
@@ -262,7 +274,7 @@ export async function readLargeBody(im, uid, totalBytes) {
   try {
     const encoded = await imapFetchPart(im, uid, pick.part);
     const text = decodePart(encoded || "", pick.encoding, pick.charset);
-    const defused = pick.type === "text/html" ? defuse(text) : defuse(textToHtml(text));
+    const defused = pick.type === "text/html" ? defuse(text) : plainHtml(text);
     return bodyFromParts({
       html: defused.html,
       blocked: defused.blocked,

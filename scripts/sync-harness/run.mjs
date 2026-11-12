@@ -366,6 +366,15 @@ ok(asked >= 1 && asked <= 2, `a message that cannot be stored is retried once, n
 ok(!row("<dead@x>"), "and is not stored");
 imap.dead = null;
 
+// ── Plain text is shown as written, whatever it happens to spell ──
+imap.add("INBOX", msg("<plain@x>", "Plain text that looks like markup", "", "see src=https://example.com/a and <b>this</b>, then href=javascript:x"));
+for (let i = 0; i < 6; i++) await pass1("plain " + i);
+const plainBody = JSON.parse(MAIL.map.get(`body/${row("<plain@x>").id}.json`)).html;
+ok(
+  plainBody.includes('src=<a href="https://example.com/a"') && plainBody.includes("&lt;b&gt;this&lt;/b&gt;") && /href=javascript:x\s*<\/div>$/.test(plainBody),
+  "a plain-text message keeps its link, its escaped text and its wrapper: " + plainBody
+);
+
 // ── Reply-To travels with the stored body ──
 imap.add("INBOX", msg("<rt@x>", "From a list", "Reply-To: =?UTF-8?Q?Zo=C3=A9?= <zoe@list.example>\r\n"));
 // Past the size a Worker holds whole: only its headers and structure are read.
