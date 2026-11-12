@@ -329,6 +329,27 @@ try {
     ok(s.files.length === 1 && /two\.pdf/.test(s.toast), `and a file that could not be fetched is named — files ${JSON.stringify(s.files)}, toast: ${s.toast}`);
   });
 
+  await scenario("assistant", async () => {
+    // Fix with nothing selected rewrites what you wrote, not what you quoted.
+    await fresh();
+    const s = await ev(`
+      openCompose({ to: "zoe@x.fr", subject: "Re: x", html: '<div>my wrods</div><blockquote>THE ORIGINAL, <b>as sent</b></blockquote>' }); await wait(150);
+      await assist("grammar", $("#aiFix")); await wait(200);
+      return { html: $("#cBody").innerHTML, clean: draftClean };`);
+    const sentText = (await posts("/api/assist"))[0]?.body?.text || "";
+    ok(!/ORIGINAL/.test(sentText) && /my wrods/.test(sentText), `only your own words go to the assistant — sent: ${JSON.stringify(sentText)}`);
+    ok(/Corrected words\./.test(s.html) && /<blockquote>THE ORIGINAL, <b>as sent<\/b><\/blockquote>/.test(s.html), "and the quoted message comes back untouched");
+    // An answer that arrives after the composer moved on is not written in.
+    await fresh({ assistDelay: 800 });
+    const late = await ev(`
+      openCompose({ to: "zoe@x.fr", subject: "A", html: "<div>first message</div>" }); await wait(150);
+      const asked = assist("grammar", $("#aiFix")); await wait(150);
+      openCompose({ to: "zoe@x.fr", subject: "B", html: "<div>second message</div>" }); await wait(150);
+      await asked; await wait(200);
+      return $("#cBody").innerText;`);
+    ok(/second message/.test(late) && !/Corrected/.test(late), `a late answer does not overwrite the next message — ${JSON.stringify(late.slice(0, 80))}`);
+  });
+
   await scenario("key-repeat", async () => {
     await fresh();
     const filed = (l) => l.method === "POST" && (l.path.endsWith("/move") || l.path === "/api/thread");

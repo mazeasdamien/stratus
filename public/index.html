@@ -5184,8 +5184,18 @@ async function assist(mode, btn) {
     sel && sel.rangeCount && !sel.isCollapsed &&
     body.contains(sel.getRangeAt(0).commonAncestorContainer);
   const scoped = inBody ? String(sel) : "";
-  const text = (scoped || body.innerText).trim();
+  // With nothing selected, only what you wrote goes to the model. The whole
+  // body used to go, quote and signature included, and came back as flattened
+  // plain text: the message being answered was rewritten along with yours,
+  // and the reply then misquoted it. They are set aside and put back as they
+  // were, the way the written reply does it.
+  const scratch = body.cloneNode(true);
+  scratch.querySelectorAll("blockquote, .quote-head, .sig").forEach((el) => el.remove());
+  const kept = [".sig", ".quote-head", "blockquote"].map((s) => body.querySelector(s)).filter(Boolean);
+  const tail = kept.map((el) => el.outerHTML).join("");
+  const text = (scoped || scratch.innerText).trim();
   if (!text) { toast("Write something first"); return; }
+  const session = draftSession;
   const tools = document.querySelectorAll("#cTools .ai");
   tools.forEach((t) => (t.disabled = true));
   const was = btn.textContent;
@@ -5198,6 +5208,13 @@ async function assist(mode, btn) {
     });
     const d = await res.json().catch(() => ({}));
     if (!res.ok) { toast(d.error || "AI failed"); return; }
+    // The answer is for the message as it was when it was asked. If the
+    // composer has moved on to another message, or more was typed during the
+    // wait, writing it in would replace words it never saw.
+    if (draftSession !== session || body.innerHTML !== before) {
+      toast("The message changed while the assistant was working — nothing was replaced");
+      return;
+    }
     // Plain text back, escaped and re-broken into paragraphs. Never innerHTML
     // from a model: it would be a script-injection hole into your own composer.
     //
@@ -5218,12 +5235,12 @@ async function assist(mode, btn) {
       const frag = document.createRange().createContextualFragment(rebuilt);
       r.insertNode(frag);
     } else {
-      body.innerHTML = rebuilt;
+      body.innerHTML = rebuilt + (tail ? "<div><br></div>" + tail : "");
     }
     queueDraftSave();
     toast(
       mode === "improve" ? (scoped ? "Selection rewritten" : "Rewritten") : scoped ? "Selection corrected" : "Corrected",
-      () => { body.innerHTML = before; queueDraftSave(); }
+      () => { if (draftSession === session) { body.innerHTML = before; queueDraftSave(); } }
     );
   } catch { toast("AI failed"); }
   finally {
@@ -5287,6 +5304,7 @@ async function draftReply(btn) {
   const head = body.querySelector(".quote-head");
   const sig = body.querySelector(".sig");
   const tail = (sig ? sig.outerHTML : "") + (head ? head.outerHTML : "") + quote.outerHTML;
+  const session = draftSession;
   const tools = document.querySelectorAll("#cTools .ai");
   tools.forEach((t) => (t.disabled = true));
   const was = btn.textContent;
@@ -5299,6 +5317,13 @@ async function draftReply(btn) {
     });
     const d = await res.json().catch(() => ({}));
     if (!res.ok) { toast(d.error || "AI failed"); return; }
+    // Written for the message that was open when it was asked for. Dropped
+    // into a composer that has since moved on, it overwrote another reply
+    // with this one's text and this one's quote.
+    if (draftSession !== session || body.innerHTML !== before) {
+      toast("The message changed while the assistant was working — nothing was replaced");
+      return;
+    }
     // The same shape as anything typed here, and never innerHTML from a model.
     const written = d.text
       .split(/\n{2,}/)
@@ -5308,7 +5333,7 @@ async function draftReply(btn) {
     // Written by the assistant rather than typed, so no input event marked
     // the message as changed: closing the composer kept none of it.
     queueDraftSave();
-    toast("Reply written — read it before sending", () => { body.innerHTML = before; queueDraftSave(); });
+    toast("Reply written — read it before sending", () => { if (draftSession === session) { body.innerHTML = before; queueDraftSave(); } });
   } catch { toast("AI failed"); }
   finally {
     tools.forEach((t) => (t.disabled = false));
