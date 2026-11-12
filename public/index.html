@@ -3350,11 +3350,11 @@ async function fileMessage(id, target) {
  */
 /** Files a whole conversation, and hands back an exact way to undo it. */
 async function fileThread(key, from, target, said) {
-  const call = (a, b) =>
+  const call = (a, b, ids) =>
     api("/api/thread", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key, from: a, folder: b }),
+      body: JSON.stringify({ key, from: a, folder: b, ids }),
     })
       .then((r) => (r.ok ? r.json() : r.json().then((d) => Promise.reject(d.error))))
       .catch((e) => ({ error: typeof e === "string" ? e : "Could not move this conversation" }));
@@ -3364,9 +3364,12 @@ async function fileThread(key, from, target, said) {
     toast(d.error);
     return loadList();
   }
-  // Undo is the same call with the two folders the other way round.
+  // Undo is the same call with the two folders the other way round — for the
+  // messages this move moved, which the server names. Without them it took
+  // back everything of the conversation in the destination: two older
+  // messages already in Trash came out of it along with the one just binned.
   toast(d.n > 1 ? `${said} — ${d.n} messages` : said, async () => {
-    await call(target, from);
+    await call(target, from, Array.isArray(d.ids) && d.ids.length ? d.ids : undefined);
     await Promise.all([loadList(), refreshCounts()]);
   });
   refreshCounts();
