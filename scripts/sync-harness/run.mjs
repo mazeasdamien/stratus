@@ -321,6 +321,13 @@ DB.raw.prepare("DELETE FROM events WHERE id=?").run(inv.id);
 const opened = await api("GET", `/api/messages/${inv.id}?peek=1`);
 eq([opened.status, opened.body?.invite?.summary], [200, "Point"], "opening it returns the invitation");
 ok(onTimeline(), "and puts it on the timeline");
+// The timeline carries each answer without asking for it event by event.
+DB.raw.prepare("INSERT INTO settings (key, value) VALUES (?, 'accepted')").run(`rsvp_${inv.id}`);
+await api("GET", "/api/timeline"); // the first call also seeds the table
+const sqlBefore = sqlLog.length;
+const timeline = await api("GET", "/api/timeline");
+eq(timeline.body?.events?.find((e) => e.id === inv.id)?.rsvp, "accepted", "the timeline shows the answer given to an invitation");
+eq(sqlLog.slice(sqlBefore).filter((s) => /FROM settings WHERE key=\?/.test(s)).length, 0, "without one query per event");
 
 // ── "Send later" pressed twice for one message queues it once ──
 const later = { account_id: "acct1", to: "zoe@x.fr", subject: "Later", text: "hi", at: Date.now() + 3_600_000 };

@@ -1820,17 +1820,21 @@ No invented facts, no commitment to anything the brief does not cover, and no br
       await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('events_seeded', '1')").run().catch(() => {});
     }
 
+    // The answer given to each invitation comes with its row. It was read
+    // with one more query per event, so a timeline of sixty meetings cost
+    // sixty-one round trips to D1 every time the tab was opened.
     const { results } = await env.DB.prepare(
-      `SELECT e.*, m.subject as msg_subject, m.from_name, m.from_email, m.folder
+      `SELECT e.*, m.subject as msg_subject, m.from_name, m.from_email, m.folder, s.value AS rsvp
        FROM events e
        JOIN messages m ON m.id = e.id
+       LEFT JOIN settings s ON s.key = 'rsvp_' || e.id
        WHERE m.folder NOT IN ('trash', 'spam')
        ORDER BY e.start_ms ASC`
     ).all().catch(() => ({ results: [] }));
 
     const events = [];
     for (const ev of (results || [])) {
-      const rsvp = (await env.DB.prepare("SELECT value FROM settings WHERE key=?").bind(`rsvp_${ev.id}`).first().catch(() => null))?.value || "";
+      const rsvp = ev.rsvp || "";
       events.push({
         id: ev.id,
         account_id: ev.account_id,
