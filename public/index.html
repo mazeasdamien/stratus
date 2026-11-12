@@ -8085,8 +8085,13 @@ function parseMailto(href) {
   const [addr, query = ""] = raw.split("?");
   const q = new URLSearchParams(query);
   const get = (k) => [...q.entries()].find(([key]) => key.toLowerCase() === k)?.[1] || "";
+  // A link is whatever somebody typed, and a % that begins no escape makes
+  // decodeURIComponent throw. That happened inside init, which then never
+  // reached the line that registers the service worker. Taken as written.
+  let to = addr;
+  try { to = decodeURIComponent(addr); } catch {}
   return {
-    to: [decodeURIComponent(addr), get("to")].filter(Boolean).join(", "),
+    to: [to, get("to")].filter(Boolean).join(", "),
     cc: get("cc"),
     subject: get("subject"),
     body: get("body"),
@@ -8116,7 +8121,9 @@ function openFromUrl() {
   await Promise.all([refreshAll(), loadSignature(), loadImageSenders()]);
   schedulePoll();
   resumeKeptDraft();
-  openFromUrl();
+  // What the address asked for is a convenience. Nothing in it may stop the
+  // rest of startup, which is where the service worker is registered.
+  try { openFromUrl(); } catch {}
 
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("/sw.js").catch(() => {});
