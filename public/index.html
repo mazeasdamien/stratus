@@ -2140,7 +2140,12 @@ const refreshCounts = () => Promise.all([loadFolders(), loadAccounts()]);
  * folder called "v1.2" as "2".
  */
 const folderLabel = (name) => {
-  const leaf = String(name).split("/").filter(Boolean).pop() || name;
+  // The server's decoded name, where it gives one. A mailbox with an accent
+  // is listed in IMAP's modified UTF-7 ("R&AOk-unions"), and that key is what
+  // mail is filed under, so only the label changes.
+  const known = folders.find((f) => f.folder === name);
+  const shown = known && known.label ? known.label : name;
+  const leaf = String(shown).split("/").filter(Boolean).pop() || shown;
   return pretty(leaf);
 };
 /** The whole path, for the one place that has to tell two leaves apart. */
