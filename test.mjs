@@ -1275,5 +1275,55 @@ console.log("\n── sessions : révocation, portée de l'extension ──");
   ok(await auth.requestSession(reqWith(keep), env(fakeDb({ after: set[0][1] }))), "l'appareil qui demande reste connecté");
 }
 
+{
+  // Envoi par Cloudflare Email Sending pour les adresses de vos domaines.
+  const relay = await import("./src/relay.js");
+  const sent = [];
+  const EMAIL = { send: async (m) => (sent.push(m), { messageId: "abc123@agentxr.app" }) };
+  const env = { EMAIL, RELAY_DOMAINS: "agentxr.app, Other.Example" };
+  ok(relay.isRelayed(env, "damien.mazeas@agentxr.app"), "une adresse agentxr.app passe par Cloudflare");
+  ok(relay.isRelayed(env, "X@OTHER.example"), "la casse du domaine ne compte pas");
+  ok(!relay.isRelayed(env, "damien.mazeas@icloud.com"), "une adresse iCloud reste sur iCloud");
+  ok(!relay.isRelayed(env, "evil@agentxr.app.attacker.com"), "un sous-domaine étranger n'est pas relayé");
+  ok(!relay.isRelayed({ RELAY_DOMAINS: "agentxr.app" }, "a@agentxr.app"), "sans binding, rien n'est relayé");
+  ok(!relay.isRelayed({ EMAIL }, "a@agentxr.app"), "sans RELAY_DOMAINS, rien n'est relayé");
+
+  const m = relay.relayMessage({
+    fromName: "Damien Mazeas",
+    from: "damien.mazeas@agentxr.app",
+    to: ["a@example.com"],
+    cc: [],
+    bcc: ["secret@example.com"],
+    subject: "Re: Bonjour",
+    text: "salut",
+    html: "<p>salut</p>",
+    attachments: [{ filename: "a.pdf", type: "application/pdf", data: "JVBER" }, { filename: "", data: "x" }],
+    inReplyTo: "<p@x>",
+    references: ["<r@x>", "<p@x>"],
+  });
+  eq(JSON.stringify(m.from), JSON.stringify({ email: "damien.mazeas@agentxr.app", name: "Damien Mazeas" }), "le nom va avec l'adresse");
+  ok(!("cc" in m), "pas de Cc vide");
+  eq(m.bcc.join(), "secret@example.com", "le Cci est un champ à part");
+  ok(!JSON.stringify(m.headers).includes("secret@"), "et jamais un en-tête");
+  eq(m.headers["In-Reply-To"], "<p@x>", "In-Reply-To pour le fil");
+  eq(m.headers.References, "<r@x> <p@x>", "References pour le fil");
+  ok(!Object.keys(m.headers).some((h) => /^(date|message-id|from|to)$/i.test(h)), "aucun en-tête que Cloudflare refuse");
+  eq(m.attachments.length, 1, "les pièces sans nom sont écartées");
+  eq(JSON.stringify(m.attachments[0]), JSON.stringify({ content: "JVBER", filename: "a.pdf", type: "application/pdf", disposition: "attachment" }), "pièce jointe au format Cloudflare");
+  eq(relay.relayMessage({ fromName: "a@agentxr.app", from: "a@agentxr.app", to: ["b@x.y"], text: "t" }).from, "a@agentxr.app", "sans nom propre, l'adresse seule");
+  ok(!("headers" in relay.relayMessage({ from: "a@agentxr.app", to: ["b@x.y"], text: "t" })), "pas d'en-têtes hors d'une réponse");
+
+  eq(await relay.relaySend(env, m), "<abc123@agentxr.app>", "le Message-ID rendu par Cloudflare, entre chevrons");
+  eq(sent.length, 1, "un seul envoi");
+  eq(await relay.relaySend({ EMAIL: { send: async () => ({ messageId: "opaque" }) } }, m), "", "un identifiant qui n'en est pas un est ignoré");
+  let err = "";
+  try {
+    await relay.relaySend({ EMAIL: { send: async () => { const e = new Error("nope"); e.code = "E_SENDER_DOMAIN_NOT_AVAILABLE"; throw e; } } }, m);
+  } catch (e) {
+    err = e.message;
+  }
+  ok(/E_SENDER_DOMAIN_NOT_AVAILABLE/.test(err) && /nope/.test(err), "le refus de Cloudflare remonte avec son code");
+}
+
 console.log(`\n${fail === 0 ? "✓" : "✗"} ${pass} assertions passées, ${fail} échec(s)\n`);
 process.exit(fail ? 1 : 0);

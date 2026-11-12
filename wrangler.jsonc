@@ -28,6 +28,11 @@
     }
   ],
 
+  // Cloudflare Email Sending, for From addresses iCloud will not send as
+  // (src/relay.js). Which domains go this way is RELAY_DOMAINS below; the
+  // domain must be onboarded under Email Service → Email Sending.
+  "send_email": [{ "name": "EMAIL" }],
+
   "routes": [
     { "pattern": "mail.agentxr.app", "custom_domain": true }
   ],
@@ -49,6 +54,11 @@
   "vars": {
     // Public address, used to build the activation link and absolute URLs.
     "APP_URL": "https://mail.agentxr.app",
+
+    // From addresses on these domains leave through the EMAIL binding instead
+    // of iCloud SMTP. Comma-separated. Add the address itself under Settings →
+    // Your addresses so the composer offers it.
+    "RELAY_DOMAINS": "agentxr.app",
 
     // Model for the compose assistant: Claude Opus 5.5. You are waiting on it
     // mid-sentence, so Fix and Improve ask it for low effort and a written

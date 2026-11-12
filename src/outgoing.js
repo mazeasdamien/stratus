@@ -6,6 +6,7 @@ import { imapFlag, imapMove } from "./imap.js";
 import { buildRfc822, htmlToText, newMessageId, parseAddressList, replyReferences } from "./mime.js";
 import { pushAll } from "./push.js";
 import { smtpSend } from "./smtp.js";
+import { isRelayed, relayMessage, relaySend } from "./relay.js";
 import { accountById, fileSentCopy, senderFor } from "./filing.js";
 import { icloudAct, icloudPassword, resolveMailbox } from "./mailbox.js";
 import { imapError } from "./store.js";
@@ -55,7 +56,7 @@ export async function deliver(env, b, { dryRun = false } = {}) {
         data: String(a.data),
       }));
 
-    // Apple advertises SIZE 28319744 and base64 is already counted here, so
+    // Apple advertises SIZE 28319744 (Cloudflare allows 25 MiB) and base64 is already counted here, so
     // this is the real wire size. Refuse up front rather than let the server
     // reject it after the whole thing has been uploaded.
     const totalBytes = html.length + text.length + attachments.reduce((n, a) => n + a.data.length, 0);
@@ -94,31 +95,57 @@ export async function deliver(env, b, { dryRun = false } = {}) {
         // and what is appended to Sent, so the copy you keep is the message
         // that was actually delivered rather than a re-rendering of it.
         const sender = await senderFor(env, acct, b.from, orig);
-        const raw = buildRfc822({
-          from: sender.header,
-          to: to.map((a) => a.email).join(", "),
-          cc: cc.map((a) => a.email).join(", ") || undefined,
-          subject,
-          text,
-          html: html || undefined,
-          attachments,
-          inReplyTo: orig?.mid || undefined,
-          references: replyReferences(orig),
-          messageId: newMessageId(acct.email),
-        });
-        // Cc is a header; the envelope needs every address explicitly or the
-        // copied recipients simply never receive it. Bcc is the same call the
-        // other way round: in the envelope only, never in `raw`, which is why
-        // it is absent from the buildRfc822 above.
-        await smtpSend({
-          user: acct.email,
-          pass,
-          from: sender.address,
-          // Once each: someone on both To and Cc is one recipient, not two
-          // RCPT TOs and possibly two copies.
-          to: [...new Set([...to, ...cc, ...bcc].map((a) => a.email))],
-          raw,
-        });
+        const rfc = (messageId) =>
+          buildRfc822({
+            from: sender.header,
+            to: to.map((a) => a.email).join(", "),
+            cc: cc.map((a) => a.email).join(", ") || undefined,
+            subject,
+            text,
+            html: html || undefined,
+            attachments,
+            inReplyTo: orig?.mid || undefined,
+            references: replyReferences(orig),
+            messageId,
+          });
+        let raw;
+        if (isRelayed(env, sender.address)) {
+          // An address on your own domain: iCloud would refuse it, so it
+          // leaves through Cloudflare. The Sent copy is built afterwards with
+          // the Message-ID Cloudflare actually used, so a reply to it threads.
+          const id = await relaySend(
+            env,
+            relayMessage({
+              fromName: acct.label,
+              from: sender.address,
+              to: [...new Set(to.map((a) => a.email))],
+              cc: [...new Set(cc.map((a) => a.email))],
+              bcc: [...new Set(bcc.map((a) => a.email))],
+              subject,
+              text,
+              html,
+              attachments,
+              inReplyTo: orig?.mid || undefined,
+              references: replyReferences(orig),
+            })
+          );
+          raw = rfc(id || newMessageId(sender.address));
+        } else {
+          raw = rfc(newMessageId(acct.email));
+          // Cc is a header; the envelope needs every address explicitly or the
+          // copied recipients simply never receive it. Bcc is the same call the
+          // other way round: in the envelope only, never in `raw`, which is why
+          // it is absent from the buildRfc822 above.
+          await smtpSend({
+            user: acct.email,
+            pass,
+            from: sender.address,
+            // Once each: someone on both To and Cc is one recipient, not two
+            // RCPT TOs and possibly two copies.
+            to: [...new Set([...to, ...cc, ...bcc].map((a) => a.email))],
+            raw,
+          });
+        }
 
         // The message has gone. Everything past this point is bookkeeping, and
         // none of it is allowed to turn a successful send into an error.

@@ -10,9 +10,10 @@ import { open, seal } from "./crypto.js";
 import { isAuthFailure } from "./errors.js";
 import { icsReply, indexEvent, parseIcs } from "./ics.js";
 import { imapCreate, imapDelete, imapEmpty, imapFetchMeta, imapFetchPart, imapFetchRaw, imapFlag, imapList, imapListRaw, imapMove, imapOpen, imapPurge, imapRename, imapSearch, imapSelect } from "./imap.js";
-import { b64decode, blockMatches, buildRfc822, htmlToText, isBlockPattern, newMessageId, parseAddressList, qpBytes, replyReferences, textToHtml } from "./mime.js";
+import { b64decode, b64encode, blockMatches, buildRfc822, htmlToText, isBlockPattern, newMessageId, parseAddressList, qpBytes, replyReferences, textToHtml } from "./mime.js";
 import { pushAll, vapidKeys } from "./push.js";
 import { latin1ToBytes } from "./rfc822.js";
+import { isRelayed, relayMessage, relaySend } from "./relay.js";
 import { smtpCheck, smtpSend } from "./smtp.js";
 import { zipStream } from "./zip.js";
 import { ensureBody } from "./bodies.js";
@@ -1601,7 +1602,25 @@ No invented facts, no commitment to anything the brief does not cover, and no br
       calendar: { method: "REPLY", text: ics },
     });
     try {
-      await smtpSend({ user: acct.email, pass, from: sender.address, to: [invite.organizer.email], raw });
+      if (isRelayed(env, sender.address)) {
+        // Invited at your own domain: iCloud cannot answer as it, so the
+        // answer goes through Cloudflare, the REPLY riding as an .ics file.
+        await relaySend(
+          env,
+          relayMessage({
+            fromName: acct.label,
+            from: sender.address,
+            to: [invite.organizer.email],
+            subject: `${word}: ${invite.summary || msg.subject}`.slice(0, 300),
+            text: `${word}: ${invite.summary || msg.subject}`,
+            attachments: [{ filename: "reply.ics", type: "text/calendar; method=REPLY", data: b64encode(new TextEncoder().encode(ics)) }],
+            inReplyTo: msg.mid || undefined,
+            references: replyReferences(msg),
+          })
+        );
+      } else {
+        await smtpSend({ user: acct.email, pass, from: sender.address, to: [invite.organizer.email], raw });
+      }
     } catch (e) {
       return imapError(e, acct, env);
     }
