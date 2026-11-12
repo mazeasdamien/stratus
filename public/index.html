@@ -7117,6 +7117,24 @@ $("#openKeys").addEventListener("click", () => {
 /* ── calendar invitations ──
    The server reads the text/calendar part and sends it as `invite`. Shown as
    a card above the message, with the answer a calendar expects. */
+/**
+ * Where an invitation's "Join" goes, as { href, host }, or null.
+ *
+ * The address comes out of a calendar part, which is mail like any other:
+ * anyone can send one. Only a web address over https is offered — never a
+ * javascript: or data: URL, and never one that does not parse — and the host
+ * is returned to be shown on the button, because "Join meeting" alone says
+ * nothing about where the tap leads.
+ */
+function meetingLink(url) {
+  try {
+    const u = new URL(String(url || ""));
+    return u.protocol === "https:" && u.host ? { href: u.href, host: u.host } : null;
+  } catch {
+    return null;
+  }
+}
+
 function inviteWhen(inv) {
   if (!inv.start) return "";
   const s = new Date(inv.start.ms);
@@ -7150,8 +7168,9 @@ function renderInvite(cur) {
   if (ics >= 0) {
     actions += `<a class="ghost" href="/api/messages/${encodeURIComponent(m.id)}/attachment/${ics}" download="invite.ics">Add to calendar</a>`;
   }
-  if (inv.url) {
-    actions += `<a class="ghost" href="${esc(inv.url)}" target="_blank" rel="noopener noreferrer">Join meeting</a>`;
+  const join = meetingLink(inv.url);
+  if (join) {
+    actions += `<a class="ghost" href="${esc(join.href)}" target="_blank" rel="noopener noreferrer">Join meeting · ${esc(join.host)}</a>`;
   }
   // Answers to your own invitations arrive as METHOD:REPLY: say who said what.
   const replied =
@@ -7292,6 +7311,7 @@ function renderTimeline() {
       if (ev.rsvp === "accepted") rsvpPill = `<span class="tl-rsvp accepted">Accepted</span>`;
       else if (ev.rsvp === "declined") rsvpPill = `<span class="tl-rsvp declined">Declined</span>`;
       else if (ev.rsvp === "tentative") rsvpPill = `<span class="tl-rsvp">Maybe</span>`;
+      const join = meetingLink(ev.url);
 
       html +=
         `<div class="tl-card${isToday ? " today" : ""}${cancelled ? " cancelled" : ""}${isPast ? " past" : ""}" data-ev-id="${esc(ev.id)}" tabindex="0" role="button" aria-label="${esc(ev.summary || "Meeting")}">` +
@@ -7302,7 +7322,7 @@ function renderTimeline() {
         (ev.location ? `<div class="tl-meta"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>${esc(ev.location)}</div>` : "") +
         (who ? `<div class="tl-meta"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>Organised by ${esc(who)}</div>` : "") +
         `<div class="tl-actions">` +
-        (ev.url ? `<a class="tl-join" href="${esc(ev.url)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect width="14" height="14" x="1" y="5" rx="2" ry="2"/></svg>Join</a>` : "") +
+        (join ? `<a class="tl-join" href="${esc(join.href)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect width="14" height="14" x="1" y="5" rx="2" ry="2"/></svg>Join · ${esc(join.host)}</a>` : "") +
         rsvpPill +
         `<button class="ghost" data-tl-rsvp="accepted" data-eid="${esc(ev.id)}" aria-pressed="${ev.rsvp === "accepted"}">Accept</button>` +
         `<button class="ghost" data-tl-rsvp="tentative" data-eid="${esc(ev.id)}" aria-pressed="${ev.rsvp === "tentative"}">Maybe</button>` +
