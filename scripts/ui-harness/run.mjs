@@ -275,6 +275,60 @@ try {
     ok(s.clean === false, "and still marked as unsaved, so closing keeps it");
   });
 
+  await scenario("send-survives-navigation", async () => {
+    // Pressing Send and then opening the next message used to cancel the send.
+    await fresh();
+    const s = await ev(`
+      openCompose(); await wait(150); fill("Goes anyway", "body");
+      $("#cSend").click(); await wait(300);
+      await openMsg("m2", messages[1]); await wait(300);
+      const pendingAfterOpen = !!pendingSend;
+      pendingSend && pendingSend.fire(); await wait(600);
+      return { pendingAfterOpen, composing: document.body.classList.contains("composing") };`);
+    const sent = await posts("/api/send");
+    ok(s.pendingAfterOpen && sent.length === 1 && sent[0].body?.subject === "Goes anyway", `opening another message does not take a send back — ${JSON.stringify(s)}, sent ${sent.length}`);
+    ok((await drafts()).length === 0, "and the message that went is not also saved as a draft");
+    // Undo after the composer was closed puts the message back in front.
+    await fresh();
+    const u = await ev(`
+      openCompose(); await wait(150); fill("Taken back", "body");
+      $("#cSend").click(); await wait(200); closeSheets(); await wait(200);
+      cancelPendingSend(); await wait(300);
+      return { composing: document.body.classList.contains("composing"), subj: $("#cSubj").value };`);
+    ok(u.composing && u.subj === "Taken back" && (await posts("/api/send")).length === 0, `Undo after closing brings the message back and sends nothing — ${JSON.stringify(u)}`);
+    // A send that fails after the composer moved on is filed in Drafts.
+    await fresh({ sendFail: 1 });
+    await ev(`
+      openCompose(); await wait(150); fill("Refused by Apple", "body");
+      $("#cSend").click(); await wait(200);
+      openCompose(); await wait(150); fill("The next one", "body");
+      pendingSend && pendingSend.fire(); await wait(900);`);
+    const d = await drafts();
+    ok(d.some((x) => x.body?.subject === "Refused by Apple"), `a message that failed to send after the composer moved on is filed in Drafts — ${JSON.stringify(d.map((x) => x.body?.subject))}`);
+    // A hidden page sends at once instead of waiting to be frozen.
+    await fresh();
+    await ev(`
+      openCompose(); await wait(150); fill("Sent on leaving", "body");
+      $("#cSend").click(); await wait(200);
+      Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+      document.dispatchEvent(new Event("visibilitychange")); await wait(600);`);
+    ok((await posts("/api/send")).length === 1, "a page that is hidden sends at once");
+  });
+
+  await scenario("forward-waits-for-files", async () => {
+    await fresh({ attDelay: 700, attFail: 1 });
+    const s = await ev(`
+      await openMsg("m2", messages[1]); await wait(400);
+      $("#rForward").click(); await wait(250);
+      $("#cTo").value = "zoe@x.fr"; $("#cTo").dispatchEvent(new Event("input", { bubbles: true }));
+      $("#cSend").click(); await wait(150);
+      const early = { pending: !!pendingSend, toast: $("#toast").textContent };
+      await wait(2200);
+      return { early, files: attached.map((a) => a.filename), toast: $("#toast").textContent };`);
+    ok(!s.early.pending && /still loading/.test(s.early.toast), `Send waits while a forward's files are loading — ${JSON.stringify(s.early)}`);
+    ok(s.files.length === 1 && /two\.pdf/.test(s.toast), `and a file that could not be fetched is named — files ${JSON.stringify(s.files)}, toast: ${s.toast}`);
+  });
+
   await scenario("key-repeat", async () => {
     await fresh();
     const filed = (l) => l.method === "POST" && (l.path.endsWith("/move") || l.path === "/api/thread");

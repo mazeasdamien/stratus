@@ -3949,14 +3949,23 @@ async function startForward() {
   if (!atts.length) return;
 
   busy(1);
+  // Send waits for these. The composer opens before the files are in, and a
+  // quick Ctrl+Enter used to send "see attached" with one file of three.
+  attsLoading = session;
   let over = 0;
+  // Named when it cannot be fetched. It used to be skipped without a word,
+  // and the forward went out without it.
+  const missed = [];
   try {
     for (let i = 0; i < all.length; i++) {
       const a = all[i];
       if (!atts.includes(a)) continue;
       const res = await api(`/api/messages/${m.id}/attachment/${i}`).catch(() => null);
       if (gone()) return;
-      if (!res || !res.ok) continue;
+      if (!res || !res.ok) {
+        missed.push(a.filename || `attachment ${i + 1}`);
+        continue;
+      }
       const blob = await res.blob();
       const data = await fileToBase64(blob);
       if (gone()) return;
@@ -3979,10 +3988,14 @@ async function startForward() {
     toast("Some attachments could not be read");
   } finally {
     busy(-1);
+    if (attsLoading === session) attsLoading = 0;
   }
   if (gone()) return;
   renderAtts();
-  if (over) toast(`${over} attachment${over > 1 ? "s" : ""} left behind — over 20 MB`);
+  const said = [];
+  if (missed.length) said.push(`Not attached, could not be fetched: ${missed.join(", ")}`);
+  if (over) said.push(`${over} attachment${over > 1 ? "s" : ""} left behind — over 20 MB`);
+  if (said.length) toast(said.join(". "));
 }
 $("#rForward").addEventListener("click", startForward);
 
@@ -4326,8 +4339,9 @@ function closeSheets() {
   //
   // Not awaited, and it does not need to be: keepDraft reads the composer
   // before it yields, so the fields being cleared next changes nothing.
-  cancelPendingSend();
-  if (document.body.classList.contains("composing")) keepDraft();
+  // A message on its way out is not a draft: saving it here would leave a
+  // copy in Drafts of something that was sent.
+  if (document.body.classList.contains("composing") && !outgoingNow()) keepDraft();
   $("#scrim").classList.remove("up");
   document.body.classList.remove("composing", "picking", "overlay");
   document.querySelectorAll(".sheet").forEach((s) => s.classList.remove("up"));
@@ -4910,11 +4924,11 @@ function openCompose(opts = {}) {
   // the header stays in reach while you write, so the pencil — or Reply on the
   // message beside it — overwrote a half-written message with nothing saved.
   // keepDraft reads the fields before it yields, so it is safe not to wait.
-  // A send still inside its five seconds is taken back first, as it is when
-  // the composer is closed: otherwise the message would go and be kept as a
-  // draft as well.
-  cancelPendingSend(true);
-  if (document.body.classList.contains("composing")) keepDraft();
+  // A message on its way out is the exception: it goes, and is not also
+  // kept as a draft. The composer it froze is handed back for the new one.
+  if (document.body.classList.contains("composing") && !outgoingNow()) keepDraft();
+  $("#composeSheet").inert = false;
+  $("#cSend").textContent = "Send";
   replyTo = opts.reply || null;
   composeAcct = opts.account || composeAcct || (accounts[0] && accounts[0].id) || "";
   composeFrom = String(opts.from || "").toLowerCase();
@@ -5974,27 +5988,34 @@ function outgoing() {
 }
 
 /** Hands a message to the server — now, or at `at`. Leaves the composer on failure. */
-async function postSend(body, at) {
-  // Which message this is, taken before the wait. A large attachment takes a
-  // while to upload, and by the time the answer is back the composer may have
-  // been closed, or be holding the next message.
-  const session = draftSession;
-  const pid = draftPid;
+async function postSend(body, at, which = sendIdentity()) {
+  // `which` is the message this is, taken when Send was pressed. A large
+  // attachment takes a while to upload, and by the time the answer is back
+  // the composer may have been closed, or be holding the next message.
+  const { session, pid, slot, key } = which;
   const res = await api("/api/send", {
     method: "POST",
-    headers: { "Content-Type": "application/json", "Idempotency-Key": sendKey },
+    headers: { "Content-Type": "application/json", "Idempotency-Key": key },
     body: JSON.stringify(at ? { ...body, at } : body),
   }).catch(() => null);
   const d = res ? await res.json().catch(() => ({})) : {};
   const moved = draftSession !== session;
   if (!res || !res.ok) {
     const why = d.error || (at ? "Could not schedule" : "Could not send");
-    // The error line belongs to the composer. With the composer closed or on
-    // another message nobody would see it there, and a send that failed
-    // looked exactly like one that went.
-    if (moved || !document.body.classList.contains("composing")) {
-      toast(`Not sent — ${why}`);
+    // The composer holds another message now, so this one exists nowhere on
+    // screen: it is filed in Drafts from what was to be sent.
+    if (moved) {
+      keepUnsent(body, which, `Not sent — ${why}`);
       return null;
+    }
+    // The composer was closed while the message was on its way. It still
+    // holds every word, so it is put back in front with the reason: the error
+    // line used to be written where nobody could see it, and a send that
+    // failed looked exactly like one that went.
+    if (!document.body.classList.contains("composing")) {
+      document.body.classList.add("composing");
+      openSheet("#composeSheet");
+      toast(`Not sent — ${why}`);
     }
     const err = $("#cErr");
     err.textContent = why;
@@ -6003,9 +6024,10 @@ async function postSend(body, at) {
   }
   // The composer holds another message now. Its draft, its local copy and its
   // place on screen are not this send's to clear: doing so deleted the draft
-  // of the message being written and closed it unsaved. Only the draft of the
-  // message that went is removed.
+  // of the message being written and closed it unsaved. Only what belongs to
+  // the message that went is removed.
   if (moved) {
+    localStorage.removeItem(slot);
     if (pid) api(`/api/draft/${encodeURIComponent(pid)}`, { method: "DELETE" }).catch(() => null);
     return d;
   }
@@ -6023,47 +6045,103 @@ async function postSend(body, at) {
  * It used to ask "Send this message?" every time, which is a tap on every
  * message to guard against the rare wrong one. Now it simply goes — after a
  * pause long enough to catch a wrong recipient or a missing attachment, with
- * Undo in the toast (or z). The composer holds still in the meantime;
- * leaving the page asks first, and closing the composer counts as Undo.
+ * Undo in the toast (or z). The composer holds still in the meantime, and
+ * leaving the page asks first.
+ *
+ * Only Undo takes it back. Closing the composer used to count as Undo, and
+ * opening a message or changing folder closes the composer: pressing Send and
+ * then clicking the next message within five seconds quietly cancelled the
+ * send, with a toast that "Draft saved" replaced a second later. A message on
+ * its way out now goes whatever is opened next.
  */
 let pendingSend = null;
-function cancelPendingSend(quiet) {
+/** True while the request itself is in flight, after the five seconds. */
+let sendingNow = false;
+/** The composer session whose forwarded files are still being fetched, or 0. */
+let attsLoading = 0;
+/** Whether the message in the composer is still waiting for its files. */
+const filesPending = () => !!attsLoading && attsLoading === draftSession;
+/** A message is on its way out: it is not a draft, and closing must not save it as one. */
+const outgoingNow = () => !!pendingSend || sendingNow;
+/** Everything that says which message a send belongs to, read when Send is pressed. */
+const sendIdentity = () => ({ session: draftSession, pid: draftPid, slot: draftSlot(), key: sendKey });
+
+/**
+ * Files a message that did not go, from what was to be sent, when the
+ * composer no longer holds it. Its local copy is left alone unless the copy
+ * in Drafts is made.
+ */
+function keepUnsent(body, which, said) {
+  const { attachments, ...fields } = body;
+  saveDraftRemote({ ...fields, pid: which.pid, at: Date.now() }, attachments || [], NaN, which.slot).then((why) => {
+    toast(why ? `${said}. Kept in this browser only: ${why}` : `${said}. It is in Drafts.`);
+    refreshAll();
+  });
+}
+
+function cancelPendingSend() {
   if (!pendingSend) return;
+  const { body, which } = pendingSend;
   clearTimeout(pendingSend.timer);
   pendingSend = null;
   $("#composeSheet").inert = false;
   $("#cSend").textContent = "Send";
-  if (!quiet) toast("Not sent — it is back in the composer");
+  // Undone after the composer moved on to another message: there is no
+  // composer to put it back in, so it goes to Drafts.
+  if (draftSession !== which.session) return keepUnsent(body, which, "Not sent");
+  // Undone after the composer was closed: it still holds the message.
+  if (!document.body.classList.contains("composing")) {
+    document.body.classList.add("composing");
+    openSheet("#composeSheet");
+  }
+  toast("Not sent — it is back in the composer");
 }
 addEventListener("beforeunload", (e) => {
-  if (pendingSend) e.preventDefault();
+  if (outgoingNow()) e.preventDefault();
+});
+// A page that is hidden may be frozen before the five seconds are up — a
+// phone switching apps, a locked screen — and a frozen page never sends.
+// Leaving is taken as "send it": the request starts now.
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && pendingSend) pendingSend.fire();
 });
 $("#cSend").addEventListener("click", () => {
-  if (pendingSend) return;
+  if (outgoingNow()) return toast("The previous message is still going out — try again in a moment");
+  if (filesPending()) return toast("Attachments are still loading — try again in a moment");
   const body = outgoing();
   if (!body) return;
+  const which = sendIdentity();
+  // The words exist in this browser until the server has answered.
+  saveDraftLocal();
   $("#composeSheet").inert = true;
   $("#cSend").textContent = "Sending…";
   const who = body.to.split(",")[0].trim() + (body.to.includes(",") || body.cc || body.bcc ? " and others" : "");
   toast(`Sending to ${who}`, () => cancelPendingSend(), "Undo");
-  pendingSend = {
-    timer: setTimeout(async () => {
-      pendingSend = null;
-      const d = await postSend(body);
-      $("#composeSheet").inert = false;
-      $("#cSend").textContent = "Send";
-      if (!d) return;
-      toast(
-        d.filed === false
-          // It went, and it is in your Sent folder here. What failed is the copy
-          // at Apple, so the reason travels with the message.
-          ? `Sent — Apple would not keep a copy: ${d.filedError || "unknown reason"}`
-          : "Sent"
-      );
-      // The copy is filed by now, so Sent and its counts are already stale.
-      refreshAll();
-    }, 5000),
+  const fire = async () => {
+    if (!pendingSend) return;
+    clearTimeout(pendingSend.timer);
+    pendingSend = null;
+    sendingNow = true;
+    let d = null;
+    try {
+      d = await postSend(body, 0, which);
+    } finally {
+      sendingNow = false;
+    }
+    $("#composeSheet").inert = false;
+    $("#cSend").textContent = "Send";
+    if (!d) return;
+    toast(
+      d.filed === false
+        // It went, and it is in your Sent folder here. What failed is the copy
+        // at Apple, so the reason travels with the message.
+        ? `Sent — Apple would not keep a copy: ${d.filedError || "unknown reason"}`
+        : "Sent"
+    );
+    // The copy is filed by now, so Sent and its counts are already stale.
+    refreshAll();
   };
+  pendingSend = { timer: setTimeout(fire, 5000), fire, body, which };
 });
 
 /* ── send later ── */
@@ -6085,7 +6163,9 @@ function laterChoices(now = new Date()) {
 const whenText = (ms) =>
   new Date(ms).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 $("#cLater").addEventListener("click", () => {
-  if (pendingSend || !outgoing()) return;
+  if (outgoingNow()) return;
+  if (filesPending()) return toast("Attachments are still loading — try again in a moment");
+  if (!outgoing()) return;
   $("#laterList").innerHTML = laterChoices()
     .map(([label, d]) => `<button class="mi" data-at="${d.getTime()}"><span class="grow">${esc(label)}</span><span class="side">${esc(whenText(d))}</span></button>`)
     .join("");
