@@ -3021,12 +3021,19 @@ function frameDoc(body, images) {
   // Left-aligned, where the text already starts. A message laid out with
   // tables has decided its own width and is left alone; so is everything on
   // a phone, which is narrower than the cap.
+  //
+  // A quote gets the rule down its left edge and a quieter colour, so what
+  // was written now is told apart from what it answers. It was indented and
+  // nothing else: a reply and the three messages under it read as one text.
+  // A bare element selector, so anything the message says about its own
+  // quotes — Gmail's inline border, a colour on the text inside — still wins.
   return `<!doctype html><html><head><meta charset="utf-8">
 ${frameCsp(images)}
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <base target="_blank">
 <style>body{margin:14px;font:15px/1.5 -apple-system,Segoe UI,system-ui,sans-serif;color:#111;background:#fff;word-break:break-word}
 body:not(:has(table,center)){max-width:62ch}
+blockquote{margin:.8em 0;padding:0 0 0 12px;border-left:2px solid #d5d5dc;color:#5b5b66}
 img{max-width:100%;height:auto}a{color:#1a63c9}</style></head><body>${body}</body></html>`;
 }
 
