@@ -254,6 +254,9 @@ main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior
 .from{font-size:14.5px;font-weight:600;letter-spacing:-.007em}
 .row:not(.unread) .from{font-weight:400;color:var(--t2)}
 .when{font-size:11.5px;color:var(--t3);flex:none}
+/* Starred, beside the date. The accent on a read row too: it is the star the
+   reader's button fills in, not part of the date. */
+.when .st{display:inline-block;vertical-align:-1px;margin-right:5px;color:var(--acc)}
 .subj{font-size:13.5px;margin-top:1px;color:var(--t1)}
 .row:not(.unread) .subj{color:var(--t2)}
 .snip{font-size:12.5px;color:var(--t3);margin-top:1px}
@@ -2609,8 +2612,10 @@ function rowHtml(m, sub = false) {
   // One name that carries what the layout carries: who, what, when, and whether
   // it has been read. A screen reader gets the message rather than a row of
   // four unlabelled spans, and Enter opens it the way a click does.
+  const starred = !!Number(m.starred);
   const label = [
     m.unread ? "Unread" : "",
+    starred ? "Starred" : "",
     m.from_name || m.from_email || "Unknown sender",
     m.subject ? `— ${m.subject}` : "",
     m.snippet || "",
@@ -2665,7 +2670,15 @@ function rowHtml(m, sub = false) {
           ? `<span class="ftag" title="Comes back to the inbox then">${esc(whenText(snoozedUntil.get(m.id)))}</span>`
           : ""
       }
-      <span class="when num">${fmtWhen(m.date)}</span></div>
+      <span class="when num">${
+        // The star, in the list. It could be set in the reader and then seen
+        // nowhere else: a starred conversation looked like any other row.
+        // With the date, so it cannot drift along the line as the sender's
+        // name changes length.
+        starred
+          ? `<svg class="st" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><title>Starred</title><path d="m12 3.6 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.8l5.9-.9Z"/></svg>`
+          : ""
+      }${fmtWhen(m.date)}</span></div>
       ${sub ? "" : `<div class="subj tr">${esc(m.subject || "(no subject)")}</div>`}
       <div class="snip tr">${esc(m.snippet || "")}</div>
     </div>
