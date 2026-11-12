@@ -4818,6 +4818,11 @@ async function loadContacts() {
 }
 
 function openCompose(opts = {}) {
+  // What the composer is holding is kept before it is replaced. On a desktop
+  // the header stays in reach while you write, so the pencil — or Reply on the
+  // message beside it — overwrote a half-written message with nothing saved.
+  // keepDraft reads the fields before it yields, so it is safe not to wait.
+  if (document.body.classList.contains("composing")) keepDraft();
   replyTo = opts.reply || null;
   composeAcct = opts.account || composeAcct || (accounts[0] && accounts[0].id) || "";
   composeFrom = String(opts.from || "").toLowerCase();
