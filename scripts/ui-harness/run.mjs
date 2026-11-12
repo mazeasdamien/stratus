@@ -102,6 +102,12 @@ const server = createServer(async (req, res) => {
     return json({ message: { ...mk("m9", "You", "A draft"), id, mid: `<${id}@x>`, folder: "drafts" }, account: accounts[0], invite: null, rsvp: "", body: { html: "<div>draft words</div>", attachments: files, blocked: 0 } });
   }
   const detail = /^\/api\/messages\/(m\d)$/.exec(p);
+  if (detail && knobs.cid) {
+    return json({
+      message: messages.find((m) => m.id === detail[1]), account: accounts[0], invite: null, rsvp: "",
+      body: { html: '<p>hi</p><img alt="logo" src="cid:logo%40shop">', attachments: [{ filename: "logo.png", type: "image/png", size: 9, part: "2", cid: "logo@shop" }], blocked: 0 },
+    });
+  }
   if (detail) {
     const files = detail[1] === "m2" ? [{ filename: "one.pdf", type: "application/pdf", size: 9, part: "2" }, { filename: "two.pdf", type: "application/pdf", size: 9, part: "3" }] : [];
     return json({
@@ -389,6 +395,12 @@ try {
     await fresh();
     const to = await ev(`await openMsg("m3", messages[2]); await wait(400); $("#rReply").click(); await wait(300); return addrGet("#cTo", "#cToChips");`);
     ok(to === "customer@x.fr", `a reply goes to the Reply-To address — to: ${to}`);
+  });
+
+  await scenario("inline-picture", async () => {
+    await fresh({ cid: 1 });
+    const html = await ev(`await openMsg("m1", messages[0]); await wait(900); return await resolveInlineImages(current.body.html, "m1", current.body.attachments);`);
+    ok(/src="data:/.test(html) && !/cid:/.test(html), `a picture whose cid is written with an escape is put in — ${html.slice(0, 90)}`);
   });
 
   await scenario("key-repeat", async () => {

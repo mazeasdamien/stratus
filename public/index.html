@@ -3108,15 +3108,24 @@ function replaceAllCaseless(haystack, needle, replacement) {
 async function resolveInlineImages(html, id, atts) {
   if (!/cid:/i.test(html) || !atts.length) return html;
 
-  // Every distinct cid the HTML asks for, in the order it asks.
+  // Every distinct cid the HTML asks for, in the order it asks, and every way
+  // the HTML spells it. "cid:logo%40shop" names the part "logo@shop": it is
+  // matched decoded, but it has to be found again in the HTML as written.
+  // Looking for the decoded form there found nothing, and such a picture was
+  // never shown.
+  const spelled = new Map(); // decoded cid → the spellings of it in this HTML
   const refs = [];
   for (const m of html.matchAll(/cid:([^"'\s>)]+)/gi)) {
     // A Content-ID is not always a well-formed escape: "cid:50%off@shop" has
     // a % that begins nothing, and decodeURIComponent throws on it. Taken as
-    // written then, which is also how it has to be found again below.
+    // written then.
     let cid = m[1];
     try { cid = decodeURIComponent(m[1]); } catch {}
-    if (!refs.some((r) => r.toLowerCase() === cid.toLowerCase())) refs.push(cid);
+    const known = refs.find((r) => r.toLowerCase() === cid.toLowerCase());
+    if (!known) refs.push(cid);
+    const key = known || cid;
+    if (!spelled.has(key)) spelled.set(key, new Set());
+    spelled.get(key).add(m[1]);
   }
   if (!refs.length) return html;
 
@@ -3180,7 +3189,11 @@ async function resolveInlineImages(html, id, atts) {
   );
   let out = html;
   // one unreadable image should not blank the message: it simply stays a cid:
-  for (const [cid, uri] of uris) out = replaceAllCaseless(out, "cid:" + cid, uri);
+  const swaps = [];
+  for (const [cid, uri] of uris) for (const raw of spelled.get(cid) || [cid]) swaps.push([raw, uri]);
+  // Longest first, so "cid:img1" is not swapped inside "cid:img10".
+  swaps.sort((a, b) => b[0].length - a[0].length);
+  for (const [raw, uri] of swaps) out = replaceAllCaseless(out, "cid:" + raw, uri);
   return out;
 }
 const inlineCache = new Map();
