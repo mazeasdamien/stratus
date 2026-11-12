@@ -626,6 +626,11 @@ textarea.field{width:100%;padding:11px 12px;font-size:14.5px;line-height:1.45;mi
 .mi .grow{flex:1;min-width:0}
 .mi .side{font-size:12px;color:var(--t3);flex:none}
 .mi.warn .side{color:var(--red)}
+/* The actions at the end of a row: Sync, Remove, Make default. As 12px words
+   with no box round them they were a target 15px tall, three in a row. Padded
+   out to 32px, and pulled back in by a margin, so the row is laid out almost
+   as it was and only what a finger can hit has grown. */
+.mi button.side{min-height:32px;padding:0 8px;margin:0 -5px;border-radius:var(--r-s)}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
 
 /* View switcher tabs: Mail vs Timeline */
