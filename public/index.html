@@ -7684,9 +7684,20 @@ $("#composeSheet").addEventListener("keydown", (e) => {
    the gesture. */
 (function swipeAndHold() {
   const list = $("#list");
-  let wrap = null, startX = 0, startY = 0, dx = 0, holding = null, dragged = false;
+  let wrap = null, startX = 0, startY = 0, dx = 0, holding = null, dragged = false, slides = false;
 
   const clearHold = () => { if (holding) { clearTimeout(holding); holding = null; } };
+
+  // Where archiving a row means nothing, or the wrong thing. In Archive the
+  // swipe filed the message into the folder it was already in and said
+  // "Archived"; in Drafts and Sent it moved your own mail out of its place;
+  // in Trash and Spam it pulled back what had been thrown away. Judged by the
+  // row's own folder, since a search or Starred lists every folder at once.
+  const NO_ARCHIVE = ["archive", "drafts", "sent", "trash", "spam"];
+  const canArchive = (w) => {
+    const m = listRow((w.querySelector(".row") || w).dataset.id);
+    return !!m && !NO_ARCHIVE.includes(String(m.folder || "inbox").toLowerCase());
+  };
 
   list.addEventListener("touchstart", (e) => {
     if (document.body.classList.contains("selmode") || e.touches.length !== 1) return;
@@ -7695,6 +7706,9 @@ $("#composeSheet").addEventListener("keydown", (e) => {
     wrap = w;
     dragged = false;
     dx = 0;
+    // Decided once, as the finger lands. The long press below still works on
+    // a row that does not slide.
+    slides = canArchive(w);
     startX = e.touches[0].clientX;
     startY = e.touches[0].clientY;
     wrap.classList.add("dragging");
@@ -7727,7 +7741,10 @@ $("#composeSheet").addEventListener("keydown", (e) => {
       return;
     }
     if (Math.abs(mx) > 8) { clearHold(); dragged = true; }
-    if (!dragged) return;
+    // A row that cannot be archived stays where it is: sliding it would
+    // promise an action that is not going to happen. dx stays 0, so letting
+    // go commits nothing.
+    if (!dragged || !slides) return;
     // Rightward only. A left drag used to slide the row and paint it red —
     // the look of a delete — and then do nothing at all when let go.
     dx = Math.max(0, Math.min(120, mx));
