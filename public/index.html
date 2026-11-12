@@ -2388,7 +2388,11 @@ async function loadList(more = false, { keep = false } = {}) {
   const seq = ++listSeq;
   // Only the Snoozed folder shows when each message comes back.
   if (!more && String(folder).toLowerCase() === "snoozed") await loadSnoozed();
-  const before = more && messages.length ? messages[messages.length - 1].date : 0;
+  // Where the next page starts: after the last row shown, by date and then by
+  // id. The date alone lost every row that shared a timestamp with the last
+  // row of a page — notifications sent in a batch — because "older than this
+  // date" skips them.
+  const last = more && messages.length ? messages[messages.length - 1] : null;
   const want = more ? PAGE : keep ? Math.max(PAGE, messages.length) : PAGE;
   // A search spans everything; without one you are looking at a folder.
   // Starred spans every folder, like search does: a flag is not a place.
@@ -2404,18 +2408,24 @@ async function loadList(more = false, { keep = false } = {}) {
   try {
     // The server hands out at most 100 a time, so a long list is re-read in
     // pages, each one starting where the last stopped.
-    let cursor = before;
+    let cursor = last;
     while (got.length < need) {
       const limit = Math.min(100, need - got.length);
       p.set("limit", limit);
-      if (cursor) p.set("before", cursor); else p.delete("before");
+      if (cursor) {
+        p.set("before", cursor.date);
+        p.set("before_id", cursor.id);
+      } else {
+        p.delete("before");
+        p.delete("before_id");
+      }
       const res = await api(`/api/messages?${p}`);
       if (seq !== listSeq || !res.ok) return;
       const batch = (await res.json()).messages || [];
       if (seq !== listSeq) return;
       got = got.concat(batch);
       if (batch.length < limit) break;
-      cursor = batch[batch.length - 1].date;
+      cursor = batch[batch.length - 1];
     }
   } catch (e) { return; }
   const hasMore = got.length > want;
