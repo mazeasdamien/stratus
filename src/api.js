@@ -8,7 +8,7 @@ import { bodyFromParts } from "./body.js";
 import { DEFAULT_MODEL as CLAUDE_DEFAULT, keyRefused, rewrite, usableModels } from "./claude.js";
 import { open, seal } from "./crypto.js";
 import { isAuthFailure } from "./errors.js";
-import { icsReply, indexEvent, parseIcs } from "./ics.js";
+import { httpsUrl, icsReply, indexEvent, parseIcs } from "./ics.js";
 import { imapCreate, imapDelete, imapEmpty, imapFetchMeta, imapFetchPart, imapFetchRaw, imapFlag, imapList, imapListRaw, imapMove, imapOpen, imapPurge, imapRename, imapSearch, imapSelect } from "./imap.js";
 import { b64decode, b64encode, blockMatches, buildRfc822, decodeMailboxName, encodeMailboxName, htmlToText, isBlockPattern, newMessageId, parseAddressList, qpBytes, replyReferences, textToHtml } from "./mime.js";
 import { pushAll, vapidKeys } from "./push.js";
@@ -1920,7 +1920,9 @@ No invented facts, no commitment to anything the brief does not cover, and no br
         summary: ev.summary || ev.msg_subject || "Meeting",
         location: ev.location,
         description: ev.description,
-        url: ev.url,
+        // Checked on the way out as well: an event indexed before the
+        // invitation's link was held to https still has what it was given.
+        url: httpsUrl(ev.url),
         start: { ms: ev.start_ms, allDay: !!ev.all_day },
         end: { ms: ev.end_ms, allDay: !!ev.all_day },
         status: ev.status,

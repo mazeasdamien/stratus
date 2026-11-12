@@ -199,6 +199,16 @@ function when(prop, zones) {
 
 const mailto = (v) => String(v || "").replace(/^mailto:/i, "").trim().toLowerCase();
 
+/** The address if it is an https one, as the URL parser writes it; else "". */
+export function httpsUrl(value) {
+  try {
+    const u = new URL(String(value || "").trim());
+    return u.protocol === "https:" ? u.href : "";
+  } catch {
+    return "";
+  }
+}
+
 /**
  * The first VEVENT of a calendar, and what is needed to show and answer it.
  * Null when there is none.
@@ -242,7 +252,11 @@ export function parseIcs(text) {
   const videoMatch = `${rawUrl}\n${location}\n${description}`.match(
     /https:\/\/(?:[a-zA-Z0-9-]+\.)?(?:teams\.microsoft\.com|meet\.google\.com|zoom\.us|webex\.com)\/[^\s<>"')]+/i
   );
-  const url = rawUrl || (videoMatch ? videoMatch[0] : "");
+  // The URL property is whatever the sender wrote, and it ends up behind a
+  // link in the app: `javascript:` or `data:` there is a script waiting for
+  // a click. Only https comes out; anything else falls back to the meeting
+  // link, or to nothing.
+  const url = httpsUrl(rawUrl) || (videoMatch ? videoMatch[0] : "");
 
   return {
     method,

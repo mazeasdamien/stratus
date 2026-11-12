@@ -406,6 +406,12 @@ const sqlBefore = sqlLog.length;
 const timeline = await api("GET", "/api/timeline");
 eq(timeline.body?.events?.find((e) => e.id === inv.id)?.rsvp, "accepted", "the timeline shows the answer given to an invitation");
 eq(sqlLog.slice(sqlBefore).filter((s) => /FROM settings WHERE key=\?/.test(s)).length, 0, "without one query per event");
+// An event indexed before links were held to https still has what it was given.
+const eventUrl = async (stored) => {
+  DB.raw.prepare("UPDATE events SET url=? WHERE id=?").run(stored, inv.id);
+  return (await api("GET", "/api/timeline")).body.events.find((e) => e.id === inv.id)?.url;
+};
+eq([await eventUrl("javascript:alert(1)"), await eventUrl("https://meet.example/abc")], ["", "https://meet.example/abc"], "the timeline hands out an https link and nothing else");
 
 // ── "Send later" pressed twice for one message queues it once ──
 const later = { account_id: "acct1", to: "zoe@x.fr", subject: "Later", text: "hi", at: Date.now() + 3_600_000 };

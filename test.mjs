@@ -1095,6 +1095,18 @@ console.log("\n── invitations (iCalendar) ───────────�
   const invTeams = parseIcs(icsTeams);
   ok(invTeams.url.includes("teams.microsoft.com"), "lien de réunion Teams extrait");
 
+  // La propriété URL est ce que l'expéditeur a écrit, et finit derrière un
+  // lien : seul https en sort.
+  const avecUrl = (u, base = ics) => parseIcs(base.replace("SEQUENCE:2", `SEQUENCE:2\r\nURL:${u}`)).url;
+  eq(avecUrl("https://exemple.fr/reunion?id=4"), "https://exemple.fr/reunion?id=4", "une URL https est gardée");
+  eq(avecUrl("javascript:alert(document.cookie)"), "", "javascript: refusé");
+  eq(avecUrl("JaVaScRiPt:alert(1)"), "", "javascript: refusé quelle que soit la casse");
+  eq(avecUrl("data:text/html,<script>alert(1)</script>"), "", "data: refusé");
+  eq(avecUrl("http://exemple.fr/reunion"), "", "http en clair refusé");
+  eq(avecUrl("/api/messages"), "", "une URL relative n'en est pas une");
+  ok(avecUrl("javascript:alert(1)", icsTeams).startsWith("https://teams.microsoft.com/"), "une URL refusée laisse la place au lien de visio");
+  eq(avecUrl("https://exemple.fr/a", icsTeams), "https://exemple.fr/a", "une URL https l'emporte sur le lien de visio");
+
   // Et le chemin inverse : une invitation reçue garde sa partie calendrier.
   const recu = parseMessage(
     "Content-Type: multipart/alternative; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain\r\n\r\nUne reunion\r\n" +
