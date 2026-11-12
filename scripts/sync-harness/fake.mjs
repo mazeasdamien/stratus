@@ -61,6 +61,9 @@ export function makeR2() {
     async delete(k) {
       for (const key of Array.isArray(k) ? k : [k]) m.delete(key);
     },
+    async list({ prefix = "" } = {}) {
+      return { objects: [...m.keys()].filter((k) => k.startsWith(prefix)).map((key) => ({ key, size: m.get(key).length })) };
+    },
   };
 }
 

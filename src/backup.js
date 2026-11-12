@@ -15,6 +15,11 @@
 const TABLES = [
   "accounts", "messages", "settings", "blocked_senders", "outbox", "snoozed",
   "contacts_hidden", "contacts_added", "push_subs",
+  // Left out until now. Without revoked_sessions a restore brought every
+  // signed-out device back in; without image_senders and events it lost the
+  // senders you trust with images and the meetings on the timeline, which is
+  // only ever rebuilt once.
+  "image_senders", "revoked_sessions", "events",
 ];
 
 // Rebuildable from the messages themselves, and by far the largest table.
@@ -48,8 +53,12 @@ export async function runBackup(env, now) {
         }
         if ((results ?? []).length < PAGE) break;
       }
-    } catch {
+    } catch (e) {
       // A table that does not exist yet is not a failure; the schema grows.
+      // Anything else is: this used to swallow every error, so one failed
+      // read halfway through `messages` wrote a snapshot holding part of the
+      // mailbox, called it good, and then deleted the last complete one.
+      if (!/no such table/i.test(String((e && e.message) || e))) throw e;
     }
     dump.tables[table] = rows;
   }

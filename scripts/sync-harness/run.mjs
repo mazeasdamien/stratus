@@ -289,5 +289,24 @@ const late = await api("POST", "/api/blocked", { pattern: "relay.example" });
 eq(late.status, 200, "making the rule afterwards is accepted");
 ok(holds("Sent Messages", "<relay1@x>") && !!row("<relay1@x>"), "and clearing out what it matches spares Sent, at the provider and here");
 
+// ── The nightly snapshot never replaces a complete one with a partial one ──
+const { runBackup } = await import("../../src/backup.js");
+const snapshots = () => [...MAIL.map.keys()].filter((k) => k.startsWith("backup/"));
+const good = await runBackup(env, Date.now() - 86_400_000);
+eq(good.counts.messages, count(), "a snapshot holds every message row");
+ok(["image_senders", "revoked_sessions", "events"].every((t) => t in good.counts), "and the tables a restore needs: " + Object.keys(good.counts).join(","));
+const realPrepare = DB.prepare;
+DB.prepare = (sql) => {
+  if (/FROM messages WHERE rowid/.test(sql)) throw new Error("D1_ERROR: Network connection lost");
+  return realPrepare(sql);
+};
+const partial = await runBackup(env, Date.now()).then(() => "written", (e) => String(e.message));
+DB.prepare = realPrepare;
+ok(/connection lost/.test(partial), "a read that fails halfway fails the snapshot: " + partial);
+eq(snapshots(), [good.key], "and the last complete snapshot is still the one held");
+DB.raw.exec("DROP TABLE events");
+const grown = await runBackup(env, Date.now());
+eq([grown.counts.events, grown.counts.messages], [0, count()], "a table the database does not have yet is skipped, not fatal");
+
 console.log(`${fail ? "✗" : "✓"} ${pass} assertions passées, ${fail} échec(s) (caps ${caps.join(" ")})`);
 process.exit(fail ? 1 : 0);
