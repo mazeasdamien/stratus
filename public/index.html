@@ -274,13 +274,53 @@ main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior
 #reader .rhead{animation:none}
 #reader .rhead.settle{animation:settle .26s cubic-bezier(.32,.72,0,1)}
 @keyframes settle{from{opacity:.35;transform:translateY(5px)}to{opacity:1;transform:none}}
-.rmeta{font-size:12px;color:var(--t2);margin-top:3px;user-select:text;-webkit-user-select:text;
-  /* Wraps rather than ellipsising. A sent message with forty names on To: had
-     its list cut off mid-address with no way to read the rest — and who got
-     the mail is the whole point of opening your own sent copy. Capped so a
-     huge list cannot push the body off the pane; the rest scrolls here. */
-  white-space:normal;overflow-wrap:anywhere;max-height:5.4em;overflow-y:auto}
+.rmeta{font-size:12px;color:var(--t2);user-select:text;-webkit-user-select:text;
+  white-space:normal;overflow-wrap:anywhere}
 .rmeta b{color:var(--t1);font-weight:500}
+/* Who wrote it, when, and who received it.
+   The sender is never cut: the address is the part of a From line that can
+   be trusted. The date is one piece. The recipients are one line, because on
+   a phone three lines of addresses under a three-line subject left little
+   room for the message. They are not lost: a tap opens the line, and then it
+   wraps — a sent message with forty names on To: can still be read in full —
+   capped so a huge list cannot push the body off the pane; the rest scrolls
+   there. */
+.rwhen{white-space:nowrap}
+.rto{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;cursor:pointer}
+/* Opened, it takes a line of its own, the full width, under the date. */
+.rto.open{white-space:normal;overflow-wrap:anywhere;max-height:5.4em;overflow-y:auto;flex-basis:100%}
+/* Laid out by the width the header has, not the window's: beside a wide list
+   the reader on a desktop is as narrow as a phone.
+   Narrow, each thing has its own place: the subject, then the sender, then
+   the date and the recipients on one line, so the date is found in the same
+   spot on every message. The scope chip joins that last line when it fits
+   and drops under it when it does not; it no longer takes a column of its
+   own from the subject. Wide, the meta is a single line and the chip sits at
+   the far edge, centred on the two.
+   On the header and not the reader, so nothing about the frame the message
+   is drawn in changes. */
+.rhead{container-type:inline-size}
+.rhead .mi-info{display:flex;flex-wrap:wrap;align-items:center;column-gap:.4em}
+.rsubj,.rm1{flex:0 0 100%;min-width:0}
+#rMeta{display:contents}
+.rm1{margin-top:3px}
+.rwhen{flex:none}
+.rto{flex:1 1 4em}
+#rScope{margin:5px 0 0 auto}
+/* 9px above would reach into the recipients' line and take its taps. */
+#rScope::after{inset:-2px 0 -9px}
+@container (min-width:640px){
+  .rhead .mi-info{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:10px}
+  /* Placed by name. Left to find their own cell, the meta takes the chip's
+     column on a message that has no chip. */
+  .rsubj,#rMeta{grid-column:1}
+  #rMeta{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:.4em;margin-top:3px}
+  .rm1{flex:none;max-width:100%;margin-top:0}
+  .rm1::after{content:" ·"}
+  .rto{flex:1 1 12em}
+  #rScope{grid-column:2;grid-row:1 / span 2;margin:0}
+  #rScope::after{inset:-9px 0}
+}
 /* The sender is a control, not a label: tapping it opens everything the line
    is too narrow to say. display:inline so it stays part of the sentence it
    sits in rather than becoming a flex box that refuses to. */
@@ -1365,13 +1405,16 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
     <div class="mi-info">
       <div class="rsubj" id="rSubj">—</div>
       <div class="rmeta" id="rMeta">—</div>
+      <!-- The only way to say "these buttons are about the conversation, not
+           this one message", and it sits with the subject it qualifies.
+           Inside the block with the subject and the meta so that on a narrow
+           header it can share a row with them instead of taking a column of
+           its own from all three. -->
+      <button class="tscope" id="rScope" aria-pressed="false"
+        title="Decide whether Archive, Delete and Move act on this message or on the whole conversation">
+        <span id="rScopeLbl">Actions: this message</span>
+      </button>
     </div>
-    <!-- The only way to say "these buttons are about the conversation, not
-         this one message", and it sits with the subject it qualifies. -->
-    <button class="tscope" id="rScope" aria-pressed="false"
-      title="Decide whether Archive, Delete and Move act on this message or on the whole conversation">
-      <span id="rScopeLbl">This message</span>
-    </button>
   </div>
   <!-- Above the frame, never over it: anything painted on top of the message
        frame has cost it its first paint before. -->
@@ -2042,6 +2085,22 @@ function fmtWhen(ms) {
   if (d.getFullYear() === now.getFullYear())
     return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
   return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "2-digit" });
+}
+
+/**
+ * The date in the reader's header, in the browser's own locale: weekday, day,
+ * month by name, and the time to the minute.
+ *
+ * It used to be toLocaleString(), which printed "11/12/2026, 6:36:38 PM": a
+ * day and a month that swap places depending on who is reading, and seconds
+ * nobody asked for. The year is said only when it is not this one.
+ */
+function fmtFull(ms) {
+  const d = new Date(ms);
+  if (!ms || isNaN(d)) return "";
+  const opts = { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" };
+  if (d.getFullYear() !== new Date().getFullYear()) opts.year = "numeric";
+  return d.toLocaleString(undefined, opts);
 }
 
 /* ── accounts ── */
@@ -3048,7 +3107,9 @@ function renderScope() {
   chip.hidden = !(currentThread && currentThread.n > 1);
   chip.classList.toggle("on", on);
   chip.setAttribute("aria-pressed", String(on));
-  $("#rScopeLbl").textContent = on ? `All ${currentThread ? currentThread.n : 0}` : "This message";
+  // Says what the chip governs as well as what it is set to. "All 4" alone
+  // did not say all four of what, or that it was about the buttons below.
+  $("#rScopeLbl").textContent = on ? `Actions: all ${currentThread ? currentThread.n : 0} messages` : "Actions: this message";
   chip.title = on
     ? "Archive, Delete and Move will act on every message in this conversation. Tap for just this one."
     : "Archive, Delete and Move will act on this message alone. Tap for the whole conversation.";
@@ -3133,9 +3194,16 @@ async function openMsg(id, threadRow = null) {
     (m.cc_line ? ` · cc ${esc(m.cc_line)}` : "") +
     // Only ever present on your own copies: a draft, and what you have sent.
     (m.bcc_line ? ` · bcc ${esc(m.bcc_line)}` : "");
+  // Three pieces the stylesheet arranges by the room there is: who, when, and
+  // who else. The last is cut to one line and opens on a tap; its title
+  // carries the whole of it for a mouse. The exact time, seconds and zone
+  // included, is the title of the date.
+  const rcpt = `to ${esc(m.to_line || "me")}${also}`;
   $("#rMeta").innerHTML =
+    `<div class="rm1">` +
     (mine ? `<span class="who">${who}</span>` : `<button class="who" data-sender="1" title="About this sender">${who}</button>`) +
-    ` · ${esc(new Date(m.date).toLocaleString())} · to ${esc(m.to_line || "me")}${also}`;
+    `</div><span class="rwhen" title="${esc(new Date(m.date).toLocaleString(undefined, { dateStyle: "full", timeStyle: "long" }))}">${esc(fmtFull(m.date))} ·</span>` +
+    `<div class="rto" role="button" tabindex="0" aria-expanded="false" title="${rcpt}">${rcpt}</div>`;
   // Two different failures, said in our own voice rather than spliced into the
   // body where they would read as something the sender wrote. Neither is a
   // blank white pane, which is what this used to be and is indistinguishable
@@ -3600,6 +3668,14 @@ function openSender() {
 }
 $("#rMeta").addEventListener("click", (e) => {
   if (e.target.closest("[data-sender]")) openSender();
+  // The recipients, opened out or folded back to their one line. Not while
+  // text is selected: dragging across the addresses to copy them ends in a
+  // click too.
+  const to = e.target.closest(".rto");
+  if (to && !String(getSelection())) to.setAttribute("aria-expanded", String(to.classList.toggle("open")));
+});
+$("#rMeta").addEventListener("keydown", (e) => {
+  if ((e.key === "Enter" || e.key === " ") && e.target.closest(".rto")) { e.preventDefault(); e.target.click(); }
 });
 
 $("#sdImages").addEventListener("click", () => {
