@@ -1148,6 +1148,15 @@ main{padding-top:var(--hh,112px);scroll-padding-top:var(--hh,112px)}
 .iconbtn{color:var(--t1)}
 .iconbtn:active{background:linear-gradient(180deg,var(--g-sheen),transparent 58%),
   color-mix(in srgb,var(--t1) 9%,var(--g-fill))}
+/* Writing a message is what the header is for; Refresh and Settings are
+   housekeeping. As three identical glass discs they said otherwise, and
+   Compose was told from Refresh by its glyph alone. It takes the filled
+   accent that Send and Reply have: the three ways to start or finish a
+   message are the three solid buttons in the app. */
+#composeBtn,#composeBtn:active{color:var(--on-acc);
+  background:linear-gradient(180deg,rgba(255,255,255,.3),rgba(255,255,255,0) 60%),var(--acc);
+  border-color:color-mix(in srgb,var(--acc) 80%,#000);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 3px 8px color-mix(in srgb,var(--acc) 26%,transparent)}
 .searchwrap{height:40px;padding:0 14px;border-radius:999px}
 .searchwrap input{height:38px}
 #folderBtn{height:40px;padding:0 15px;border-radius:999px}
@@ -1365,8 +1374,9 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
   .rgroup .rbtn:hover{background:color-mix(in srgb,var(--t1) 7%,transparent);border-color:transparent;color:var(--acc)}
   #rDelete:hover,#cDiscard:hover{background:color-mix(in srgb,var(--red) 14%,transparent);color:var(--red)}
   .rowdel:hover{background:var(--red);color:#fff}
-  .rbtn.acc:hover{background:linear-gradient(180deg,rgba(255,255,255,.3),rgba(255,255,255,0) 60%),
+  .rbtn.acc:hover,#composeBtn:hover{background:linear-gradient(180deg,rgba(255,255,255,.3),rgba(255,255,255,0) 60%),
     color-mix(in srgb,var(--acc) 88%,#fff)}
+  #composeBtn:hover{color:var(--on-acc)}
   .pill:hover{background:color-mix(in srgb,var(--acc) 12%,var(--fill));border-color:transparent}
   .rbtn.acc.danger:hover{background:linear-gradient(180deg,rgba(255,255,255,.26),rgba(255,255,255,0) 60%),
     color-mix(in srgb,var(--red) 88%,#fff);color:#fff}
@@ -2242,7 +2252,9 @@ function renderAccounts() {
   // this function counted itself.
   const parts = [];
   if (accounts.length > 1) parts.push(`${Number(accounts.length)} accounts`);
-  parts.push(total ? `<b class="unread-n">${Number(total)} unread</b>` : "All read");
+  // Says what it counts. The folder button a line below shows the open
+  // folder's unread, so "5 unread" over "Inbox 4" looked like a miscount.
+  parts.push(total ? `<b class="unread-n">${Number(total)} unread</b> in all folders` : "All read");
   if (broken) parts.push(`${Number(broken)} need${broken > 1 ? "" : "s"} attention`);
   $("#hmeta").innerHTML = accounts.length ? parts.join(" · ") : "No account connected yet";
   // Rewritten twice a minute by the poll; as a live region it re-read "N
