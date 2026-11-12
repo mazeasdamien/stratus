@@ -5865,6 +5865,15 @@ function signatureHtml() {
 function withSignature(html) {
   const sig = signatureHtml();
   if (!sig) return html || "";
+  // Already signed. A draft, a message kept in this browser and a scheduled
+  // message taken out for editing all come back with the signature they were
+  // written with, and each reopening used to add one more underneath it.
+  // Looked for as an element rather than as text, in a template so nothing
+  // in it loads. cleanHtml has been over this first and leaves the class on
+  // the composer's own block only, so a quoted message cannot stand in for it.
+  const probe = document.createElement("template");
+  probe.innerHTML = html || "";
+  if (probe.content.querySelector(".sig")) return html;
   const at = (html || "").indexOf('<div class="quote-head">');
   if (at < 0) return (html || "<div><br></div>") + sig;
   return html.slice(0, at) + sig + html.slice(at);
