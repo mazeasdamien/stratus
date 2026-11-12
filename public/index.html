@@ -3589,6 +3589,20 @@ function parentDomain(host) {
 }
 
 /**
+ * Domains that are not one sender: mailbox providers, and Apple's relay for
+ * Hide My Email. A rule for one of these is never what "block this sender"
+ * means, so it is never the rule offered — it can still be typed.
+ */
+const SHARED_DOMAINS = new Set([
+  "gmail.com", "googlemail.com", "icloud.com", "me.com", "mac.com", "privaterelay.appleid.com", "appleid.com",
+  "outlook.com", "outlook.fr", "hotmail.com", "hotmail.fr", "hotmail.co.uk", "live.com", "live.fr", "msn.com",
+  "yahoo.com", "yahoo.fr", "yahoo.co.uk", "ymail.com", "aol.com", "proton.me", "protonmail.com", "pm.me",
+  "gmx.com", "gmx.de", "gmx.fr", "gmx.net", "web.de", "mail.com", "zoho.com", "fastmail.com", "hey.com",
+  "orange.fr", "wanadoo.fr", "free.fr", "sfr.fr", "neuf.fr", "laposte.net", "bbox.fr", "numericable.fr",
+  "qq.com", "163.com", "126.com", "sina.com", "naver.com", "mail.ru", "yandex.ru", "yandex.com",
+]);
+
+/**
  * Blocking, with the rule shown before it is applied rather than after.
  *
  * The field is prefilled and editable on purpose: this is the one action that
@@ -3635,7 +3649,13 @@ $("#sdBlock").addEventListener("click", () => {
   if (!current) return;
   const email = String(current.message.from_email || "").toLowerCase();
   if (!email) return toast("This message carries no sender address");
-  blockSender(parentDomain(email.slice(email.lastIndexOf("@") + 1)) || email);
+  // A company owns its domain, so the domain is the rule worth offering. A
+  // mailbox provider's domain belongs to everyone who has an address there:
+  // the field opened on "gmail.com" for one spammer, Enter confirms, and every
+  // message from anyone at gmail.com was destroyed, past and future. For
+  // those the rule offered is the address itself.
+  const domain = parentDomain(email.slice(email.lastIndexOf("@") + 1));
+  blockSender(domain && !SHARED_DOMAINS.has(domain) ? domain : email);
 });
 
 let blocked = [];
