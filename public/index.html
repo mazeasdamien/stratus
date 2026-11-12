@@ -7498,10 +7498,18 @@ $("#tabTimeline").addEventListener("click", () => switchTab("timeline"));
 async function loadTimeline() {
   if (currentTab === "timeline") $("#hmeta").textContent = "Loading meetings…";
   const res = await api("/api/timeline").catch(() => null);
-  const d = res && res.ok ? await res.json().catch(() => ({})) : {};
-  timelineEvents = d.events || [];
+  const d = res && res.ok ? await res.json().catch(() => null) : null;
+  // No answer is not an answer of "none". It used to empty the list, so a
+  // failed fetch read "No meetings yet", and the poll, which asks again
+  // every minute, could blank a timeline that had loaded perfectly well.
+  // What is already listed is kept, and the failure is said when there is
+  // nothing to show instead.
+  timelineFailed = !d;
+  if (d) timelineEvents = d.events || [];
   renderTimeline();
 }
+/** True when the last fetch of the timeline did not come back. */
+let timelineFailed = false;
 
 /** The day an event starts on, for the heading it is listed under. */
 function eventDayLabel(start) {
@@ -7542,16 +7550,23 @@ function renderTimeline() {
   const hasToday = timelineEvents.some((e) => eventDayLabel(e.start) === "Today");
   $("#timelineDot").hidden = !hasToday;
 
+  const unknown = timelineFailed && !timelineEvents.length;
   if (currentTab === "timeline") {
-    $("#hmeta").textContent = `Timeline · ${upcoming.length} ${upcoming.length === 1 ? "upcoming meeting" : "upcoming meetings"}`;
+    $("#hmeta").textContent = unknown
+      ? "Timeline · could not be loaded"
+      : `Timeline · ${upcoming.length} ${upcoming.length === 1 ? "upcoming meeting" : "upcoming meetings"}`;
   }
 
   if (!timelineEvents.length) {
     $("#timelineView").innerHTML =
       `<div class="tl-empty">` +
       `<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>` +
-      `<div><b>No meetings yet</b></div>` +
-      `<div style="font-size:12.5px;color:var(--t3);max-width:260px">Calendar invitations received in your mail will appear here in chronological order.</div>` +
+      (unknown
+        ? `<div><b>Could not load your meetings</b></div>` +
+          `<div style="font-size:12.5px;color:var(--t3);max-width:260px">The server did not answer. Check the connection.</div>` +
+          `<button class="ghost" data-tl-retry>Try again</button>`
+        : `<div><b>No meetings yet</b></div>` +
+          `<div style="font-size:12.5px;color:var(--t3);max-width:260px">Calendar invitations received in your mail will appear here in chronological order.</div>`) +
       `</div>`;
     return;
   }
@@ -7605,6 +7620,8 @@ function renderTimeline() {
 }
 
 $("#timelineView").addEventListener("click", (e) => {
+  // "Try again", under "Could not load your meetings".
+  if (e.target.closest("[data-tl-retry]")) { loadTimeline(); return; }
   const rsvpBtn = e.target.closest("[data-tl-rsvp]");
   if (rsvpBtn) {
     e.stopPropagation();
