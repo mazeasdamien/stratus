@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const VERSION = /CLIENT_VERSION = "([^"]+)"/.exec(await readFile(join(ROOT, "src/version.js"), "utf8"))[1];
-const only = process.argv[2] || "";
+const only = (process.argv[2] || "").split(",").filter(Boolean);
 const CHROME = [
   process.env.CHROME,
   "C:/Program Files/Google/Chrome/Application/chrome.exe",
@@ -144,11 +144,21 @@ const ws = new WebSocket(target.webSocketDebuggerUrl);
 await new Promise((r, j) => { ws.onopen = r; ws.onerror = j; });
 let seq = 0;
 const waiting = new Map();
-ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id && waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); } };
+ws.onmessage = (e) => {
+  const m = JSON.parse(e.data);
+  if (m.id && waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); }
+  // "Leave site?" and the like: answered, or every later step waits on it.
+  if (m.method === "Page.javascriptDialogOpening") cdp("Page.handleJavaScriptDialog", { accept: true });
+};
 const cdp = (method, params = {}) => new Promise((r) => { const id = ++seq; waiting.set(id, r); ws.send(JSON.stringify({ id, method, params })); });
+await cdp("Page.enable");
 /** Runs page code; the page's own functions and variables are in scope. */
-const ev = async (expression) => {
-  const m = await cdp("Runtime.evaluate", { expression: `(async () => { ${expression} })()`, awaitPromise: true, returnByValue: true });
+const ev = async (expression, ms = 30000) => {
+  // A step that never answers is a failure with a name, not a hung run.
+  const m = await Promise.race([
+    cdp("Runtime.evaluate", { expression: `(async () => { ${expression} })()`, awaitPromise: true, returnByValue: true }),
+    sleep(ms).then(() => { throw new Error("no answer from: " + expression.trim().slice(0, 100)); }),
+  ]);
   if (m.error) throw new Error("CDP: " + JSON.stringify(m.error));
   if (m.result?.exceptionDetails) throw new Error(m.result.exceptionDetails.exception?.description || m.result.exceptionDetails.text);
   return m.result?.result?.value;
@@ -158,10 +168,12 @@ const fresh = async (switches = {}) => {
   const q = new URLSearchParams(switches).toString();
   await fetch(`${APP}/__reset?${q}`);
   await cdp("Page.navigate", { url: APP + "/" });
-  for (let i = 0; i < 60; i++) {
+  let ready = false;
+  for (let i = 0; i < 40 && !ready; i++) {
     await sleep(150);
-    if (await ev("return typeof accounts !== 'undefined' && accounts.length > 0 && typeof messages !== 'undefined' && messages.length > 0").catch(() => false)) break;
+    ready = await ev("return typeof accounts !== 'undefined' && accounts.length > 0 && typeof messages !== 'undefined' && messages.length > 0", 3000).catch(() => false);
   }
+  if (!ready) throw new Error("the page did not load");
   await ev(`
     window.wait = (ms) => new Promise((r) => setTimeout(r, ms));
     window.fill = (subject, body) => {
@@ -180,7 +192,7 @@ const drafts = () => posts("/api/draft");
 let pass = 0, fail = 0;
 const ok = (c, label) => { c ? pass++ : fail++; console.log(`${c ? "  ok  " : "  FAIL"}  ${label}`); };
 const scenario = async (name, fn) => {
-  if (only && only !== name) return;
+  if (only.length && !only.includes(name)) return;
   console.log(`\n── ${name}`);
   // A page that reloads under a scenario (the service worker taking over on
   // its first run) kills the evaluation; that is the harness, so try again.
