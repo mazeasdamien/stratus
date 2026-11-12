@@ -5114,9 +5114,10 @@ async function assist(mode, btn) {
     } else {
       body.innerHTML = rebuilt;
     }
+    queueDraftSave();
     toast(
       mode === "improve" ? (scoped ? "Selection rewritten" : "Rewritten") : scoped ? "Selection corrected" : "Corrected",
-      () => { body.innerHTML = before; }
+      () => { body.innerHTML = before; queueDraftSave(); }
     );
   } catch { toast("AI failed"); }
   finally {
@@ -5198,7 +5199,10 @@ async function draftReply(btn) {
       .map((p) => `<div>${esc(p).replace(/\n/g, "<br>")}</div>`)
       .join("<div><br></div>");
     body.innerHTML = written + "<div><br></div>" + tail + "<div><br></div>";
-    toast("Reply written — read it before sending", () => { body.innerHTML = before; });
+    // Written by the assistant rather than typed, so no input event marked
+    // the message as changed: closing the composer kept none of it.
+    queueDraftSave();
+    toast("Reply written — read it before sending", () => { body.innerHTML = before; queueDraftSave(); });
   } catch { toast("AI failed"); }
   finally {
     tools.forEach((t) => (t.disabled = false));
@@ -5709,6 +5713,9 @@ async function addFiles(files) {
     busy(-1);
   }
   renderAtts();
+  // A file is a change to the message like any other. Only typing used to
+  // count, so a file added to a saved draft was dropped when it was closed.
+  if (added) queueDraftSave();
   if (added) say(`${added} attachment${added > 1 ? "s" : ""} added`);
 }
 $("#cFile").addEventListener("change", async (e) => {
@@ -5721,6 +5728,7 @@ $("#cAtts").addEventListener("click", (e) => {
   if (!b) return;
   attached.splice(Number(b.dataset.drop), 1);
   renderAtts();
+  queueDraftSave();
 });
 
 /* ── pasted images ── */
@@ -5833,6 +5841,7 @@ $("#cAccounts").addEventListener("click", (e) => {
   if (f) {
     composeFrom = f.dataset.cfrom;
     renderFromPicker();
+    queueDraftSave();
     return;
   }
   const b = e.target.closest("[data-cacc]");
@@ -5840,6 +5849,7 @@ $("#cAccounts").addEventListener("click", (e) => {
   composeAcct = b.dataset.cacc;
   composeFrom = "";
   renderFromPicker();
+  queueDraftSave();
 });
 /** What the composer would send, or null with the reason shown under it. */
 function outgoing() {
