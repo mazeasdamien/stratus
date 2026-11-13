@@ -2170,7 +2170,7 @@ function busy(delta) {
  * Which build this page is. Matches SHELL in sw.js and CLIENT_SHELL in the
  * Worker; every API call says it, and every reply says what it should be.
  */
-const CLIENT = "v70";
+const CLIENT = "v71";
 
 /**
  * How long a request may go unanswered before it is given up on.
@@ -2576,6 +2576,9 @@ function renderFolders() {
       .join("") +
     `<button class="frow${starredOnly ? " on" : ""}" data-starred="1"${starredOnly ? ' aria-current="true"' : ""}>
        <span class="grow">Starred</span></button>` +
+    // The weekly digest: its own page, under this app's sign-in (src/veille.js).
+    `<a class="frow" href="/veille" style="text-decoration:none;color:inherit">
+       <span class="grow">Veille</span><span class="side">hebdo</span></a>` +
     (mine.length ? `<div class="fgroup">Your folders</div>` : "") +
     mine
       .map((f) => row(folder === f.folder, `data-folder="${esc(f.folder)}"`, folderLabel(f.folder), f.n, f.unread, true, f.folder))

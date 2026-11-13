@@ -1025,7 +1025,8 @@ console.log("\n── contrat : appels du client ↔ routes ──────")
   eq(orphanCalls, [], "chaque appel du client tombe sur une route du Worker");
 
   // Ce que personne n'appelle : diagnostic assumé, ou code mort.
-  const DIAGNOSTIC = ["/api/debug/mailboxes", "/api/extension/activate"];
+  // /api/veille/feedback is called by the Veille page, which dmzs-digest serves (src/veille.js).
+  const DIAGNOSTIC = ["/api/debug/mailboxes", "/api/extension/activate", "/api/veille/feedback"];
   const samples = calls.flatMap(expand);
   const unusedExact = exact.filter((p) => !DIAGNOSTIC.includes(p) && !samples.includes(p));
   const unusedPatterns = patterns

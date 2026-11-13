@@ -12,6 +12,7 @@
  * device name stamped into the token so a session list means something.
  */
 
+import { isVeilleApi, isVeillePage, proxyVeille } from "./veille.js";
 import { AUTH_FAIL_WINDOW_MS, PUSH_SCOPE, checkBootstrapKey, clearCookie, getCookie, issueSession, readSession, renewedCookie, renewedHeaderToken, requestSession, revokeSession, sameOriginWrite, sessionCookie } from "./auth.js";
 import { runBackup } from "./backup.js";
 import { pushAll } from "./push.js";
@@ -28,7 +29,7 @@ import { SYNC_PER_RUN, json, learnHost } from "./util.js";
  * edit, and the page, this file and the service worker all agree on it or the
  * deploy never starts.
  */
-const CLIENT_SHELL = "v70";
+const CLIENT_SHELL = "v71";
 
 /**
  * One activation key, three ways in.
@@ -145,7 +146,7 @@ async function route(request, env, ctx) {
     if (dest && dest !== "empty" && dest !== "document") {
       return json({ error: "Not loadable from a page" }, 403);
     }
-    const res = await handleApi(request, env, path, ctx, session);
+    const res = isVeilleApi(path) ? await proxyVeille(request, env, path) : await handleApi(request, env, path, ctx, session);
     const fresh = await renewedCookie(session, env);
     const out = new Response(res.body, res);
     if (fresh) out.headers.append("Set-Cookie", fresh);
@@ -169,6 +170,9 @@ async function route(request, env, ctx) {
     }
     return out;
   }
+
+  // The weekly digest, read here under this app's sign-in (src/veille.js).
+  if (request.method === "GET" && isVeillePage(path)) return proxyVeille(request, env, path);
 
   // The shell, never from the browser's own cache without asking first.
   //

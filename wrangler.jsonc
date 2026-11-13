@@ -33,6 +33,11 @@
   // domain must be onboarded under Email Service → Email Sending.
   "send_email": [{ "name": "EMAIL" }],
 
+  // The Veille section (src/veille.js): the dmzs-digest Worker, reached
+  // directly rather than over its public workers.dev address. Its reader pages
+  // also check DIGEST_READER_TOKEN, set by dmzs-digest/agent/setup.py --reader.
+  "services": [{ "binding": "DIGEST", "service": "dmzs-digest" }],
+
   "routes": [
     { "pattern": "mail.agentxr.app", "custom_domain": true }
   ],
@@ -77,6 +82,7 @@
   // Secrets (npm run secrets, or wrangler secret put):
   //   AUTH_SECRET, BOOTSTRAP_KEY, ENC_KEY   — generated
   //   ANTHROPIC_API_KEY                                   — optional, for Fix/Improve
+  //   DIGEST_READER_TOKEN                                 — the Veille section, set from dmzs-digest
   //
   // The Anthropic key is only a starting point: one typed into the app (account
   // button → Writing assistant) is sealed into D1 and used ahead of this, so
