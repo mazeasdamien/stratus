@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "dmzs-mail",
+  "name": "Stratus",
   "version": "1.2.0",
   "description": "Unread count and new-mail alerts for mail.agentxr.app, without keeping the tab open.",
 
@@ -19,7 +19,7 @@
   ],
 
   "action": {
-    "default_title": "dmzs-mail",
+    "default_title": "Stratus",
     "default_icon": { "128": "icon128.png" }
   },
 

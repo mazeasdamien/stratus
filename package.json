@@ -1,13 +1,19 @@
 {
-  "name": "dmzs-mail",
+  "name": "stratus",
   "version": "1.0.0",
+  "description": "Your iCloud mailbox as a PWA, on one Cloudflare Worker.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mazeasdamien/stratus.git"
+  },
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "node scripts/check-client.mjs && node scripts/gen-schema.mjs --check && node test.mjs && npm run test:sync && wrangler deploy",
-    "db:schema": "node scripts/gen-schema.mjs && wrangler d1 execute dmzs-mail --remote --file=./schema.sql",
-    "db:schema:local": "node scripts/gen-schema.mjs && wrangler d1 execute dmzs-mail --local --file=./schema.sql",
+    "db:schema": "node scripts/gen-schema.mjs && wrangler d1 execute DB --remote --file=./schema.sql",
+    "db:schema:local": "node scripts/gen-schema.mjs && wrangler d1 execute DB --local --file=./schema.sql",
     "secrets": "node scripts/secrets.mjs",
     "icons": "node scripts/make-icons.mjs",
     "tail": "wrangler tail",
@@ -15,6 +21,22 @@
     "test:sync": "node --no-warnings scripts/sync-harness/run.mjs",
     "test:ui": "node --no-warnings scripts/ui-harness/run.mjs",
     "check": "node scripts/check-client.mjs && node scripts/gen-schema.mjs --check && node test.mjs && npm run test:sync"
+  },
+  "cloudflare": {
+    "bindings": {
+      "AUTH_SECRET": {
+        "description": "Signs the session cookies. Any long random string: use a password generator, 40 characters or more."
+      },
+      "BOOTSTRAP_KEY": {
+        "description": "Activates a device. **Write it down**: after the deploy, open `https://<your Worker address>/auth#k=<this key>` once on each device you use."
+      },
+      "ENC_KEY": {
+        "description": "Seals your iCloud app-specific password in the database. Any long random string, different from the other two. Changing it later means connecting iCloud again."
+      },
+      "CLAUDE_MODEL": {
+        "description": "The Claude model behind Fix, Improve and written replies. The Anthropic key itself is entered later in the app (account button → Writing assistant)."
+      }
+    }
   },
   "devDependencies": {
     "wrangler": "^4.151.1"

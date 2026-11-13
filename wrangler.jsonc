@@ -1,6 +1,15 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "dmzs-mail",
+
+  // ── Stratus, as anyone deploys it ─────────────────────────────────────────
+  //
+  // The top level is the template: what `npm run deploy` and the Deploy to
+  // Cloudflare button create in *your* account. The database and the bucket
+  // have names and no ids: Wrangler creates them on the first deploy and finds
+  // them again by binding on every later one. The app answers on the
+  // https://stratus.<you>.workers.dev address the deploy prints; add a custom
+  // domain in the dashboard whenever you like, nothing here needs to change.
+  "name": "stratus",
   "main": "src/index.js",
   "compatibility_date": "2026-08-01",
 
@@ -11,36 +20,10 @@
     "run_worker_first": true
   },
 
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "dmzs-mail",
-      // Created 2026-08-12 in your account, WEUR.
-      "database_id": "1ec281be-33be-4c95-aee7-d735e6bc7b35"
-    }
-  ],
+  "d1_databases": [{ "binding": "DB", "database_name": "stratus" }],
 
-  "r2_buckets": [
-    {
-      // Defused message bodies live here as small JSON blobs, one per message.
-      "binding": "MAIL",
-      "bucket_name": "dmzs-mail"
-    }
-  ],
-
-  // Cloudflare Email Sending, for From addresses iCloud will not send as
-  // (src/relay.js). Which domains go this way is RELAY_DOMAINS below; the
-  // domain must be onboarded under Email Service → Email Sending.
-  "send_email": [{ "name": "EMAIL" }],
-
-  // The Veille section (src/veille.js): the dmzs-digest Worker, reached
-  // directly rather than over its public workers.dev address. Its reader pages
-  // also check DIGEST_READER_TOKEN, set by dmzs-digest/agent/setup.py --reader.
-  "services": [{ "binding": "DIGEST", "service": "dmzs-digest" }],
-
-  "routes": [
-    { "pattern": "mail.agentxr.app", "custom_domain": true }
-  ],
+  // Defused message bodies live here as small JSON blobs, one per message.
+  "r2_buckets": [{ "binding": "MAIL", "bucket_name": "stratus" }],
 
   "triggers": {
     // Two schedules, told apart by event.cron in the Worker.
@@ -57,14 +40,6 @@
   },
 
   "vars": {
-    // Public address, used to build the activation link and absolute URLs.
-    "APP_URL": "https://mail.agentxr.app",
-
-    // From addresses on these domains leave through the EMAIL binding instead
-    // of iCloud SMTP. Comma-separated. Add the address itself under Settings →
-    // Your addresses so the composer offers it.
-    "RELAY_DOMAINS": "agentxr.app",
-
     // Model for the compose assistant: Claude Opus 5.5. You are waiting on it
     // mid-sentence, so Fix and Improve ask it for low effort and a written
     // reply for medium (src/index.js, /api/assist) — that is what keeps it
@@ -75,14 +50,21 @@
     // in Settings (backed by /api/ai-check) lists what the key can actually
     // use when it is time to move again.
     "CLAUDE_MODEL": "claude-opus-5-5"
+
+    // Optional, both of them:
+    //   APP_URL        "https://mail.example.com" — the public address. Without
+    //                  it the app uses whatever host it was reached on.
+    //   RELAY_DOMAINS  "example.com" — From addresses on these domains leave
+    //                  through Cloudflare Email Sending instead of iCloud SMTP
+    //                  (src/relay.js). Needs a "send_email": [{ "name": "EMAIL" }]
+    //                  binding and the domain onboarded under Email Service.
   },
 
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
 
-  // Secrets (npm run secrets, or wrangler secret put):
-  //   AUTH_SECRET, BOOTSTRAP_KEY, ENC_KEY   — generated
-  //   ANTHROPIC_API_KEY                                   — optional, for Fix/Improve
-  //   DIGEST_READER_TOKEN                                 — the Veille section, set from dmzs-digest
+  // Secrets (npm run secrets, or the Deploy to Cloudflare form):
+  //   AUTH_SECRET, BOOTSTRAP_KEY, ENC_KEY   — long random strings
+  //   ANTHROPIC_API_KEY                     — optional, for the writing assistant
   //
   // The Anthropic key is only a starting point: one typed into the app (account
   // button → Writing assistant) is sealed into D1 and used ahead of this, so
@@ -90,4 +72,37 @@
   //
   // The iCloud app-specific password is not here: it is entered in the app and
   // sealed into D1 with ENC_KEY, so it is per-account rather than per-Worker.
+
+  // ── The maintainer's own instance ─────────────────────────────────────────
+  //
+  // mail.agentxr.app. Picked by CLOUDFLARE_ENV=dmzs in a local, untracked .env
+  // file, which Wrangler reads for every command (deploy, secret put, tail, d1).
+  // Bindings and vars are not inherited by an environment, so they are all
+  // spelled out again; crons, assets and observability are.
+  "env": {
+    "dmzs": {
+      "name": "dmzs-mail",
+      "routes": [{ "pattern": "mail.agentxr.app", "custom_domain": true }],
+      "d1_databases": [
+        // Created 2026-08-12, WEUR.
+        { "binding": "DB", "database_name": "dmzs-mail", "database_id": "1ec281be-33be-4c95-aee7-d735e6bc7b35" }
+      ],
+      "r2_buckets": [{ "binding": "MAIL", "bucket_name": "dmzs-mail" }],
+
+      // Cloudflare Email Sending, for From addresses iCloud will not send as.
+      "send_email": [{ "name": "EMAIL" }],
+
+      // The Veille section (src/veille.js): the dmzs-digest Worker, reached
+      // directly rather than over its public workers.dev address. Its reader
+      // pages also check DIGEST_READER_TOKEN, set by dmzs-digest/agent/setup.py
+      // --reader.
+      "services": [{ "binding": "DIGEST", "service": "dmzs-digest" }],
+
+      "vars": {
+        "APP_URL": "https://mail.agentxr.app",
+        "RELAY_DOMAINS": "agentxr.app",
+        "CLAUDE_MODEL": "claude-opus-5-5"
+      }
+    }
+  }
 }

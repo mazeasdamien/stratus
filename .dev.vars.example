@@ -1,0 +1,5 @@
+# The three secrets Stratus needs. The Deploy to Cloudflare form asks for each;
+# from a terminal, `npm run secrets` generates and stores them for you.
+AUTH_SECRET=change-me-to-a-long-random-string # signs the session cookies
+BOOTSTRAP_KEY=change-me-to-a-long-random-string # opens /auth#k=<this> once per device
+ENC_KEY=change-me-to-a-long-random-string # seals the iCloud password in the database

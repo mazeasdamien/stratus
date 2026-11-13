@@ -585,7 +585,12 @@ export async function handleApi(request, env, path, ctx, session) {
     // `folder` is the key, as the server lists the mailbox: "R&AOk-unions".
     // `label` is what that says: "Réunions". Only the label is for showing;
     // everything that names a folder to this API uses the key.
-    return json({ folders: out.map((f) => ({ ...f, label: decodeMailboxName(f.folder) })) });
+    // `veille`: whether this deployment is linked to a digest (src/veille.js),
+    // so the folder list only offers the section where it can open.
+    return json({
+      folders: out.map((f) => ({ ...f, label: decodeMailboxName(f.folder) })),
+      veille: Boolean(env.DIGEST && env.DIGEST_READER_TOKEN),
+    });
   }
 
   // GET /api/contacts — who you actually write to, most-written-to first.

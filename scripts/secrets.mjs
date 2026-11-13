@@ -3,9 +3,16 @@
  * key only you have, and pushes everything with `wrangler secret put`.
  * Run it once from the project folder:
  *
- *   node scripts/secrets.mjs
+ *   npm run secrets                              (after the first npm run deploy)
+ *   npm run secrets -- https://mail.example.com  (to print the full activation link)
  *
- * Safe to re-run: it always overwrites, never prints values back.
+ * The address is the one `npm run deploy` printed (https://stratus.<you>.workers.dev)
+ * or your custom domain. Wrangler picks the Worker from wrangler.jsonc, and
+ * CLOUDFLARE_ENV in a local .env if there is one.
+ *
+ * Safe to re-run: it always overwrites, never prints values back. Re-running
+ * changes ENC_KEY, which makes the iCloud password already stored unreadable:
+ * connect iCloud again afterwards.
  */
 import { randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
@@ -25,6 +32,8 @@ const put = (name, value) => {
 
 const b64url = (n) => randomBytes(n).toString("base64url");
 
+const appUrl = (process.argv[2] || "").replace(/\/+$/, "") || "https://<your app address>";
+
 console.log("Generated secrets (stored, never shown):");
 const generated = {
   AUTH_SECRET: b64url(48), // signs session cookies
@@ -39,7 +48,7 @@ for (const [k, v] of Object.entries(generated)) {
 console.log(`
 Keep this somewhere safe NOW (it is needed on other machines):
 
-  Activation link : https://mail.agentxr.app/auth#k=${generated.BOOTSTRAP_KEY}
+  Activation link : ${appUrl}/auth#k=${generated.BOOTSTRAP_KEY}
 
 The key rides in the fragment, so it never reaches a server log or a Referer.
 `);

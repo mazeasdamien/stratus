@@ -9,8 +9,27 @@
 
 import { b64decode, b64encode } from "./mime.js";
 
+/**
+ * ENC_KEY as `npm run secrets` writes it is 32 random bytes in base64, used as
+ * is — as is any string that decodes to a valid AES key length, which is
+ * exactly the set that ever worked before. Anything else — a passphrase typed
+ * into the Deploy to Cloudflare form — is hashed to 32 bytes, so any string
+ * works and the same string always gives the same key.
+ */
+async function rawKey(secret) {
+  const s = String(secret ?? "");
+  let bytes = null;
+  try {
+    bytes = b64decode(s);
+  } catch {
+    bytes = null;
+  }
+  if (bytes && [16, 24, 32].includes(bytes.length)) return bytes;
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)));
+}
+
 async function keyOf(secretB64) {
-  return crypto.subtle.importKey("raw", b64decode(secretB64), "AES-GCM", false, [
+  return crypto.subtle.importKey("raw", await rawKey(secretB64), "AES-GCM", false, [
     "encrypt",
     "decrypt",
   ]);

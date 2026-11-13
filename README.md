@@ -1,40 +1,28 @@
-# dmzs-mail
+# Stratus
 
-Your iCloud mailbox as a PWA, on one Cloudflare Worker. Read, archive, reply — no mail client, no ads.
+Your iCloud mailbox as a PWA, on one Cloudflare Worker — with Claude to help you write. It runs in your own Cloudflare account, on the free plan: no Stratus server holds your mail or your password.
 
-## Stack
-
-iCloud (IMAP/SMTP) ⇄ Worker + D1 + R2 ⇄ PWA
-
-The Worker speaks IMAP and SMTP to Apple itself, syncs every minute from a cron, and takes a nightly snapshot of the database into R2. An app-specific password is sealed in D1 (AES-256-GCM). Bodies are defused before storage and shown in a sandboxed iframe; anything quoted into the composer is sanitised again in the page.
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/mazeasdamien/stratus)
 
 ## Setup
 
-```sh
-npm install
-npm run deploy      # Worker + PWA → mail.agentxr.app (tables are created by the first cron)
-npm run secrets     # AUTH_SECRET / BOOTSTRAP_KEY / ENC_KEY, optional ANTHROPIC_API_KEY, activation link
-```
+1. **Deploy** with the button (give each secret a different long random string, and keep `BOOTSTRAP_KEY`), or:
+   ```sh
+   npm install && npx wrangler login
+   npm run deploy                                   # prints https://stratus.<you>.workers.dev
+   npm run secrets -- https://stratus.<you>.workers.dev
+   ```
+2. **Activate** each device once, a minute after the first deploy: `https://stratus.<you>.workers.dev/auth#k=<BOOTSTRAP_KEY>`. Keep that link private.
+3. **Connect iCloud**: Settings → Connect iCloud, with an app-specific password from [account.apple.com](https://account.apple.com).
 
-1. **Deploy before secrets**: `wrangler secret put` needs the Worker to exist.
-2. Open the activation link `npm run secrets` prints, once per device.
-3. Settings → **Connect iCloud** → address + an app-specific password from [account.apple.com](https://account.apple.com) → Sign-In and Security.
+Optional: a custom domain (dashboard → Domains & Routes), an Anthropic key for Claude (account button → Writing assistant), sending from your own domain (`RELAY_DOMAINS` in `wrangler.jsonc`), and the Chrome extension in `extension/` (put your address in place of `mail.agentxr.app`).
 
-`npm run check` runs the client checks, the schema check, the unit tests and the fake-IMAP sync harness; `npm run deploy` runs it first.
+## Features
 
-## Use
+Archive, move, star, snooze and search, written through to iCloud · drafts, scheduled send, undo send, aliases and Hide My Email · Claude: Fix, Improve, replies, thread summaries · invitations · remote images held back, one-click unsubscribe, blocked senders · PDF, `.eml`, zip, nightly backup · Web Push. Press `?` for the shortcuts.
 
-- **Read and triage**: archive, delete, star, move and mark unread write through to iCloud; swipe to archive; conversations; full-text search over bodies; snooze a message until later.
-- **Write**: compose with Cc/Bcc, drafts kept at iCloud, forward with attachments, a signature, and five seconds to undo every send. **Later** schedules a message; the server sends it whether or not the app is open.
-- **Your addresses**: a name on the From line, and replies leave from the alias or Hide My Email address the mail was sent to.
-- **Claude** (Settings → Writing, an Anthropic key): Fix, Improve, a written reply, and a summary of a whole conversation.
-- **Invitations**: Accept / Maybe / Decline on the message, answered to the organiser.
-- **Privacy**: remote images held back until you ask, per sender if you like; one-click unsubscribe; blocked senders are deleted at iCloud as they arrive.
-- **Keep**: save as PDF, download the original `.eml`, all attachments as a zip; Settings → Accounts → Backup shows the nightly snapshot and restores what is missing.
-- Notifications: tab title and favicon badge, Web Push when installed, and the Chrome extension in `extension/` (load unpacked).
+## How it works
 
-Shortcuts: `j`/`k` move · `/` search · `e` archive · `#` delete · `s` star · `u` unread · `v` move · `b` snooze · `r`/`a`/`f` reply, reply all, forward · `R`/`A` written by Claude · `p` PDF · `z` undo · `Ctrl+Enter` send · `Esc` back · `?` all of them.
+iCloud (IMAP/SMTP) ⇄ Worker + D1 + R2 ⇄ PWA. A cron syncs every minute and snapshots the database nightly; the iCloud password is sealed with AES-256-GCM; bodies are sanitised and shown in a sandboxed iframe. `npm run check` runs every test. `env.dmzs` in `wrangler.jsonc` is the maintainer's own instance, picked by `CLOUDFLARE_ENV=dmzs` in an untracked `.env`.
 
-## Licence
-
-MIT. No warranty; your mail is your responsibility.
+MIT licence. No warranty; your mail is your responsibility.

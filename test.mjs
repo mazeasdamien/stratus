@@ -410,6 +410,39 @@ console.log("\n── scellement des jetons ────────────
   const OTHER = b64encode(crypto.getRandomValues(new Uint8Array(32)));
   ok((await open(OTHER, blob)) === null, "mauvaise clé → null");
   ok(blob !== (await seal(KEY, secret)), "IV frais à chaque scellement");
+
+  // Une clé 32 octets en base64 est utilisée telle quelle, comme avant : un
+  // blob scellé avec la clé brute s'ouvre toujours.
+  const raw = await crypto.subtle.importKey("raw", b64decode(KEY), "AES-GCM", false, ["encrypt"]);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, raw, new TextEncoder().encode('{"a":1}')));
+  eq(await open(KEY, b64encode(new Uint8Array([...iv, ...ct]))), { a: 1 }, "clé base64 de 32 octets : inchangée");
+
+  // Une phrase quelconque (formulaire Deploy to Cloudflare) marche aussi.
+  const PHRASE = "une longue phrase tapée à la main, pas du base64 !";
+  const sealed = await seal(PHRASE, secret);
+  eq(await open(PHRASE, sealed), secret, "phrase de passe : aller-retour fidèle");
+  ok((await open(PHRASE + "x", sealed)) === null, "autre phrase → null");
+}
+
+console.log("\n── hôte de l'app sans APP_URL ──────────────");
+{
+  const util = await import("./src/util.js");
+  util.learnHost({}, new Request("https://Stratus.Someone.workers.dev/api/folders"));
+  eq(util.ownHost, "stratus.someone.workers.dev", "l'hôte de la requête, sans APP_URL");
+  util.learnHost({ APP_URL: "https://mail.example.com" }, new Request("https://other.example/"));
+  eq(util.ownHost, "mail.example.com", "APP_URL l'emporte sur la requête");
+  const writes = [];
+  const DB = { prepare: (sql) => ({ bind: (v) => ({ run: async () => writes.push([sql, v]) }) }) };
+  const waits = [];
+  util.learnHost({}, new Request("https://a.example/"));
+  util.keepHost({ DB }, { waitUntil: (p) => waits.push(p) });
+  util.keepHost({ DB }, { waitUntil: (p) => waits.push(p) });
+  await Promise.all(waits);
+  eq(writes.length, 1, "l'hôte est écrit une seule fois par isolat");
+  eq(writes[0][1], "a.example", "c'est l'hôte de la requête qui est gardé");
+  util.keepHost({ DB, APP_URL: "https://a.example" }, { waitUntil: (p) => waits.push(p) });
+  eq(waits.length, 1, "avec APP_URL, rien n'est écrit");
 }
 
 console.log("");

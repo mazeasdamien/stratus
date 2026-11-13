@@ -1,5 +1,5 @@
 /**
- * dmzs-mail — one Worker, one mailbox.
+ * Stratus — one Worker, one mailbox.
  *
  * iCloud only. The Worker speaks IMAP and SMTP itself over outbound sockets,
  * so nothing runs on any machine of yours: a cron pulls every mailbox a few
@@ -20,7 +20,7 @@ import { ensureSchema } from "./schema.js";
 import { handleApi } from "./api.js";
 import { flushOutbox, wakeSnoozed } from "./outgoing.js";
 import { syncAccount } from "./sync.js";
-import { SYNC_PER_RUN, json, learnHost } from "./util.js";
+import { SYNC_PER_RUN, json, keepHost, learnHost, recallHost } from "./util.js";
 
 /**
  * The client this Worker was deployed alongside.
@@ -29,7 +29,7 @@ import { SYNC_PER_RUN, json, learnHost } from "./util.js";
  * edit, and the page, this file and the service worker all agree on it or the
  * deploy never starts.
  */
-const CLIENT_SHELL = "v71";
+const CLIENT_SHELL = "v72";
 
 /**
  * One activation key, three ways in.
@@ -276,7 +276,8 @@ const ACTIVATION_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf
 
 export default {
   async fetch(request, env, ctx) {
-    learnHost(env);
+    learnHost(env, request);
+    keepHost(env, ctx);
     // Everything below is allowed to throw; nothing is allowed to answer a
     // thrown error with a Worker stack trace. One outer net, one shape.
     try {
@@ -290,6 +291,7 @@ export default {
   // pass. The subrequest allowance per invocation shapes everything here.
   async scheduled(event, env, ctx) {
     learnHost(env);
+    await recallHost(env);
     // Two schedules share this handler; the cron expression says which fired.
     if (event.cron && event.cron.startsWith("17 3")) {
       ctx.waitUntil(

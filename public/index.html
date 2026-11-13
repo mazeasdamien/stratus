@@ -11,7 +11,7 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<title>dmzs-mail</title>
+<title>Stratus</title>
 <style>
 /* Same design language as dmzs-music: one dark palette, one accent. */
 /* Light is the default palette; dark is the variant. Every colour is defined
@@ -1973,6 +1973,7 @@ const hue = (s) => { let h = 0; for (const c of String(s)) h = (h * 31 + c.charC
 let accounts = [];
 let messages = [];
 let folders = [];             // [{folder, n, unread}] straight from the server
+let veilleOn = false;        // this deployment has the weekly digest linked
 let folder = "inbox";
 let starredOnly = false;      // the Starred view is a filter, not a folder
 let folderEditing = false;
@@ -2170,7 +2171,7 @@ function busy(delta) {
  * Which build this page is. Matches SHELL in sw.js and CLIENT_SHELL in the
  * Worker; every API call says it, and every reply says what it should be.
  */
-const CLIENT = "v71";
+const CLIENT = "v72";
 
 /**
  * How long a request may go unanswered before it is given up on.
@@ -2478,6 +2479,7 @@ async function loadFolders() {
     const res = await api("/api/folders");
     if (!res.ok) return;
     const d = await res.json();
+    veilleOn = d.veille === true;
     folders = (d.folders || []).sort(
       (a, b) => folderRank(a.folder) - folderRank(b.folder) || a.folder.localeCompare(b.folder)
     );
@@ -2576,9 +2578,12 @@ function renderFolders() {
       .join("") +
     `<button class="frow${starredOnly ? " on" : ""}" data-starred="1"${starredOnly ? ' aria-current="true"' : ""}>
        <span class="grow">Starred</span></button>` +
-    // The weekly digest: its own page, under this app's sign-in (src/veille.js).
-    `<a class="frow" href="/veille" style="text-decoration:none;color:inherit">
-       <span class="grow">Veille</span><span class="side">hebdo</span></a>` +
+    // The weekly digest: its own page, under this app's sign-in (src/veille.js),
+    // offered only where the deployment is linked to one.
+    (veilleOn
+      ? `<a class="frow" href="/veille" style="text-decoration:none;color:inherit">
+       <span class="grow">Veille</span><span class="side">hebdo</span></a>`
+      : "") +
     (mine.length ? `<div class="fgroup">Your folders</div>` : "") +
     mine
       .map((f) => row(folder === f.folder, `data-folder="${esc(f.folder)}"`, folderLabel(f.folder), f.n, f.unread, true, f.folder))

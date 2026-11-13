@@ -12,5 +12,6 @@ agent/__pycache__/
 # patterns exist so a local override never becomes a commit.
 .dev.vars
 .dev.vars.*
+!.dev.vars.example
 .env
 .env.*

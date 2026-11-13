@@ -9,18 +9,44 @@ import { sanitizeHtml } from "./mime.js";
  *
  * A message is rendered against this app's address, so a URL in it naming
  * this host is a request to the app itself — with the session cookie, from
- * the print frame. Read from APP_URL at each entry point rather than threaded
- * through every caller of rowFromRaw: one deployment, one host.
+ * the print frame. Read at each entry point rather than threaded through
+ * every caller of rowFromRaw: one deployment, one host.
+ *
+ * APP_URL says it when it is set. A fresh self-hosted deploy has none, so the
+ * host a request arrived on stands in, and is kept in settings for the cron,
+ * which syncs (and so defuses) with no request to read it from.
  */
 export let ownHost = "";
 
-export const learnHost = (env) => {
+let keptHost = "";
+
+export const learnHost = (env, request) => {
   try {
-    ownHost = env.APP_URL ? new URL(env.APP_URL).hostname : ownHost;
+    if (env.APP_URL) ownHost = new URL(env.APP_URL).hostname;
+    else if (request) ownHost = new URL(request.url).hostname.toLowerCase();
   } catch {
     /* a malformed APP_URL leaves relative URLs still caught */
   }
 };
+
+/** After a fetch with no APP_URL: write the host down once per isolate. */
+export const keepHost = (env, ctx) => {
+  if (env.APP_URL || !ownHost || ownHost === keptHost || !env.DB) return;
+  keptHost = ownHost;
+  ctx.waitUntil(
+    env.DB.prepare("INSERT INTO settings (key, value) VALUES ('app_host', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
+      .bind(ownHost)
+      .run()
+      .catch(() => (keptHost = "")) // no table before the first cron: try again next time
+  );
+};
+
+/** Before a cron pass with no APP_URL: the host a request last arrived on. */
+export async function recallHost(env) {
+  if (env.APP_URL || ownHost || !env.DB) return;
+  const row = await env.DB.prepare("SELECT value FROM settings WHERE key='app_host'").first().catch(() => null);
+  if (row?.value) ownHost = keptHost = String(row.value);
+}
 
 export const defuse = (html) => sanitizeHtml(html, { host: ownHost });
 

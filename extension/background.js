@@ -38,7 +38,7 @@ const GREY = "#8a8f98";
 const show = async (text, colour, title) => {
   await chrome.action.setBadgeText({ text });
   if (text) await chrome.action.setBadgeBackgroundColor({ color: colour });
-  await chrome.action.setTitle({ title: `dmzs-mail — ${title}` });
+  await chrome.action.setTitle({ title: `Stratus — ${title}` });
 };
 
 /**
@@ -70,7 +70,7 @@ async function poll() {
   } catch {
     // Offline, asleep, DNS hiccup. Keep the last known count rather than
     // flashing a zero — but say so, so a stale number is not read as current.
-    return chrome.action.setTitle({ title: "dmzs-mail — offline, showing the last count" });
+    return chrome.action.setTitle({ title: "Stratus — offline, showing the last count" });
   }
 
   // Two numbers, for two questions. The badge says `total`, every unread

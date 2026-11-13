@@ -19,6 +19,7 @@
  */
 
 import { seal, open } from "./crypto.js";
+import { ownHost } from "./util.js";
 
 const b64url = (bytes) => {
   let s = "";
@@ -74,7 +75,7 @@ async function vapidToken(env, audience, keys) {
         exp: Math.floor(Date.now() / 1000) + 12 * 3600,
         // Push services want a way to contact whoever is sending; this is the
         // app, not the user, so it names the app.
-        sub: env.APP_URL || "https://mail.agentxr.app",
+        sub: env.APP_URL || (ownHost ? `https://${ownHost}` : "https://github.com/mazeasdamien/stratus"),
       })
     )
   );
