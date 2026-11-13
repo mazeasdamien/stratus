@@ -12,7 +12,8 @@
  * that returns about forty bytes.
  */
 
-const APP = "https://mail.agentxr.app";
+import { currentApp, syncContentScript } from "./app.js";
+
 const ALARM = "poll";
 const EVERY_MINUTES = 1; // matches the Worker's own sync cron; no point going finer
 
@@ -51,7 +52,9 @@ const show = async (text, colour, title) => {
 async function poll() {
   const { token, lastUnread = 0, webPush = false } =
     await chrome.storage.local.get(["token", "lastUnread", "webPush"]);
-  if (!token) return show("!", GREY, "not connected. Click to set up.");
+  const { app: APP, allowed } = await currentApp();
+  if (!token || !APP) return show("!", GREY, "not connected. Click to set up.");
+  if (!allowed) return show("!", GREY, `no access to ${APP}. Click to set up.`);
 
   let state;
   try {
@@ -110,7 +113,8 @@ async function poll() {
  */
 async function openApp() {
   const { token } = await chrome.storage.local.get("token");
-  if (!token) return chrome.runtime.openOptionsPage();
+  const { app: APP, allowed } = await currentApp();
+  if (!token || !APP || !allowed) return chrome.runtime.openOptionsPage();
 
   const tabs = await chrome.tabs.query({ url: `${APP}/*` });
   if (tabs.length) {
@@ -136,14 +140,27 @@ const ensureAlarm = async () => {
   }
 };
 
-chrome.runtime.onInstalled.addListener(() => {
+// The content script is registered at run time, for the one address set on
+// the options page; a failure there only costs the instant refresh.
+const syncScript = () => syncContentScript().catch(() => {});
+
+chrome.runtime.onInstalled.addListener((details) => {
   ensureAlarm();
+  syncScript();
+  // A fresh install has nowhere to point yet: the setup page is step one.
+  if (details.reason === "install") chrome.runtime.openOptionsPage();
   poll();
 });
 // onStartup used to only poll, which is how the badge froze: after a browser
 // restart it painted one count and then had no alarm left to update it.
 chrome.runtime.onStartup.addListener(() => {
   ensureAlarm();
+  syncScript();
+  poll();
+});
+// Access taken back from chrome://extensions: drop the script, say so.
+chrome.permissions.onRemoved.addListener(() => {
+  syncScript();
   poll();
 });
 chrome.alarms.onAlarm.addListener((a) => a.name === ALARM && poll());

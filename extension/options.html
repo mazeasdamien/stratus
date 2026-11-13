@@ -55,16 +55,21 @@
 </head>
 <body>
   <h1>Stratus</h1>
-  <p>Paste your bootstrap key once. It is exchanged for a token, and the key
-     itself is not stored.</p>
+  <p>Your Stratus address and your bootstrap key, once. Chrome asks to let the
+     extension reach that address; the key is exchanged for a token and not
+     stored.</p>
 
-  <label for="key">Bootstrap key</label>
+  <label for="app">Address</label>
+  <input id="app" type="url" inputmode="url" autocomplete="url" spellcheck="false"
+         placeholder="https://stratus.you.workers.dev" />
+
+  <label for="key" style="margin-top:.85rem">Bootstrap key</label>
   <input id="key" type="password" autocomplete="off" spellcheck="false" />
   <button id="save">Connect</button>
   <!-- Status is announced, not just coloured: a silent .ok/.bad div is
        invisible to a screen reader. -->
   <div id="msg" role="status" aria-live="polite"></div>
 
-  <script src="options.js"></script>
+  <script type="module" src="options.js"></script>
 </body>
 </html>

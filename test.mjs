@@ -425,6 +425,22 @@ console.log("\n── scellement des jetons ────────────
   ok((await open(PHRASE + "x", sealed)) === null, "autre phrase → null");
 }
 
+console.log("\n── extension : adresse de l'app ────────────");
+{
+  const { originOf, patternOf } = await import("./extension/app.js");
+  eq(originOf("stratus.you.workers.dev"), "https://stratus.you.workers.dev", "sans schéma : https");
+  eq(originOf(" https://Mail.Example.com/inbox?x=1 "), "https://mail.example.com", "chemin et casse retirés");
+  eq(originOf("http://localhost:8787/"), "http://localhost:8787", "http accepté en local");
+  eq(originOf("http://mail.example.com"), null, "http refusé hors local");
+  eq(originOf("javascript:alert(1)"), null, "pas d'autre schéma");
+  eq(originOf("stratus"), null, "un mot seul n'est pas une adresse");
+  eq(originOf(""), null, "vide → null");
+  eq(patternOf("https://mail.example.com"), "https://mail.example.com/*", "motif de permission");
+  const manifest = JSON.parse(readFileSync(new URL("./extension/manifest.json", import.meta.url), "utf8"));
+  ok(!manifest.host_permissions && !manifest.content_scripts, "le manifeste ne nomme aucune adresse");
+  ok(!/agentxr/.test(readFileSync(new URL("./extension/background.js", import.meta.url), "utf8") + readFileSync(new URL("./extension/options.js", import.meta.url), "utf8")), "aucune adresse en dur dans l'extension");
+}
+
 console.log("\n── hôte de l'app sans APP_URL ──────────────");
 {
   const util = await import("./src/util.js");

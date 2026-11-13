@@ -15,7 +15,7 @@ Your iCloud mailbox as a PWA, on one Cloudflare Worker — with Claude to help y
 2. **Activate** each device once, a minute after the first deploy: `https://stratus.<you>.workers.dev/auth#k=<BOOTSTRAP_KEY>`. Keep that link private.
 3. **Connect iCloud**: Settings → Connect iCloud, with an app-specific password from [account.apple.com](https://account.apple.com).
 
-Optional: a custom domain (dashboard → Domains & Routes), an Anthropic key for Claude (account button → Writing assistant), sending from your own domain (`RELAY_DOMAINS` in `wrangler.jsonc`), and the Chrome extension in `extension/` (put your address in place of `mail.agentxr.app`).
+Optional: a custom domain (dashboard → Domains & Routes), an Anthropic key for Claude (account button → Writing assistant), sending from your own domain (`RELAY_DOMAINS` in `wrangler.jsonc`), and the Chrome extension in `extension/` (load unpacked, then give it your address and `BOOTSTRAP_KEY`).
 
 ## Features
 
