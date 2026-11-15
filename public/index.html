@@ -2171,7 +2171,7 @@ function busy(delta) {
  * Which build this page is. Matches SHELL in sw.js and CLIENT_SHELL in the
  * Worker; every API call says it, and every reply says what it should be.
  */
-const CLIENT = "v72";
+const CLIENT = "v73";
 
 /**
  * How long a request may go unanswered before it is given up on.
@@ -3292,6 +3292,10 @@ function frameDoc(body, images) {
   // white page inside a black app for the mail it can be ended for. HTML mail
   // is written for a white page and keeps one.
   const root = isPlainText(body) ? getComputedStyle(document.documentElement) : null;
+  // HTML mail with addresses written as text — anything sent from this app
+  // before it made links itself, and plenty of other mail — reads with them
+  // tappable, as plain-text mail already does.
+  if (!root) body = linkifyHtml(body);
   const tok = (name) => root.getPropertyValue(name).trim();
   const themed = root
     ? `html{color-scheme:${tok("color-scheme") || "light"}}body{color:${tok("--t1")};background:${tok("--bg")}}a{color:${tok("--acc")}}`
@@ -4443,8 +4447,73 @@ function quotedHistory(m, body) {
  * rules the editor actually relies on are written onto the elements
  * themselves, on a copy, on the way out.
  */
+/**
+ * Bare web addresses in a piece of HTML, made into links.
+ *
+ * The composer is a contenteditable: a URL typed or pasted there is text, not
+ * a link, so the HTML part went out without one and the reader — this app's,
+ * and the recipient's — showed it as plain words. Plain-text mail already gets
+ * its links on the server (textToHtml in src/mime.js); this is the same rule
+ * for HTML: http(s) only, sentence punctuation after the address left out, and
+ * a closing bracket kept only when the address opened one. Text already inside
+ * a link, a style or a script is left alone. Returns how many were made.
+ */
+const BARE_URL = /https?:\/\/[^\s<>"']+/g;
+function linkifyIn(root) {
+  const doc = root.ownerDocument || document;
+  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode: (n) =>
+      !n.data.includes("://") || n.parentElement?.closest("a,style,script,textarea,title,button,select")
+        ? NodeFilter.FILTER_REJECT
+        : NodeFilter.FILTER_ACCEPT,
+  });
+  const found = [];
+  while (walker.nextNode()) found.push(walker.currentNode);
+  let made = 0;
+  for (const node of found) {
+    const text = node.data;
+    const frag = doc.createDocumentFragment();
+    let at = 0;
+    for (const m of text.matchAll(BARE_URL)) {
+      let end = m[0].length;
+      for (;;) {
+        const c = m[0][end - 1] || "";
+        const opener = c === ")" ? "(" : c === "]" ? "[" : "";
+        if (/[.,;:!?]/.test(c) || (opener && !m[0].slice(0, end).includes(opener))) end--;
+        else break;
+      }
+      const url = m[0].slice(0, end);
+      if (!/^https?:\/\/[^/?#]/.test(url)) continue;
+      frag.append(text.slice(at, m.index));
+      const a = doc.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.textContent = url;
+      frag.append(a);
+      at = m.index + url.length;
+      made++;
+    }
+    if (!at) continue;
+    frag.append(text.slice(at));
+    node.replaceWith(frag);
+  }
+  return made;
+}
+
+/** The same, on an HTML string; the string itself when there was nothing to do. */
+function linkifyHtml(html) {
+  if (!String(html || "").includes("://")) return html;
+  // A template parses without running or fetching anything in it.
+  const t = document.createElement("template");
+  t.innerHTML = html;
+  return linkifyIn(t.content) ? t.innerHTML : html;
+}
+
 function mailHtml() {
   const copy = $("#cBody").cloneNode(true);
+  // Addresses typed as text leave as links, for every reader on the other end.
+  linkifyIn(copy);
   const style = (sel, css) =>
     copy
       .querySelectorAll(sel)
