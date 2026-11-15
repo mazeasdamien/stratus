@@ -27,6 +27,12 @@ const GREETING_MS = 15_000;
 // cron then ran into this one.
 const READ_MS = 30_000;
 const MAX_LITERAL = 8 * 1024 * 1024; // a single body larger than this is refused
+// What this app writes is another matter: an APPEND carries a message it has
+// just sent, and the composer lets that be 20 MB of attachments, which base64
+// makes about 27 MB. Held to the reading cap, every send over 8 MB went out but
+// never reached Sent at Apple, so no other device saw it. Apple's own refusal,
+// if it has one, comes back as a NO and is reported like any other.
+const MAX_APPEND = 32 * 1024 * 1024;
 
 /**
  * IMAP quoted-string: backslash and quote are the only escapes. CR, LF and
@@ -176,7 +182,7 @@ class Imap {
    */
   async commandLiteral(cmd, payload) {
     const bytes = this.encoder.encode(payload);
-    if (bytes.length > MAX_LITERAL) throw new Error(`IMAP literal too large (${bytes.length} bytes)`);
+    if (bytes.length > MAX_APPEND) throw new Error(`IMAP literal too large (${bytes.length} bytes)`);
     const verb = cmd.split(" ")[0];
     const tag = "d" + String(++this.seq).padStart(4, "0");
     await this.write(`${tag} ${cmd} {${bytes.length}}${CRLF}`);

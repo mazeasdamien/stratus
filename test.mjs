@@ -1228,6 +1228,25 @@ console.log("\n── transport IMAP, faux socket ──────────
   ok(r.literals[0].endsWith("\r\nfin"), "ses CRLF internes ne coupent rien");
   ok(/UID 7/.test(r.line), "la ligne d'en-tête du FETCH est lue");
   eq(await im.readLine(), "d0001 OK fait", "la réponse suivante reste alignée");
+
+  // Un envoi avec une pièce jointe de 9 Mo pèse ~12 Mo une fois encodé : sa
+  // copie doit pouvoir partir dans Sent chez Apple (2026-11-15, le papier 2
+  // n'y était pas), alors que la lecture reste plafonnée à 8 Mo.
+  const sentBytes = [];
+  const ack = fake(["+ go ahead\r\n", "d0001 OK APPEND completed\r\n"]);
+  ack.writable.getWriter = () => ({ write: async (b) => sentBytes.push(typeof b === "string" ? b.length : b.length) });
+  const ap = new Imap(ack);
+  const lourd = "y".repeat(12 * 1024 * 1024);
+  let refus = "";
+  try { await ap.commandLiteral('APPEND "Sent Messages" (\\Seen)', lourd); } catch (e) { refus = e.message; }
+  eq(refus, "", "une copie de 12 Mo part dans Sent");
+  ok(sentBytes.includes(lourd.length), "le message part entier, en un littéral");
+  let trop = "";
+  try { await new Imap(fake([])).commandLiteral('APPEND "Sent Messages" (\\Seen)', "z".repeat(33 * 1024 * 1024)); } catch (e) { trop = e.message; }
+  ok(/too large/.test(trop), "au-delà de 32 Mo, refus avant d'écrire quoi que ce soit");
+  let lu = "";
+  try { await new Imap(fake([])).readBytes(9 * 1024 * 1024); } catch (e) { lu = e.message; }
+  ok(/too large/.test(lu), "la lecture reste plafonnée à 8 Mo");
 }
 
 console.log("\n── audit 2026-10-17 : images encodées, URL de l'app ──");
