@@ -25,6 +25,11 @@
   // Defused message bodies live here as small JSON blobs, one per message.
   "r2_buckets": [{ "binding": "MAIL", "bucket_name": "stratus" }],
 
+  // The same code, pinned to another region, for a request that could not
+  // reach iCloud from where it landed (src/elsewhere.js). Holds no data.
+  "durable_objects": { "bindings": [{ "name": "ELSEWHERE", "class_name": "Elsewhere" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Elsewhere"] }],
+
   "triggers": {
     // Two schedules, told apart by event.cron in the Worker.
     //
@@ -96,6 +101,8 @@
       // 502 from France while the cron, which runs elsewhere, kept syncing.
       // The database is in Western Europe as well, so nothing is further away.
       "placement": { "region": "aws:eu-central-1" },
+      // Not inherited from the top level; see there.
+      "durable_objects": { "bindings": [{ "name": "ELSEWHERE", "class_name": "Elsewhere" }] },
 
       "send_email": [{ "name": "EMAIL" }],
 

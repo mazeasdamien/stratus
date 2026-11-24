@@ -7,7 +7,7 @@ import { latestBackup, restoreBackup, runBackup } from "./backup.js";
 import { bodyFromParts } from "./body.js";
 import { DEFAULT_MODEL as CLAUDE_DEFAULT, keyRefused, rewrite, usableModels } from "./claude.js";
 import { open, seal } from "./crypto.js";
-import { isAuthFailure } from "./errors.js";
+import { NoRouteError, isAuthFailure } from "./errors.js";
 import { httpsUrl, icsReply, indexEvent, parseIcs } from "./ics.js";
 import { imapCreate, imapDelete, imapEmpty, imapFetchMeta, imapFetchPart, imapFetchRaw, imapFlag, imapList, imapListRaw, imapMove, imapOpen, imapPurge, imapRename, imapSearch, imapSelect } from "./imap.js";
 import { b64decode, b64encode, blockMatches, buildRfc822, decodeMailboxName, encodeMailboxName, htmlToText, isBlockPattern, newMessageId, parseAddressList, qpBytes, replyReferences, textToHtml } from "./mime.js";
@@ -79,6 +79,7 @@ export async function handleApi(request, env, path, ctx, session) {
       const im = await imapOpen({ user: email, pass: password });
       await im.logout();
     } catch (e) {
+      if (e instanceof NoRouteError) throw e; // tried again from elsewhere
       return json(
         {
           error: isAuthFailure(e)
@@ -1028,6 +1029,7 @@ export async function handleApi(request, env, path, ctx, session) {
     try {
       body = await ensureBody(env, acct, msg);
     } catch (e) {
+      if (e instanceof NoRouteError) throw e; // tried again from elsewhere
       if (isAuthFailure(e)) await flagAccount(env, acct, e);
       // Escaped: the server's error text can quote the message's own bytes.
       body = bodyFromParts({ html: textToHtml(`(could not fetch the body: ${String(e.message || e)})`) });

@@ -17,7 +17,7 @@
  */
 
 import { connect } from "cloudflare:sockets";
-import { MailAuthError } from "./errors.js";
+import { MailAuthError, NoRouteError } from "./errors.js";
 import { bytesToLatin1 as latin1 } from "./rfc822.js";
 
 const CRLF = "\r\n";
@@ -245,12 +245,20 @@ class Imap {
 
 /** Connects, waits for the greeting, logs in. */
 export async function imapOpen({ host = "imap.mail.me.com", port = 993, user, pass }) {
-  const socket = connect({ hostname: host, port }, { secureTransport: "on" });
-  const im = new Imap(socket);
-  const greeting = await Promise.race([
-    im.readResponse(),
-    new Promise((_, rej) => setTimeout(() => rej(new Error("IMAP greeting timed out")), GREETING_MS)),
-  ]);
+  let im, greeting;
+  try {
+    const socket = connect({ hostname: host, port }, { secureTransport: "on" });
+    im = new Imap(socket);
+    greeting = await Promise.race([
+      im.readResponse(),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("IMAP greeting timed out")), GREETING_MS)),
+    ]);
+  } catch (e) {
+    // Nothing has been said to the server yet, so the request that wanted
+    // this connection is safe to run again from another location.
+    if (im) Promise.resolve().then(() => im.socket.close()).catch(() => {});
+    throw new NoRouteError(String((e && e.message) || e));
+  }
   if (!/^\* OK/i.test(greeting.line)) throw new Error(`IMAP refused: ${greeting.line.slice(0, 120)}`);
   try {
     await im.command(`LOGIN ${quote(user)} ${quote(pass)}`, { secret: true });

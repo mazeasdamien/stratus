@@ -24,3 +24,21 @@ export class MailAuthError extends Error {
 /** true when this failure means "reconnect the account", whatever threw it. */
 export const isAuthFailure = (e) =>
   e instanceof MailAuthError || !!(e && e.reauth);
+
+/**
+ * The connection to the mail server could not be opened from where this
+ * request is running: the socket died before the server's greeting, so
+ * nothing was sent and the request can be run again somewhere else.
+ *
+ * On 2026-11-24 every outbound socket from Cloudflare's Paris location failed
+ * this way at once ("Stream was cancelled.", in 3 ms, to any host), and
+ * Delete, Archive and Star answered 502 from France for as long as it lasted.
+ * The fetch handler catches this one and reruns the request in another
+ * region (src/elsewhere.js).
+ */
+export class NoRouteError extends Error {
+  constructor(message = "Could not reach the mail server from here") {
+    super(message);
+    this.name = "NoRouteError";
+  }
+}

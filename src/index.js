@@ -17,6 +17,9 @@ import { AUTH_FAIL_WINDOW_MS, PUSH_SCOPE, checkBootstrapKey, clearCookie, getCoo
 import { runBackup } from "./backup.js";
 import { pushAll } from "./push.js";
 import { ensureSchema } from "./schema.js";
+import { DurableObject } from "cloudflare:workers";
+import { NO_ROUTE, RAN_IN, runElsewhere } from "./elsewhere.js";
+import { NoRouteError } from "./errors.js";
 import { handleApi } from "./api.js";
 import { flushOutbox, wakeSnoozed } from "./outgoing.js";
 import { syncAccount } from "./sync.js";
@@ -274,18 +277,54 @@ const ACTIVATION_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf
    Entry points
    ──────────────────────────────────────────────────────────────── */
 
-export default {
-  async fetch(request, env, ctx) {
-    learnHost(env, request);
-    keepHost(env, ctx);
-    // Everything below is allowed to throw; nothing is allowed to answer a
-    // thrown error with a Worker stack trace. One outer net, one shape.
-    try {
-      return await route(request, env, ctx);
-    } catch (e) {
-      console.log(`unhandled: ${e && e.stack ? e.stack : e}`);
-      return json({ error: String((e && e.message) || e) }, 500);
+/**
+ * One request, from start to finish. `away` names the region when this is
+ * the rerun of a request that could not reach Apple where it first landed
+ * (src/elsewhere.js); that one does not hand itself on again.
+ */
+async function serve(request, env, ctx, away = "") {
+  learnHost(env, request);
+  keepHost(env, ctx);
+  // Only an API call can need Apple. Its copy is taken before anything reads
+  // the body, so the rerun gets the request exactly as it arrived.
+  const spare = !away && env.ELSEWHERE && new URL(request.url).pathname.startsWith("/api/") ? request.clone() : null;
+  // Everything below is allowed to throw; nothing is allowed to answer a
+  // thrown error with a Worker stack trace. One outer net, one shape.
+  try {
+    const res = await route(request, env, ctx);
+    if (!away) return res;
+    const out = new Response(res.body, res);
+    out.headers.set(RAN_IN, away);
+    return out;
+  } catch (e) {
+    if (e instanceof NoRouteError) {
+      if (away) return json({ error: `Could not reach iCloud: ${e.message}` }, 502, { [NO_ROUTE]: "1", [RAN_IN]: away });
+      const there = spare && (await runElsewhere(spare, env, e.message));
+      if (there) {
+        const out = new Response(there.body, there);
+        out.headers.delete(NO_ROUTE);
+        return out;
+      }
+      return json({ error: `Could not reach iCloud: ${e.message}` }, 502);
     }
+    console.log(`unhandled: ${e && e.stack ? e.stack : e}`);
+    return json({ error: String((e && e.message) || e) }, 500);
+  }
+}
+
+/**
+ * The same Worker, pinned to another region (src/elsewhere.js). It keeps no
+ * state of its own: it is only a place to run from.
+ */
+export class Elsewhere extends DurableObject {
+  fetch(request) {
+    return serve(request, this.env, this.ctx, request.headers.get("X-Region") || "elsewhere");
+  }
+}
+
+export default {
+  fetch(request, env, ctx) {
+    return serve(request, env, ctx);
   },
   // Sync heartbeat: the least-recently-synced account, IMAP_CAP messages per
   // pass. The subrequest allowance per invocation shapes everything here.

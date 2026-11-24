@@ -1201,12 +1201,12 @@ console.log("\n── transport IMAP, faux socket ──────────
   const { join } = await import("node:path");
   const { writeFileSync, mkdtempSync } = await import("node:fs");
   const src = readFileSync(new URL("./src/imap.js", import.meta.url), "utf8")
-    .replace(/^import \{ connect \} from "cloudflare:sockets";$/m, "const connect = null;")
-    .replace(/^import \{ MailAuthError \} from "\.\/errors\.js";$/m, "class MailAuthError extends Error {}")
+    .replace(/^import \{ connect \} from "cloudflare:sockets";$/m, "let connect = null;\nexport const setConnect = (f) => (connect = f);")
+    .replace(/^import \{ MailAuthError, NoRouteError \} from "\.\/errors\.js";$/m, "class MailAuthError extends Error {}\nclass NoRouteError extends Error {}")
     .replace(/from "\.\/(rfc822|mime)\.js";/g, (_m, f) => `from ${JSON.stringify(new URL(`./src/${f}.js`, import.meta.url).href)};`);
   const dir = mkdtempSync(join(tmpdir(), "imap-"));
-  writeFileSync(join(dir, "imap.mjs"), src + "\nexport { Imap };\n");
-  const { Imap } = await import("file://" + join(dir, "imap.mjs").replace(/\\/g, "/"));
+  writeFileSync(join(dir, "imap.mjs"), src + "\nexport { Imap, NoRouteError, MailAuthError };\n");
+  const { Imap, NoRouteError, MailAuthError, imapOpen, setConnect } = await import("file://" + join(dir, "imap.mjs").replace(/\\/g, "/"));
 
   const fake = (chunks) => {
     const enc = new TextEncoder();
@@ -1217,6 +1217,30 @@ console.log("\n── transport IMAP, faux socket ──────────
       close() {},
     };
   };
+  // Une prise qui meurt avant le bonjour du serveur (Paris, 2026-11-24 :
+  // « Stream was cancelled. » en 3 ms vers n'importe quel hôte) : rien n'a
+  // été dit, la requête peut être rejouée ailleurs. Après le bonjour, plus
+  // question : un LOGIN refusé reste une affaire de mot de passe.
+  const morte = () => ({
+    readable: { getReader: () => ({ read: async () => { throw new Error("Stream was cancelled."); } }) },
+    writable: { getWriter: () => ({ write: async () => {} }) },
+    close: async () => {},
+  });
+  setConnect(() => morte());
+  let perdu = null;
+  try { await imapOpen({ user: "a@icloud.com", pass: "x" }); } catch (e) { perdu = e; }
+  ok(perdu instanceof NoRouteError, "une prise morte avant le bonjour se rejoue ailleurs");
+  ok(/Stream was cancelled/.test(perdu && perdu.message), "en gardant le message d'origine");
+  setConnect(() => { throw new Error("proxy request failed"); });
+  perdu = null;
+  try { await imapOpen({ user: "a@icloud.com", pass: "x" }); } catch (e) { perdu = e; }
+  ok(perdu instanceof NoRouteError, "une connexion impossible à ouvrir aussi");
+  setConnect(() => fake(["* OK hello\r\n", "d0001 NO [AUTHENTICATIONFAILED] Authentication failed.\r\n"]));
+  perdu = null;
+  try { await imapOpen({ user: "a@icloud.com", pass: "x" }); } catch (e) { perdu = e; }
+  ok(perdu instanceof MailAuthError && !(perdu instanceof NoRouteError), "un mot de passe refusé n'est pas rejoué");
+  setConnect(null);
+
   const big = "x".repeat(200_000) + "\r\nfin";
   const flux = `* 1 FETCH (UID 7 BODY[] {${big.length}}\r\n${big})\r\nd0001 OK fait\r\n`;
   // Coupé tous les 997 octets : les fins de ligne et le littéral tombent au milieu.

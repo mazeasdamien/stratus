@@ -2,7 +2,7 @@
  * The local store: rows into D1, the full-text index, forgetting messages, and how failures are recorded.
  */
 
-import { isAuthFailure } from "./errors.js";
+import { NoRouteError, isAuthFailure } from "./errors.js";
 import { accountById } from "./filing.js";
 import { bodyKey, hashHex, json } from "./util.js";
 
@@ -21,6 +21,9 @@ export async function flagAccount(env, account, e) {
  * times and had drifted into three different wordings of the same two facts.
  */
 export function imapError(e, acct, env) {
+  // Not this route's to answer: the fetch handler reruns the whole request
+  // from another region (src/elsewhere.js).
+  if (e instanceof NoRouteError) throw e;
   if (isAuthFailure(e)) {
     if (acct && env) flagAccount(env, acct, e).catch(() => {});
     return json({ error: "This account needs reconnecting" }, 409);
