@@ -90,6 +90,13 @@
       "r2_buckets": [{ "binding": "MAIL", "bucket_name": "dmzs-mail" }],
 
       // Cloudflare Email Sending, for From addresses iCloud will not send as.
+      // Requests run near Frankfurt rather than wherever they arrive. On
+      // 2026-11-24 every outbound socket opened at Paris (CDG) died at once
+      // with "Stream was cancelled.", so Delete, Archive and Star all answered
+      // 502 from France while the cron, which runs elsewhere, kept syncing.
+      // The database is in Western Europe as well, so nothing is further away.
+      "placement": { "region": "aws:eu-central-1" },
+
       "send_email": [{ "name": "EMAIL" }],
 
       // The Veille section (src/veille.js): the dmzs-digest Worker, reached
