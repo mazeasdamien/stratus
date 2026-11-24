@@ -866,7 +866,7 @@ export async function handleApi(request, env, path, ctx, session) {
     if (thread) {
       const { results } = await env.DB.prepare(
         `SELECT id, account_id, thread_key, from_name, from_email, subject, snippet,
-                date, unread, starred, folder, has_body
+                date, unread, starred, color, folder, has_body
            FROM messages
           WHERE thread_key=? AND thread_key<>'' AND folder<>'trash'
           ORDER BY date ASC LIMIT 100`
@@ -929,7 +929,7 @@ export async function handleApi(request, env, path, ctx, session) {
       cv = [before];
     }
     const COLS =
-      "m.id, m.account_id, m.thread_key, m.from_name, m.from_email, m.subject, m.snippet, m.date, m.unread, m.starred, m.folder, m.has_body";
+      "m.id, m.account_id, m.thread_key, m.from_name, m.from_email, m.subject, m.snippet, m.date, m.unread, m.starred, m.color, m.folder, m.has_body";
 
     // Grouped by conversation, except while searching: a search is a question
     // about individual messages, and collapsing the answer hides the one that
@@ -991,7 +991,7 @@ export async function handleApi(request, env, path, ctx, session) {
       const chunk = keys.slice(i, i + room);
       stmts.push(
         env.DB.prepare(
-          `SELECT x.thread_key, COUNT(*) AS n, SUM(x.unread) AS unread, SUM(x.starred) AS starred
+          `SELECT x.thread_key, COUNT(*) AS n, SUM(x.unread) AS unread, SUM(x.starred) AS starred, MAX(x.color) AS color
              FROM messages x
             WHERE ${P("x")} AND x.thread_key IN (${chunk.map(() => "?").join(",")})
             GROUP BY x.thread_key`
@@ -1007,7 +1007,7 @@ export async function handleApi(request, env, path, ctx, session) {
     return json({
       messages: heads.map((r) => {
         const s = r.thread_key ? sums.get(r.thread_key) : null;
-        return { ...r, unread: s ? s.unread : r.unread, starred: s ? s.starred : r.starred, n: s ? s.n : 1 };
+        return { ...r, unread: s ? s.unread : r.unread, starred: s ? s.starred : r.starred, color: s ? s.color : r.color, n: s ? s.n : 1 };
       }),
     });
   }
@@ -1362,6 +1362,27 @@ export async function handleApi(request, env, path, ctx, session) {
       return imapError(e, acct, env);
     }
     return json({ ok: true });
+  }
+
+  // POST /api/messages/:id/color { color: 0-5, thread? } — 0 takes it off.
+  //
+  // Kept here and nowhere else. iCloud's only colours are the flag colours,
+  // and a flag is the star: colouring a message would have starred it on
+  // every device. With `thread`, every message of the conversation takes the
+  // colour, so its row in the list keeps it when the next reply arrives.
+  const msgColor = path.match(/^\/api\/messages\/([a-f0-9]{16})\/color$/);
+  if (msgColor && request.method === "POST") {
+    const b = await request.json().catch(() => ({}));
+    const color = Number(b.color);
+    if (!Number.isInteger(color) || color < 0 || color > 5) return json({ error: "A colour from 0 to 5" }, 400);
+    const msg = await env.DB.prepare("SELECT id, account_id, thread_key FROM messages WHERE id=?").bind(msgColor[1]).first();
+    if (!msg) return json({ error: "Unknown message" }, 404);
+    const r = b.thread && msg.thread_key
+      ? await env.DB.prepare("UPDATE messages SET color=? WHERE account_id=? AND thread_key=?")
+          .bind(color, msg.account_id, msg.thread_key)
+          .run()
+      : await env.DB.prepare("UPDATE messages SET color=? WHERE id=?").bind(color, msg.id).run();
+    return json({ ok: true, color, n: r.meta?.changes ?? 1 });
   }
 
   // GET /api/signature — what goes under everything you write.

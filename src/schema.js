@@ -60,7 +60,10 @@ export const SCHEMA = [
   date        INTEGER NOT NULL DEFAULT 0,   -- ms
   unread      INTEGER NOT NULL DEFAULT 1,
   starred     INTEGER NOT NULL DEFAULT 0,   -- IMAP \\Flagged
-  has_body    INTEGER NOT NULL DEFAULT 0,   -- 1 once the defused body sits in R2
+  -- A colour you gave it, 1 to 5 (red, orange, yellow, green, blue), 0 for
+  -- none. Here only: iCloud has no colour that is not also a flag.
+  color       INTEGER NOT NULL DEFAULT 0,
+  has_body   INTEGER NOT NULL DEFAULT 0,   -- 1 once the defused body sits in R2
   -- Where the provider has it: IMAP mailbox path and UID within it. What lets
   -- a sync notice a flag changed or a message expunged on another device.
   -- 0 and '' until a sync has seen the message there.
@@ -220,6 +223,7 @@ export const HEAL_COLUMNS = {
     refs: "TEXT NOT NULL DEFAULT ''",
     mailbox: "TEXT NOT NULL DEFAULT ''",
     uid: "INTEGER NOT NULL DEFAULT 0",
+    color: "INTEGER NOT NULL DEFAULT 0",
   },
   accounts: {
     label: "TEXT NOT NULL DEFAULT ''",

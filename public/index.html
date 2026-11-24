@@ -262,6 +262,29 @@ main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior
 /* Starred, beside the date. The accent on a read row too: it is the star the
    reader's button fills in, not part of the date. */
 .when .st{display:inline-block;vertical-align:-1px;margin-right:5px;color:var(--acc)}
+/* Colour labels, five of them. Said twice on the row: a dot beside the date,
+   where the star already lives, and a bar down the trailing edge — the
+   leading edge is unread's. Mid-tones, so one set reads on both themes. */
+:root{--c1:#e5484d;--c2:#f2891c;--c3:#e3b10b;--c4:#2f9e5b;--c5:#2f7fe0}
+[data-color="1"]{--cl:var(--c1)}
+[data-color="2"]{--cl:var(--c2)}
+[data-color="3"]{--cl:var(--c3)}
+[data-color="4"]{--cl:var(--c4)}
+[data-color="5"]{--cl:var(--c5)}
+.row[data-color]::before{content:"";position:absolute;right:0;top:0;bottom:0;width:4px;background:var(--cl)}
+.when .cdot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;background:var(--cl)}
+/* The reader's button shows the colour it is set to. */
+#rColor .ring{width:15px;height:15px;border-radius:50%;border:2px solid currentColor;box-sizing:border-box}
+#rColor[data-color] .ring{background:var(--cl);border-color:var(--cl)}
+#colorPop{position:fixed;z-index:60;display:none;gap:6px;padding:7px;border-radius:999px;
+  background:var(--g-fill-strong);border:1px solid var(--line-strong);
+  box-shadow:0 10px 30px rgba(0,0,0,.18),0 2px 6px rgba(0,0,0,.08)}
+#colorPop.up{display:flex}
+#colorPop button{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  background:var(--cl,transparent);color:var(--t2);border:2px solid transparent}
+#colorPop button[data-c="0"]{border-color:var(--line-strong)}
+#colorPop button[aria-checked="true"]{box-shadow:0 0 0 2px var(--g-fill-strong),0 0 0 4px var(--t1)}
+#colorPop button:hover{filter:brightness(1.08)}
 .subj{font-size:13.5px;margin-top:1px;color:var(--t1)}
 .row:not(.unread) .subj{color:var(--t2)}
 .snip{font-size:12.5px;color:var(--t3);margin-top:1px}
@@ -1561,6 +1584,9 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
       <button class="rbtn ico" id="rStar" aria-label="Star" aria-pressed="false" title="Star (s)">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3.6 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.8l5.9-.9Z"/></svg>
         </button>
+      <button class="rbtn ico overflowable" id="rColor" aria-label="Colour" aria-haspopup="menu" aria-expanded="false" title="Colour (1–5, 0 removes)">
+        <span class="ring"></span>
+        </button>
       <button class="rbtn ico overflowable" id="rUnread" aria-label="Mark unread" title="Mark unread (u)">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m3.5 7 8.5 6 8.5-6"/></svg>
         </button>
@@ -1619,6 +1645,17 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
 <!-- The overflow that keeps Reply at the far edge on a 375px screen. Each row
      is a mirror of the button it stands for, so there is one place a label and
      an icon are decided — the button above — and one place they are shown. -->
+<!-- The five colours, opened from #rColor. Nothing in it until a message is
+     open, so it is built once here and only its ticks change. -->
+<div id="colorPop" role="menu" aria-label="Colour">
+  <button role="menuitemradio" data-c="0" aria-label="No colour" title="No colour (0)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  <button role="menuitemradio" data-c="1" data-color="1" aria-label="Red" title="Red (1)"></button>
+  <button role="menuitemradio" data-c="2" data-color="2" aria-label="Orange" title="Orange (2)"></button>
+  <button role="menuitemradio" data-c="3" data-color="3" aria-label="Yellow" title="Yellow (3)"></button>
+  <button role="menuitemradio" data-c="4" data-color="4" aria-label="Green" title="Green (4)"></button>
+  <button role="menuitemradio" data-c="5" data-color="5" aria-label="Blue" title="Blue (5)"></button>
+</div>
+
 <div class="sheet" id="moreSheet">
   <div class="grab"></div>
   <div class="sh-t">More</div>
@@ -1755,6 +1792,7 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
     <dt><kbd>e</kbd></dt><dd>Archive</dd>
     <dt><kbd>#</kbd> <kbd>Delete</kbd></dt><dd>Delete</dd>
     <dt><kbd>s</kbd></dt><dd>Star</dd>
+    <dt><kbd>1</kbd>–<kbd>5</kbd> <kbd>0</kbd></dt><dd>Colour it red, orange, yellow, green, blue; 0 removes</dd>
     <dt><kbd>u</kbd></dt><dd>Mark unread</dd>
     <dt><kbd>x</kbd></dt><dd>Select the message, to act on several at once</dd>
     <dt><kbd>v</kbd></dt><dd>Move to a folder</dd>
@@ -1975,7 +2013,14 @@ let messages = [];
 let folders = [];             // [{folder, n, unread}] straight from the server
 let veilleOn = false;        // this deployment has the weekly digest linked
 let folder = "inbox";
-let starredOnly = false;      // the Starred view is a filter, not a folder
+let starredOnly = false;
+// Colour labels (see setColor): declared up here because the first paint of
+// the list, which needs them, can run before the script reaches setColor.
+const COLOR_NAMES = ["", "Red", "Orange", "Yellow", "Green", "Blue"];
+const colorOf = (m) => {
+  const c = Number((m && m.color) || 0);
+  return c >= 1 && c <= 5 ? c : 0;
+};      // the Starred view is a filter, not a folder
 let folderEditing = false;
 let query = "";               // search term; non-empty searches every folder
 let searchTimer = null;
@@ -2171,7 +2216,7 @@ function busy(delta) {
  * Which build this page is. Matches SHELL in sw.js and CLIENT_SHELL in the
  * Worker; every API call says it, and every reply says what it should be.
  */
-const CLIENT = "v73";
+const CLIENT = "v74";
 
 /**
  * How long a request may go unanswered before it is given up on.
@@ -2833,9 +2878,11 @@ function rowHtml(m, sub = false) {
   // it has been read. A screen reader gets the message rather than a row of
   // four unlabelled spans, and Enter opens it the way a click does.
   const starred = !!Number(m.starred);
+  const color = colorOf(m);
   const label = [
     m.unread ? "Unread" : "",
     starred ? "Starred" : "",
+    color ? `${COLOR_NAMES[color]} label` : "",
     m.from_name || m.from_email || "Unknown sender",
     m.subject ? `— ${m.subject}` : "",
     m.snippet || "",
@@ -2847,7 +2894,7 @@ function rowHtml(m, sub = false) {
   // Ticked in the markup, not only by togglePick: a repaint used to draw every
   // row unticked while the count in the bar still said three were chosen.
   const on = picked.has(m.id);
-  return `<div class="rowwrap${open ? " open" : ""}${on ? " picked" : ""}"><div class="row${m.unread ? " unread" : ""}${open ? " sel" : ""}${sub ? " sub" : ""}" data-id="${m.id}"
+  return `<div class="rowwrap${open ? " open" : ""}${on ? " picked" : ""}"><div class="row${m.unread ? " unread" : ""}${open ? " sel" : ""}${sub ? " sub" : ""}" data-id="${m.id}"${color ? ` data-color="${color}"` : ""}
     role="listitem" tabindex="0" aria-label="${esc(label)}"${open ? ' aria-current="true"' : ""}>
     <button class="selbox" type="button" aria-label="Select this message" aria-pressed="${on}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg></button>
     ${
@@ -2890,7 +2937,7 @@ function rowHtml(m, sub = false) {
           ? `<span class="ftag" title="Comes back to the inbox then">${esc(whenText(snoozedUntil.get(m.id)))}</span>`
           : ""
       }
-      <span class="when num">${
+      <span class="when num">${color ? `<span class="cdot" aria-hidden="true"></span>` : ""}${
         // The star, in the list. It could be set in the reader and then seen
         // nowhere else: a starred conversation looked like any other row.
         // With the date, so it cannot drift along the line as the sender's
@@ -3580,6 +3627,7 @@ async function openMsg(id, threadRow = null) {
   showImagesOnce = false; // a fresh message asks again
   $("#rStar").classList.toggle("on", !!Number(m.starred));
   $("#rStar").setAttribute("aria-pressed", String(!!Number(m.starred)));
+  paintColorButton(colorOf(m));
 
   // Unsubscribing is something you do to the message, not something attached
   // to it, so it belongs in the action bar with Archive and Delete rather than
@@ -3814,8 +3862,96 @@ addEventListener("keydown", (e) => {
       e.preventDefault();
       replyWritten(false);
       break;
+    // The colours, in the order the picker shows them.
+    case "0": case "1": case "2": case "3": case "4": case "5":
+      e.preventDefault();
+      setColor(Number(e.key));
+      break;
   }
 });
+
+/* ── colour labels ──
+   Five colours, stored by the app alone (src/api.js says why), on the message
+   or on the whole conversation as the scope chip says. */
+function paintColorButton(c) {
+  const b = $("#rColor");
+  if (c) b.dataset.color = String(c);
+  else delete b.dataset.color;
+  b.setAttribute("aria-label", c ? `Colour: ${COLOR_NAMES[c]}` : "Colour");
+  for (const o of $("#colorPop").querySelectorAll("[data-c]")) {
+    o.setAttribute("aria-checked", String(Number(o.dataset.c) === c));
+  }
+}
+function closeColorPop() {
+  $("#colorPop").classList.remove("up");
+  $("#rColor").setAttribute("aria-expanded", "false");
+}
+$("#rColor").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const pop = $("#colorPop");
+  if (pop.classList.contains("up")) return closeColorPop();
+  if (!current) return;
+  paintColorButton(colorOf(current.message));
+  pop.classList.add("up");
+  // Above the button, kept on screen at either edge. On a phone the button
+  // lives in the More sheet, so the picker rises from "⋯" instead.
+  const r = ($("#rColor").offsetParent ? $("#rColor") : $("#rMore")).getBoundingClientRect();
+  const w = pop.offsetWidth;
+  pop.style.left = `${Math.max(8, Math.min(r.left + r.width / 2 - w / 2, innerWidth - w - 8))}px`;
+  pop.style.top = `${Math.max(8, r.top - pop.offsetHeight - 10)}px`;
+  $("#rColor").setAttribute("aria-expanded", "true");
+  (pop.querySelector('[aria-checked="true"]') || pop.querySelector("[data-c]")).focus();
+});
+$("#colorPop").addEventListener("click", (e) => {
+  const o = e.target.closest("[data-c]");
+  if (!o) return;
+  closeColorPop();
+  setColor(Number(o.dataset.c));
+});
+addEventListener("click", (e) => {
+  // Not the click that opened it, from the More sheet, which is still on its way up.
+  if ($("#colorPop").classList.contains("up") && !e.target.closest("#colorPop, #rColor, #moreList")) closeColorPop();
+});
+// Ahead of the reader's own Escape, which would otherwise close the message.
+addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && $("#colorPop").classList.contains("up")) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    closeColorPop();
+    $("#rColor").focus();
+  }
+}, true);
+
+async function setColor(c) {
+  if (!current) return;
+  const m = current.message;
+  const id = m.id;
+  const key = m.thread_key || (currentThread && currentThread.key) || "";
+  const whole = !!(currentThread && currentThread.whole !== false && key);
+  const was = colorOf(m);
+  if (was === c && !whole) return;
+  // On the click, then put back if the server says no. By id and key, since
+  // the reader may be on another message by the time the answer is in.
+  const paint = (v) => {
+    if (current && current.message.id === id) {
+      current.message.color = v;
+      paintColorButton(v);
+    }
+    for (const list of [messages, threadRows]) {
+      for (const r of list) if (r.id === id || (whole && key && r.thread_key === key)) r.color = v;
+    }
+    renderList();
+  };
+  paint(c);
+  const res = await api(`/api/messages/${id}/color`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ color: c, thread: whole }),
+  }).catch(() => null);
+  if (res && res.ok) return;
+  paint(was);
+  toast("Could not change the colour");
+}
 
 $("#rImages").addEventListener("click", () => {
   showImagesOnce = true;
@@ -7913,7 +8049,7 @@ $("#rEml").addEventListener("click", () => {
    them, so a label and an icon are decided in one place. */
 const OVERFLOW_IDS = [
   "#rImages", "#rUnsub", "#rNotSpam",
-  "#rUnread", "#rMove", "#rPdf", "#rForward", "#rReplyAI", "#rReplyAll",
+  "#rColor", "#rUnread", "#rMove", "#rPdf", "#rForward", "#rReplyAI", "#rReplyAll",
   "#rSummarize", "#rSnooze", "#rEml",
 ];
 function renderMoreSheet() {
