@@ -32,7 +32,7 @@ import { SYNC_PER_RUN, json, keepHost, learnHost, recallHost } from "./util.js";
  * edit, and the page, this file and the service worker all agree on it or the
  * deploy never starts.
  */
-const CLIENT_SHELL = "v75";
+const CLIENT_SHELL = "v76";
 
 /**
  * One activation key, three ways in.
@@ -174,7 +174,7 @@ async function route(request, env, ctx) {
     return out;
   }
 
-  // The weekly digest, read here under this app's sign-in (src/veille.js).
+  // The digest, read here under this app's sign-in (src/veille.js).
   if (request.method === "GET" && isVeillePage(path)) return proxyVeille(request, env, path);
 
   // The shell, never from the browser's own cache without asking first.

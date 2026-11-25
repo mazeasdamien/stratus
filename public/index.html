@@ -2011,7 +2011,7 @@ const hue = (s) => { let h = 0; for (const c of String(s)) h = (h * 31 + c.charC
 let accounts = [];
 let messages = [];
 let folders = [];             // [{folder, n, unread}] straight from the server
-let veilleOn = false;        // this deployment has the weekly digest linked
+let veilleOn = false;        // this deployment has the digest linked
 let folder = "inbox";
 let starredOnly = false;
 // Colour labels (see setColor): declared up here because the first paint of
@@ -2236,7 +2236,7 @@ function busy(delta) {
  * Which build this page is. Matches SHELL in sw.js and CLIENT_SHELL in the
  * Worker; every API call says it, and every reply says what it should be.
  */
-const CLIENT = "v75";
+const CLIENT = "v76";
 
 /**
  * How long a request may go unanswered before it is given up on.
@@ -2643,11 +2643,11 @@ function renderFolders() {
       .join("") +
     `<button class="frow${starredOnly ? " on" : ""}" data-starred="1"${starredOnly ? ' aria-current="true"' : ""}>
        <span class="grow">Starred</span></button>` +
-    // The weekly digest: its own page, under this app's sign-in (src/veille.js),
+    // The digest (monthly since 2026-11-25): its own page, under this app's sign-in (src/veille.js),
     // offered only where the deployment is linked to one.
     (veilleOn
       ? `<a class="frow" href="/veille" style="text-decoration:none;color:inherit">
-       <span class="grow">Veille</span><span class="side">hebdo</span></a>`
+       <span class="grow">Veille</span></a>`
       : "") +
     (mine.length ? `<div class="fgroup">Your folders</div>` : "") +
     mine

@@ -1,5 +1,5 @@
 /**
- * The Veille section: the weekly digest, read inside the mail app.
+ * The Veille section: the digest (monthly), read inside the mail app.
  *
  * The digests live in the dmzs-digest Worker (its KV archive). This app shows
  * them under its own sign-in, so the pages are only ever reachable by an
