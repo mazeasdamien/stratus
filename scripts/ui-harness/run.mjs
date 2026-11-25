@@ -412,6 +412,17 @@ try {
     ok((await seen()).filter(filed).length === 1, "a single press still does");
   });
 
+  await scenario("toast-clears-bar", async () => {
+    await fresh();
+    const r = await ev(`await openMsg("m1", messages[0]); await wait(500); toast("Deleted", () => {}); await wait(450);
+      const t = $("#toast").getBoundingClientRect(), b = $("#reader .rbar").getBoundingClientRect();
+      const under = innerWidth / 2 >= b.left && innerWidth / 2 <= b.right;
+      return { under, toastBottom: Math.round(t.bottom), barTop: Math.round(b.top) };`);
+    ok(r.under && r.toastBottom <= r.barTop, `the Undo toast sits above the reader's action bar — ${JSON.stringify(r)}`);
+    const s = await ev(`closeReader(); $("#reader").classList.remove("up"); toast("Archived"); await wait(450); return $("#toast").style.bottom;`);
+    ok(s === "", `with no bar under it the toast goes back to its usual spot — bottom: "${s}"`);
+  });
+
   await scenario("stale-selection", async () => {
     await fresh();
     const n = await ev(`enterSelmode(); const first = document.querySelector("#list [data-id]"); togglePick(first.closest(".wrap") || first); const before = picked.size; renderFolders(); document.querySelector('[data-folder="archive"]').click(); await wait(400); return { before, after: picked.size, selmode: document.body.classList.contains("selmode") };`);

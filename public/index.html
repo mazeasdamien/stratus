@@ -2176,6 +2176,25 @@ let lastUndo = null;
  * found on startup, where the button offers to pick it back up. Calling it
  * "Undo" there would be asking someone to reverse something they did not do.
  */
+/**
+ * The toast's fixed spot is 26px off the bottom, centred on the window. On a
+ * wide screen that centre falls in the reader, right on its action bar
+ * (Delete, Archive, Star…), and the toast that says "Deleted · Undo" covered
+ * the buttons that had just been pressed. So it rises above whichever bar
+ * sits at the foot of the window under its centre: the reader's, or the
+ * selection bar.
+ */
+function liftToast(el) {
+  const x = innerWidth / 2;
+  let top = innerHeight;
+  for (const bar of document.querySelectorAll("#reader.up .rbar, #bulkbar.up")) {
+    const r = bar.getBoundingClientRect();
+    if (!r.height || r.left > x || r.right < x || r.bottom < innerHeight - 48) continue;
+    top = Math.min(top, r.top);
+  }
+  el.style.bottom = top < innerHeight ? `${Math.round(innerHeight - top + 10)}px` : "";
+}
+
 function toast(msg, undo, label = "Undo") {
   const el = $("#toast");
   // Built as a text node, never innerHTML: these strings carry folder names and
@@ -2194,6 +2213,7 @@ function toast(msg, undo, label = "Undo") {
     };
     el.appendChild(b);
   }
+  liftToast(el);
   el.classList.add("up");
   clearTimeout(toastTimer);
   // Long enough to actually reach for, without loitering.
@@ -2216,7 +2236,7 @@ function busy(delta) {
  * Which build this page is. Matches SHELL in sw.js and CLIENT_SHELL in the
  * Worker; every API call says it, and every reply says what it should be.
  */
-const CLIENT = "v74";
+const CLIENT = "v75";
 
 /**
  * How long a request may go unanswered before it is given up on.
