@@ -28,21 +28,21 @@ const messages = [
     from_name: "Camille Roux", from_email: "camille@atelier-roux.fr",
     to_line: "you@icloud.com", cc_line: "", bcc_line: "",
     subject: "Photos du week-end", snippet: "Je t'ai mis les photos dans l'album partagé…",
-    date: now - 12 * 60000, unread: 1, starred: 1, n: 1,
+    date: now - 12 * 60000, unread: 1, starred: 1, n: 1, cats: [1, 6], pinned: 1, importance: 1,
   },
   {
     id: "m2", account_id: "a1", mid: "<m2@demo>", pid: "m2", thread_key: "t2", folder: "inbox",
     from_name: "Apple", from_email: "no_reply@email.apple.com",
     to_line: "you@icloud.com", cc_line: "", bcc_line: "",
     subject: "Votre reçu Apple", snippet: "Merci pour votre achat sur l’App Store…",
-    date: now - 2 * 3600000, unread: 1, starred: 0, n: 3,
+    date: now - 2 * 3600000, unread: 1, starred: 0, n: 3, cats: [4], pinned: 0, importance: 0,
   },
   {
     id: "m3", account_id: "a1", mid: "<m3@demo>", pid: "m3", thread_key: "t3", folder: "inbox",
     from_name: "Léa Martin", from_email: "lea@studio-martin.com",
     to_line: "you@icloud.com", cc_line: "team@studio-martin.com", bcc_line: "",
     subject: "Re: maquette home", snippet: "La v2 est prête, dis-moi ce que tu en penses…",
-    date: now - 5 * 3600000, unread: 0, starred: 0, n: 1,
+    date: now - 5 * 3600000, unread: 0, starred: 0, n: 1, cats: [5, 2, 3, 6], pinned: 0, importance: -1,
   },
   {
     id: "m4", account_id: "a1", mid: "<m4@demo>", pid: "m4", thread_key: "t4", folder: "inbox",
@@ -59,6 +59,22 @@ const messages = [
     date: now - 26 * 3600000, unread: 0, starred: 0, n: 1,
   },
 ];
+
+// Categories, as the Worker keeps them (src/categories.js): five to begin with,
+// and a sixth with a longer name, so the chips and the editor have something to show.
+let categories = [
+  ["Red", 0], ["Orange", 1], ["Yellow", 2], ["Green", 3], ["Blue", 4], ["Project Atelier Roux", 5],
+].map(([name, color], i) => ({ id: i + 1, name, color, position: i }));
+const withCounts = () =>
+  categories.map((c) => ({ ...c, n: messages.filter((m) => (m.cats || []).includes(c.id)).length }));
+const readBody = (req) =>
+  new Promise((resolve) => {
+    let s = "";
+    req.on("data", (d) => (s += d));
+    req.on("end", () => {
+      try { resolve(JSON.parse(s || "{}")); } catch { resolve({}); }
+    });
+  });
 
 const bodies = {
   m1: {
@@ -106,9 +122,61 @@ createServer(async (req, res) => {
     }
     if (p === "/api/accounts") return json(res, { accounts });
     if (p === "/api/folders") return json(res, { folders });
-    if (p === "/api/messages") return json(res, { messages });
+    if (p === "/api/messages") {
+      // Pinned conversations lead, as the Worker orders them.
+      const rows = [...messages].sort((a, b) => b.pinned - a.pinned || b.date - a.date);
+      return json(res, { messages: rows });
+    }
+    if (p === "/api/categories") {
+      if (req.method === "POST") {
+        const b = await readBody(req);
+        const name = String(b.name || "").trim();
+        if (categories.some((c) => c.name.toLowerCase() === name.toLowerCase())) {
+          return json(res, { error: `There is already a category called ${name}` }, 409);
+        }
+        categories.push({ id: Math.max(0, ...categories.map((c) => c.id)) + 1, name, color: categories.length % 10, position: categories.length });
+        return json(res, { ok: true, categories: withCounts() }, 201);
+      }
+      return json(res, { categories: withCounts(), palette: 10 });
+    }
+    const cat = p.match(/^\/api\/categories\/(\d+)$/);
+    if (cat) {
+      const id = Number(cat[1]);
+      if (req.method === "DELETE") {
+        categories = categories.filter((c) => c.id !== id);
+        for (const m of messages) m.cats = (m.cats || []).filter((c) => c !== id);
+      } else {
+        const b = await readBody(req);
+        const c = categories.find((x) => x.id === id);
+        if (b.name !== undefined) {
+          if (categories.some((x) => x.id !== id && x.name.toLowerCase() === String(b.name).trim().toLowerCase())) {
+            return json(res, { error: `There is already a category called ${String(b.name).trim()}` }, 409);
+          }
+          c.name = String(b.name).trim();
+        }
+        if (b.color !== undefined) c.color = Number(b.color);
+      }
+      return json(res, { ok: true, categories: withCounts() });
+    }
+    const msgCats = p.match(/^\/api\/messages\/([^/]+)\/categories$/);
+    if (msgCats) {
+      const b = await readBody(req);
+      const m = messages.find((x) => x.id === msgCats[1]);
+      m.cats = [...new Set([...(m.cats || []).filter((c) => !(b.remove || []).includes(c)), ...(b.add || [])])].sort((a, c) => a - c);
+      return json(res, { ok: true, cats: m.cats, pinned: m.pinned });
+    }
+    const pin = p.match(/^\/api\/messages\/([^/]+)\/pin$/);
+    if (pin) {
+      const b = await readBody(req);
+      const m = messages.find((x) => x.id === pin[1]);
+      m.pinned = b.pinned ? 1 : 0;
+      return json(res, { ok: true, pinned: m.pinned, n: 1 });
+    }
     const detail = p.match(/^\/api\/messages\/([^/]+)$/);
-    if (detail && bodies[detail[1]]) return json(res, bodies[detail[1]]);
+    if (detail && bodies[detail[1]]) {
+      const b = bodies[detail[1]];
+      return json(res, { ...b, message: { ...b.message, ...messages.find((m) => m.id === detail[1]) } });
+    }
     return json(res, { messages: [], folders: [], accounts: [] });
   }
   let file = p === "/" ? "/index.html" : p;
