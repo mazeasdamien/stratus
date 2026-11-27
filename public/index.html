@@ -11306,7 +11306,7 @@ $("#rSnooze").addEventListener("click", () => {
 });
 async function snoozeCurrent(until) {
   if (!current) return;
-  if (!(until > Date.now() + 60_000)) { toast("Pick a time at least a minute from now"); return; }
+  if (!(until > Date.now() + 60_000)) { toast(t("Pick a time at least a minute from now")); return; }
   closeSheets();
   const id = current.message.id;
   const at = messages.findIndex((m) => m.id === id);
@@ -11322,13 +11322,13 @@ async function snoozeCurrent(until) {
   }).catch(() => null);
   const d = res ? await res.json().catch(() => ({})) : {};
   if (!res || !res.ok) {
-    toast(d.error || "Could not snooze");
+    toast(tw(d.error) || t("Could not snooze"));
     loadList();
     return;
   }
   // Undo is a move back to where it was, which also lifts the snooze: the
   // wake-up only acts on a message still sitting where snoozing put it.
-  toast(`Snoozed until ${whenText(d.until)}`, async () => {
+  toast(t("Snoozed until {when}", { when: whenText(d.until) }), async () => {
     await fileMessage(id, d.from || "inbox");
     await Promise.all([loadList(), refreshCounts()]);
   });
@@ -11350,7 +11350,7 @@ $("#rEml").addEventListener("click", () => {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  toast("Downloading the original message…");
+  toast(t("Downloading the original message…"));
 });
 
 /* ── reader overflow ──
@@ -11368,7 +11368,7 @@ function renderMoreSheet() {
     if (!b || b.hidden) return "";
     const label = b.getAttribute("aria-label") || (b.querySelector(".lbl") || {}).textContent || id;
     return `<button class="mi" data-more="${id}"><span class="grow">${esc(String(label).trim())}</span></button>`;
-  }).join("") || `<div class="sh-s">Nothing else for this message.</div>`;
+  }).join("") || `<div class="sh-s">${t("Nothing else for this message.")}</div>`;
 }
 $("#rMore").addEventListener("click", () => {
   renderMoreSheet();
@@ -11396,7 +11396,7 @@ function addrPaint(inputSel, chipsSel, list) {
     const bad = !looksAddr(a);
     return `<span class="chip${bad ? " bad" : ""}" data-addr="${esc(a)}">
       <span class="nm">${esc(a)}</span>
-      <button class="x" type="button" aria-label="Remove ${esc(a)}">&times;</button>
+      <button class="x" type="button" aria-label="${t("Remove {address}", { address: esc(a) })}">&times;</button>
     </span>`;
   }).join("");
 }
@@ -11471,7 +11471,7 @@ const PEOPLE_ICON = '<circle cx="9" cy="8" r="3.4"/><path d="M2.8 20c.6-3.5 3.1-
 $("#main").append($("#peopleView"));
 
 const personName = (c) =>
-  c.name || c.org || (c.emails[0] && c.emails[0].value) || (c.phones[0] && c.phones[0].value) || "No name";
+  c.name || c.org || (c.emails[0] && c.emails[0].value) || (c.phones[0] && c.phones[0].value) || t("No name");
 const personSort = (c) => personName(c).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 const personLetter = (c) => {
   const ch = personSort(c)[0] || "";
@@ -11520,21 +11520,21 @@ function renderPeople() {
   if (currentTab === "people") {
     $("#hmeta").textContent =
       peopleState === "failed" && !people.length
-        ? "People · could not be loaded"
-        : `People · ${people.length} ${people.length === 1 ? "contact" : "contacts"}`;
+        ? t("People · could not be loaded")
+        : t("{n, plural, one {People · # contact} other {People · # contacts}}", { n: people.length });
   }
   const list = $("#ppList");
   if (!people.length) {
     list.innerHTML =
       peopleState === "idle"
-        ? `<div class="pp-empty">Loading…</div>`
+        ? `<div class="pp-empty">${t("Loading…")}</div>`
         : peopleState === "failed"
-        ? `<div class="pp-empty"><b>Could not load your contacts</b>The server did not answer.<button class="ghost" data-pp-retry>Try again</button></div>`
-        : `<div class="pp-empty"><b>No contacts yet</b>Add someone with the + above, bring a .vcf file in with Import, or add a sender from a message you are reading.</div>`;
+        ? `<div class="pp-empty"><b>${t("Could not load your contacts")}</b>${t("The server did not answer.")}<button class="ghost" data-pp-retry>${t("Try again")}</button></div>`
+        : `<div class="pp-empty"><b>${t("No contacts yet")}</b>${t("Add someone with the + above, bring a .vcf file in with Import, or add a sender from a message you are reading.")}</div>`;
     return;
   }
   if (!shown.length) {
-    list.innerHTML = `<div class="pp-empty"><b>No one matches</b>Nothing here goes by “${esc(term)}”.</div>`;
+    list.innerHTML = `<div class="pp-empty"><b>${t("No one matches")}</b>${t("Nothing here goes by “{term}”.", { term: esc(term) })}</div>`;
     return;
   }
   let html = "";
@@ -11552,12 +11552,12 @@ function renderPeople() {
       `<span class="pp-tx"><span class="pp-nm tr">${esc(personName(c))}</span>${sub ? `<span class="pp-ln tr">${esc(sub)}</span>` : ""}</span>` +
       `</button></div>`;
   }
-  list.innerHTML = `<div role="list" aria-label="People">${html}</div>`;
+  list.innerHTML = `<div role="list" aria-label="${t("People")}">${html}</div>`;
 }
 
 const PERSON_TYPES = {
-  emails: [["", "Email"], ["work", "Work"], ["home", "Home"], ["other", "Other"]],
-  phones: [["", "Phone"], ["cell", "Mobile"], ["work", "Work"], ["home", "Home"], ["fax", "Fax"], ["other", "Other"]],
+  emails: [["", t("Email")], ["work", t("Work")], ["home", t("Home")], ["other", t("Other")]],
+  phones: [["", t("Phone")], ["cell", t("Mobile")], ["work", t("Work")], ["home", t("Home")], ["fax", t("Fax")], ["other", t("Other")]],
 };
 const personTypeLabel = (kind, t) => (PERSON_TYPES[kind].find(([v]) => v === t) || [t, t])[1];
 
@@ -11576,17 +11576,17 @@ function renderPerson() {
   const c = personCard(personOpen);
   if (!c) { closePerson(); return; }
   const sec = (rows) => (rows ? `<div class="pc-sec">${rows}</div>` : "");
-  const kind = (list, t) => (t ? personTypeLabel(list, t) : list === "emails" ? "email" : "phone");
+  const kind = (list, type) => (type ? personTypeLabel(list, type) : list === "emails" ? t("email") : t("phone"));
   // Tapping an address writes to it. With several, each one can also be
   // searched on its own, because the search takes one sender at a time and the
   // big button below only knows the first.
   const emailRows = c.emails
     .map(
       (e) =>
-        `<div class="pc-line pc-multi"><button class="pc-wr" data-write="${esc(e.value)}" aria-label="Write to ${esc(e.value)}">` +
+        `<div class="pc-line pc-multi"><button class="pc-wr" data-write="${esc(e.value)}" aria-label="${t("Write to {address}", { address: esc(e.value) })}">` +
         `<span class="pc-k">${esc(kind("emails", e.type))}</span><span class="pc-v">${esc(e.value)}</span>${PC_WRITE}</button>` +
         (c.emails.length > 1
-          ? `<button class="pc-find" data-find="${esc(e.value)}" aria-label="Show mail from ${esc(e.value)}" title="Mail from this address">${PC_FIND}</button>`
+          ? `<button class="pc-find" data-find="${esc(e.value)}" aria-label="${t("Show mail from {address}", { address: esc(e.value) })}" title="${t("Mail from this address")}">${PC_FIND}</button>`
           : "") +
         `</div>`
     )
@@ -11594,7 +11594,7 @@ function renderPerson() {
   const phones = c.phones
     .map(
       (p) =>
-        `<a class="pc-line" href="tel:${esc(p.value.replace(/[^\d+*#]/g, ""))}" aria-label="Call ${esc(p.value)}">` +
+        `<a class="pc-line" href="tel:${esc(p.value.replace(/[^\d+*#]/g, ""))}" aria-label="${t("Call {number}", { number: esc(p.value) })}">` +
         `<span class="pc-k">${esc(kind("phones", p.type))}</span><span class="pc-v">${esc(p.value)}</span></a>`
     )
     .join("");
@@ -11605,13 +11605,13 @@ function renderPerson() {
     ([c.title, c.org].filter(Boolean).join(" · ") ? `<div class="pc-org">${esc([c.title, c.org].filter(Boolean).join(" · "))}</div>` : "") +
     `</div>` +
     `<div class="pc-acts">` +
-    (c.emails.length ? `<button class="rbtn acc" data-pc="mail">Mail with this person</button>` : "") +
-    `<a class="rbtn" href="/api/contacts/${esc(c.id)}/export" download>Export .vcf</a>` +
-    `<button class="rbtn danger" data-pc="delete">Delete</button>` +
+    (c.emails.length ? `<button class="rbtn acc" data-pc="mail">${t("Mail with this person")}</button>` : "") +
+    `<a class="rbtn" href="/api/contacts/${esc(c.id)}/export" download>${t("Export .vcf")}</a>` +
+    `<button class="rbtn danger" data-pc="delete">${t("Delete")}</button>` +
     `</div>` +
     sec(emailRows) +
     sec(phones) +
-    sec(plain("address", c.address, "pre") + plain("birthday", c.birthday ? birthdayText(c.birthday) : "") + plain("notes", c.notes, "pre"));
+    sec(plain(t("address"), c.address, "pre") + plain(t("birthday"), c.birthday ? birthdayText(c.birthday) : "") + plain(t("notes"), c.notes, "pre"));
 }
 
 function showPerson(id) {
@@ -11632,7 +11632,7 @@ function closePerson() {
 
 registerView({
   id: "people",
-  label: "People",
+  label: t("People"),
   icon: PEOPLE_ICON,
   pane: "#peopleView",
   onShow: async () => {
@@ -11689,13 +11689,13 @@ $("#pcBody").addEventListener("click", async (e) => {
 
 async function deletePerson(c) {
   const name = personName(c);
-  if (!(await ask(`Delete ${name}?`, "The card is removed from People. Mail to and from them stays where it is.", { ok: "Delete", danger: true }))) return;
+  if (!(await ask(t("Delete {name}?", { name }), t("The card is removed from People. Mail to and from them stays where it is."), { ok: t("Delete"), danger: true }))) return;
   const res = await api(`/api/contacts/${c.id}`, { method: "DELETE" }).catch(() => null);
-  if (!res || !res.ok) { toast("Could not delete this contact"); return; }
+  if (!res || !res.ok) { toast(t("Could not delete this contact")); return; }
   people = people.filter((p) => p.id !== c.id);
   contacts = [];
   closePerson();
-  toast(`Deleted ${name}`, async () => {
+  toast(t("Deleted {name}", { name }), async () => {
     const { id, uid, created_at, updated_at, ...fields } = c;
     const back = await api("/api/contacts", {
       method: "POST",
@@ -11703,7 +11703,7 @@ async function deletePerson(c) {
       body: JSON.stringify(fields),
     }).catch(() => null);
     const d = back && back.ok ? await back.json().catch(() => null) : null;
-    if (!d) { toast("Could not bring it back"); return; }
+    if (!d) { toast(t("Could not bring it back")); return; }
     people.push(d.contact);
     sortPeople();
     contacts = [];
@@ -11721,18 +11721,18 @@ function addPersonRow(kind, item = {}) {
   const host = $(kind === "emails" ? "#peEmails" : "#pePhones");
   const row = document.createElement("div");
   row.className = "field pe-row";
-  const what = kind === "emails" ? "Email address" : "Phone number";
+  const mail = kind === "emails";
   row.innerHTML =
-    `<select class="pe-type" aria-label="${what} type">${optionList(kind, item.type || "")}</select>` +
-    `<input type="${kind === "emails" ? "email" : "tel"}" aria-label="${what}" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${kind === "emails" ? "name@example.com" : "+33 6 00 00 00 00"}" value="${esc(item.value || "")}">` +
-    `<button class="pe-x" type="button" aria-label="Remove this ${what.toLowerCase()}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>`;
+    `<select class="pe-type" aria-label="${mail ? t("Email address type") : t("Phone number type")}">${optionList(kind, item.type || "")}</select>` +
+    `<input type="${mail ? "email" : "tel"}" aria-label="${mail ? t("Email address") : t("Phone number")}" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${mail ? t("name@example.com") : "+33 6 00 00 00 00"}" value="${esc(item.value || "")}">` +
+    `<button class="pe-x" type="button" aria-label="${mail ? t("Remove this email address") : t("Remove this phone number")}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>`;
   host.append(row);
   return row;
 }
 
 function openPersonEditor(c) {
   personEdit = c;
-  $("#peTitle").textContent = c.id ? "Edit contact" : "New contact";
+  $("#peTitle").textContent = c.id ? t("Edit contact") : t("New contact");
   $("#peName").value = c.name || "";
   $("#peOrg").value = c.org || "";
   $("#peJob").value = c.title || "";
@@ -11796,7 +11796,7 @@ $("#peSave").addEventListener("click", async () => {
     $("#peErr").classList.add("show");
     $("#peSave").disabled = false;
   };
-  if (body.birthday && !/^(\d{4}-\d{2}-\d{2}|--\d{2}-\d{2})$/.test(body.birthday)) { fail("Write the birthday as year-month-day, like 1990-04-23."); return; }
+  if (body.birthday && !/^(\d{4}-\d{2}-\d{2}|--\d{2}-\d{2})$/.test(body.birthday)) { fail(t("Write the birthday as year-month-day, like 1990-04-23.")); return; }
   $("#peSave").disabled = true;
   $("#peErr").classList.remove("show");
   const res = await api(base.id ? `/api/contacts/${base.id}` : "/api/contacts", {
@@ -11805,7 +11805,7 @@ $("#peSave").addEventListener("click", async () => {
     body: JSON.stringify(body),
   }).catch(() => null);
   const d = res ? await res.json().catch(() => ({})) : {};
-  if (!res || !res.ok) { fail(d.error || "Could not save this contact."); return; }
+  if (!res || !res.ok) { fail(tw(d.error) || t("Could not save this contact.")); return; }
   people = people.filter((p) => p.id !== d.contact.id);
   people.push(d.contact);
   sortPeople();
@@ -11813,7 +11813,7 @@ $("#peSave").addEventListener("click", async () => {
   contacts = [];
   closeSheets();
   if (currentTab === "people") showPerson(d.contact.id);
-  toast(base.id ? "Saved" : `Added ${personName(d.contact)}`);
+  toast(base.id ? t("Saved") : t("Added {name}", { name: personName(d.contact) }));
 });
 
 /* import and export */
@@ -11828,20 +11828,20 @@ $("#ppFile").addEventListener("change", async () => {
   const file = $("#ppFile").files[0];
   $("#ppFile").value = "";
   if (!file) return;
-  if (file.size > 5 * 1024 * 1024) { peopleResult(`${file.name} is larger than 5 MB, which is more than an address book needs.`, true); return; }
-  peopleResult(`Importing ${file.name}…`);
+  if (file.size > 5 * 1024 * 1024) { peopleResult(t("{file} is larger than 5 MB, which is more than an address book needs.", { file: file.name }), true); return; }
+  peopleResult(t("Importing {file}…", { file: file.name }));
   // The file goes as it is, bytes and all: read as text here, a card written in
   // Windows-1252 would already have lost its accents.
   const res = await api("/api/contacts/import", { method: "POST", headers: { "Content-Type": "text/vcard" }, body: file }).catch(() => null);
   const d = res ? await res.json().catch(() => ({})) : {};
-  if (!res || !res.ok) { peopleResult(`${file.name}: ${d.error || "could not be imported."}`, true); return; }
+  if (!res || !res.ok) { peopleResult(d.error ? t("{file}: {error}", { file: file.name, error: tw(d.error) }) : t("{file}: could not be imported.", { file: file.name }), true); return; }
   contacts = [];
   await loadPeople(true);
   renderPeople();
-  if (!d.found) { peopleResult(`${file.name}: no contacts found in it.`, true); return; }
-  const n = (k, one) => `${d[k]} ${one}`;
-  peopleResult(`${file.name}: ${n("added", "added")}, ${n("updated", "updated")}, ${n("skipped", "skipped")}.`);
-  say(`Imported: ${d.added} added, ${d.updated} updated, ${d.skipped} skipped`);
+  if (!d.found) { peopleResult(t("{file}: no contacts found in it.", { file: file.name }), true); return; }
+  const counts = { added: d.added, updated: d.updated, skipped: d.skipped };
+  peopleResult(t("{file}: {added, plural, one {# added} other {# added}}, {updated, plural, one {# updated} other {# updated}}, {skipped, plural, one {# skipped} other {# skipped}}.", { file: file.name, ...counts }));
+  say(t("Imported: {added, plural, one {# added} other {# added}}, {updated, plural, one {# updated} other {# updated}}, {skipped, plural, one {# skipped} other {# skipped}}", counts));
 });
 
 /** The sender sheet's button: add this sender as a card, or open the one they have. */
