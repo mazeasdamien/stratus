@@ -12599,7 +12599,7 @@ async function loadReminders() {
   const n = reminders.length;
   $("#remindersBtn").hidden = !n;
   $("#remindersN").textContent = n > 9 ? "9+" : n;
-  $("#remindersBtn").setAttribute("aria-label", n ? `Reminders, ${n} due` : "Reminders");
+  $("#remindersBtn").setAttribute("aria-label", n ? t("Reminders, {n} due", { n }) : t("Reminders"));
   if (changed && $("#remindersSheet").classList.contains("up")) renderReminders();
 }
 function reminderSnoozes(now = new Date()) {
@@ -12607,31 +12607,44 @@ function reminderSnoozes(now = new Date()) {
   tomorrow.setDate(tomorrow.getDate() + 1);
   tomorrow.setHours(8, 0, 0, 0);
   return [
-    ["10 min", "10 minutes", now.getTime() + 10 * 60_000],
-    ["1 hour", "1 hour", now.getTime() + 3600_000],
-    ["Tomorrow", "until tomorrow morning", tomorrow.getTime()],
+    [t("10 min"), t("Snooze for 10 minutes"), now.getTime() + 10 * 60_000],
+    [t("1 hour"), t("Snooze for 1 hour"), now.getTime() + 3600_000],
+    [t("Tomorrow"), t("Snooze until tomorrow morning"), tomorrow.getTime()],
   ];
+}
+/**
+ * A reminder's title and body as shown. The Worker writes those of follow-ups
+ * and events in English, so they go through tw(); a task's are the user's own
+ * words, as is an event's title unless it had none.
+ */
+function reminderText(r) {
+  if (r.kind === "followup") return { title: tw(r.title), body: tw(r.body) };
+  if (r.kind !== "event") return { title: r.title, body: r.body };
+  // An event's body is "<when> · <location>": only the first part is the Worker's.
+  const [when, ...rest] = String(r.body || "").split(" · ");
+  return { title: r.title === "Event" ? tw(r.title) : r.title, body: [tw(when), ...rest].join(" · ") };
 }
 function renderReminders() {
   if (!reminders.length) {
-    $("#remindersList").innerHTML = `<div class="sh-s">Nothing is due.</div>`;
+    $("#remindersList").innerHTML = `<div class="sh-s">${t("Nothing is due.")}</div>`;
     return;
   }
   const snoozes = reminderSnoozes();
   $("#remindersList").innerHTML = reminders
     .map((r) => {
       const id = esc(r.id);
+      const shown = reminderText(r);
       return `<div class="rem">
-        <div class="rem-t">${esc(r.title || "Reminder")}</div>
-        ${r.body ? `<div class="rem-b">${esc(r.body)}</div>` : ""}
-        <div class="rem-w">Due ${esc(fmtFull(r.at))}</div>
+        <div class="rem-t">${esc(shown.title || t("Reminder"))}</div>
+        ${shown.body ? `<div class="rem-b">${esc(shown.body)}</div>` : ""}
+        <div class="rem-w">${t("Due {when}", { when: esc(fmtFull(r.at)) })}</div>
         <div class="rem-a">
-          ${reminderOpeners[r.kind] ? `<button class="ghost acc" data-ropen="${id}">Open</button>` : ""}
-          <button class="ghost" data-rdone="${id}">Dismiss</button>
+          ${reminderOpeners[r.kind] ? `<button class="ghost acc" data-ropen="${id}">${t("Open")}</button>` : ""}
+          <button class="ghost" data-rdone="${id}">${t("Dismiss")}</button>
         </div>
         <div class="rem-a">
-          <span class="rem-l">Snooze</span>
-          ${snoozes.map(([label, said, at]) => `<button class="ghost" data-rsnz="${id}" data-until="${at}" aria-label="Snooze ${esc(said)}">${esc(label)}</button>`).join("")}
+          <span class="rem-l">${t("Snooze")}</span>
+          ${snoozes.map(([label, said, at]) => `<button class="ghost" data-rsnz="${id}" data-until="${at}" aria-label="${esc(said)}">${esc(label)}</button>`).join("")}
         </div></div>`;
     })
     .join("");
@@ -12652,7 +12665,7 @@ $("#remindersList").addEventListener("click", async (e) => {
   if (!r) return;
   if (b.dataset.ropen) {
     closeSheets();
-    try { reminderOpeners[r.kind]?.(r.ref); } catch (err) { toast("Could not open that"); }
+    try { reminderOpeners[r.kind]?.(r.ref); } catch (err) { toast(t("Could not open that")); }
     return;
   }
   const snooze = !!b.dataset.rsnz;
@@ -12663,11 +12676,11 @@ $("#remindersList").addEventListener("click", async (e) => {
     body: snooze ? JSON.stringify({ until: Number(b.dataset.until) }) : "{}",
   }).catch(() => null);
   if (!res || !res.ok) {
-    toast((res && (await res.json().catch(() => ({}))).error) || "That didn't work");
+    toast(tw(res && (await res.json().catch(() => ({}))).error) || t("That didn't work"));
     b.disabled = false;
     return loadReminders();
   }
-  toast(snooze ? `Snoozed until ${whenText(Number(b.dataset.until))}` : "Dismissed");
+  toast(snooze ? t("Snoozed until {when}", { when: whenText(Number(b.dataset.until)) }) : t("Dismissed"));
   await loadReminders();
   if (!reminders.length) closeSheets();
 });
@@ -12703,7 +12716,7 @@ let taskOpen = null;         // the task in the sheet, with the field values it 
 
 registerView({
   id: "tasks",
-  label: "Tasks",
+  label: t("Tasks"),
   icon: '<circle cx="12" cy="12" r="10"/><path d="m8 12.5 2.8 2.8L16.2 9.5"/>',
   pane: "#tasksView",
   dot: true,
@@ -12734,50 +12747,54 @@ async function loadTasks() {
 }
 
 /** "Today", "Tomorrow", or the date, then the time unless the task is due any time that day. */
-function taskDueText(t) {
+function taskDueText(tk) {
   const off = new Date().getTimezoneOffset();
   const day = (ms) => Math.floor(ms / 86400_000);
-  const diff = day(t.allDay ? t.due : t.due - off * 60_000) - day(Date.now() - off * 60_000);
-  const d = new Date(t.due);
-  const zone = t.allDay ? { timeZone: "UTC" } : {};
+  const diff = day(tk.allDay ? tk.due : tk.due - off * 60_000) - day(Date.now() - off * 60_000);
+  const d = new Date(tk.due);
+  const zone = tk.allDay ? { timeZone: "UTC" } : {};
   let text;
-  if (diff === 0) text = "Today";
-  else if (diff === 1) text = "Tomorrow";
-  else if (diff === -1) text = "Yesterday";
+  if (diff === 0) text = t("Today");
+  else if (diff === 1) text = t("Tomorrow");
+  else if (diff === -1) text = t("Yesterday");
   else {
-    const year = (t.allDay ? d.getUTCFullYear() : d.getFullYear()) !== new Date().getFullYear() ? { year: "numeric" } : {};
+    const year = (tk.allDay ? d.getUTCFullYear() : d.getFullYear()) !== new Date().getFullYear() ? { year: "numeric" } : {};
     text = d.toLocaleDateString(LOCALE, { weekday: "short", day: "numeric", month: "short", ...year, ...zone });
   }
-  return t.allDay ? text : `${text}, ${d.toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" })}`;
+  return tk.allDay ? text : t("{day}, {time}", { day: text, time: d.toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" }) });
 }
 
-function taskRow(t, group) {
-  const id = esc(t.id);
-  const done = t.doneAt != null;
+// The group labels the server sends are English; the page shows its own, by id.
+const TASK_GROUP_LABEL = { overdue: t("Overdue"), today: t("Today"), upcoming: t("Upcoming"), nodate: t("No date"), done: t("Done") };
+
+function taskRow(tk, group) {
+  const id = esc(tk.id);
+  const done = tk.doneAt != null;
   const meta = [];
-  if (done) meta.push(`<span>Done ${esc(whenText(t.doneAt))}</span>`);
+  if (done) meta.push(`<span>${t("Done {when}", { when: esc(whenText(tk.doneAt)) })}</span>`);
   else {
-    if (t.due != null) {
-      const late = group === "overdue" || (!t.allDay && t.due < Date.now());
-      meta.push(`<span${late ? ' class="late"' : ""}>${esc(taskDueText(t))}</span>`);
+    if (tk.due != null) {
+      const late = group === "overdue" || (!tk.allDay && tk.due < Date.now());
+      meta.push(`<span${late ? ' class="late"' : ""}>${esc(taskDueText(tk))}</span>`);
     }
-    if (t.reminder != null) meta.push(`<span>${TASK_ICON.bell}${esc(whenText(t.reminder))}</span>`);
-    if (t.important) meta.push(`<span class="imp">${TASK_ICON.flag}Important</span>`);
+    if (tk.reminder != null) meta.push(`<span>${TASK_ICON.bell}${esc(whenText(tk.reminder))}</span>`);
+    if (tk.important) meta.push(`<span class="imp">${TASK_ICON.flag}${t("Important")}</span>`);
   }
+  const chk = done ? t("Mark not done: {title}", { title: esc(tk.title) }) : t("Mark done: {title}", { title: esc(tk.title) });
   return `<div class="tk${done ? " done" : ""}" data-id="${id}">
-    <button class="tk-chk" type="button" role="checkbox" aria-checked="${done}" aria-label="${done ? "Mark not done" : "Mark done"}: ${esc(t.title)}" data-fk="chk:${id}" data-tk-chk><span class="box">${TASK_ICON.check}</span></button>
+    <button class="tk-chk" type="button" role="checkbox" aria-checked="${done}" aria-label="${chk}" data-fk="chk:${id}" data-tk-chk><span class="box">${TASK_ICON.check}</span></button>
     <div class="tk-body">
-      <button class="tk-main" type="button" data-fk="edit:${id}" data-tk-edit><span class="tk-t">${esc(t.title)}</span>${meta.length ? `<span class="tk-m">${meta.join("")}</span>` : ""}</button>
-      ${t.message ? `<button class="ghost tk-open" type="button" data-fk="msg:${id}" data-tk-msg>${TASK_ICON.mail}Open message</button>` : ""}
+      <button class="tk-main" type="button" data-fk="edit:${id}" data-tk-edit><span class="tk-t">${esc(tk.title)}</span>${meta.length ? `<span class="tk-m">${meta.join("")}</span>` : ""}</button>
+      ${tk.message ? `<button class="ghost tk-open" type="button" data-fk="msg:${id}" data-tk-msg>${TASK_ICON.mail}${t("Open message")}</button>` : ""}
     </div></div>`;
 }
 
 function renderTasks() {
   const due = tasksData ? tasksData.due : 0;
   $("#tasksDot").hidden = !due;
-  $("#tabTasks").setAttribute("aria-label", due ? `Tasks, ${due} due` : "Tasks");
+  $("#tabTasks").setAttribute("aria-label", due ? t("Tasks, {n} due", { n: due }) : t("Tasks"));
   if (currentTab === "tasks") {
-    $("#hmeta").textContent = tasksFailed && !tasksData ? "Tasks · could not be loaded" : due ? `Tasks · ${due} due` : "Tasks";
+    $("#hmeta").textContent = tasksFailed && !tasksData ? t("Tasks · could not be loaded") : due ? t("Tasks · {n} due", { n: due }) : t("Tasks");
   }
 
   const list = $("#tasksList");
@@ -12786,26 +12803,27 @@ function renderTasks() {
 
   if (!tasksData) {
     list.innerHTML = tasksFailed
-      ? `<div class="tk-empty"><div><b>Could not load your tasks</b></div><button class="ghost" type="button" data-tk-retry>Try again</button></div>`
+      ? `<div class="tk-empty"><div><b>${t("Could not load your tasks")}</b></div><button class="ghost" type="button" data-tk-retry>${t("Try again")}</button></div>`
       : "";
     return;
   }
   const groups = tasksData.groups.filter((g) => g.tasks.length);
   if (!groups.length) {
-    list.innerHTML = `<div class="tk-empty">${TASK_SVG('<circle cx="12" cy="12" r="10"/><path d="m8 12.5 2.8 2.8L16.2 9.5"/>', 40, 1.8)}<div><b>Nothing to do</b></div><div style="font-size:12.5px;color:var(--t3);max-width:260px">Add a task above, or choose Add to tasks on any message.</div></div>`;
+    list.innerHTML = `<div class="tk-empty">${TASK_SVG('<circle cx="12" cy="12" r="10"/><path d="m8 12.5 2.8 2.8L16.2 9.5"/>', 40, 1.8)}<div><b>${t("Nothing to do")}</b></div><div style="font-size:12.5px;color:var(--t3);max-width:260px">${t("Add a task above, or choose Add to tasks on any message.")}</div></div>`;
     return;
   }
   list.innerHTML = groups
     .map((g) => {
       if (g.id !== "done") {
-        return `<section class="tk-group" aria-label="${esc(g.label)}"><div class="tk-h ${g.id}">${esc(g.label)}<span class="n2">${g.tasks.length}</span></div>
-          <div class="tk-list">${g.tasks.map((t) => taskRow(t, g.id)).join("")}</div></section>`;
+        const label = TASK_GROUP_LABEL[g.id] || g.label;
+        return `<section class="tk-group" aria-label="${esc(label)}"><div class="tk-h ${g.id}">${esc(label)}<span class="n2">${g.tasks.length}</span></div>
+          <div class="tk-list">${g.tasks.map((tk) => taskRow(tk, g.id)).join("")}</div></section>`;
       }
-      return `<section class="tk-group" aria-label="Done"><div class="tk-h">
-          <button class="tk-toggle" type="button" aria-expanded="${tasksDoneOpen}" data-fk="done" data-tk-done>${TASK_ICON.chev}Done<span class="n2">${tasksData.doneCount}</span></button>
+      return `<section class="tk-group" aria-label="${TASK_GROUP_LABEL.done}"><div class="tk-h">
+          <button class="tk-toggle" type="button" aria-expanded="${tasksDoneOpen}" data-fk="done" data-tk-done>${TASK_ICON.chev}${TASK_GROUP_LABEL.done}<span class="n2">${tasksData.doneCount}</span></button>
           <span class="grow"></span>
-          <button class="ghost tk-clear" type="button" data-fk="clear" data-tk-clear>Clear completed</button></div>
-          ${tasksDoneOpen ? `<div class="tk-list">${g.tasks.map((t) => taskRow(t, g.id)).join("")}</div>` : ""}</section>`;
+          <button class="ghost tk-clear" type="button" data-fk="clear" data-tk-clear>${t("Clear completed")}</button></div>
+          ${tasksDoneOpen ? `<div class="tk-list">${g.tasks.map((tk) => taskRow(tk, g.id)).join("")}</div>` : ""}</section>`;
     })
     .join("");
   // The row that had focus may have moved, into a collapsed Done: focus then
@@ -12817,7 +12835,7 @@ async function addTask(title, messageId) {
   const res = await api("/api/tasks", taskJson("POST", { title, ...(messageId ? { messageId } : {}) })).catch(() => null);
   const d = res ? await res.json().catch(() => ({})) : {};
   if (!res || !res.ok) {
-    toast(d.error || "Could not add that task");
+    toast(tw(d.error) || t("Could not add that task"));
     return null;
   }
   return d.task;
@@ -12828,9 +12846,9 @@ async function quickAddTask() {
   const title = input.value.trim();
   if (!title) return;
   input.value = "";
-  const t = await addTask(title);
-  if (!t) { input.value = title; return; }
-  say("Task added");
+  const tk = await addTask(title);
+  if (!tk) { input.value = title; return; }
+  say(t("Task added"));
   await loadTasks();
 }
 $("#taskAddBtn").addEventListener("click", () => { quickAddTask(); $("#taskAdd").focus(); });
@@ -12844,12 +12862,12 @@ async function setTaskDone(id, done, quiet = false) {
   if (box) box.setAttribute("aria-checked", String(done));
   const res = await api(`${taskUrl(id)}/${done ? "complete" : "reopen"}`,{ method: "POST" }).catch(() => null);
   if (!res || !res.ok) {
-    toast("Could not update that task");
+    toast(t("Could not update that task"));
     return loadTasks();
   }
   await loadTasks();
-  if (quiet) toast(done ? "Task done" : "Task reopened");
-  else toast(done ? "Task done" : "Task reopened", () => setTaskDone(id, !done, true));
+  if (quiet) toast(done ? t("Task done") : t("Task reopened"));
+  else toast(done ? t("Task done") : t("Task reopened"), () => setTaskDone(id, !done, true));
 }
 
 function findTask(id) {
@@ -12880,23 +12898,23 @@ function taskFields(t) {
 }
 
 async function openTask(id) {
-  let t = findTask(id);
-  if (!t) {
+  let tk = findTask(id);
+  if (!tk) {
     const res = await api(taskUrl(id)).catch(() => null);
-    if (!res || !res.ok) { toast("That task is gone"); return; }
-    t = (await res.json()).task;
+    if (!res || !res.ok) { toast(t("That task is gone")); return; }
+    tk = (await res.json()).task;
   }
-  const f = taskFields(t);
-  taskOpen = { ...t, init: f };
-  $("#taskTitle").value = t.title;
-  $("#taskNotes").value = t.notes;
+  const f = taskFields(tk);
+  taskOpen = { ...tk, init: f };
+  $("#taskTitle").value = tk.title;
+  $("#taskNotes").value = tk.notes;
   $("#taskDate").value = f.date;
   $("#taskTime").value = f.time;
   $("#taskTime").disabled = !f.date;
   $("#taskRem").value = f.rem;
-  $("#taskImp").setAttribute("aria-pressed", String(t.important));
-  $("#taskOpenMsg").hidden = !t.message;
-  $("#taskOpenMsgS").textContent = t.message ? t.message.subject || "(no subject)" : "";
+  $("#taskImp").setAttribute("aria-pressed", String(tk.important));
+  $("#taskOpenMsg").hidden = !tk.message;
+  $("#taskOpenMsgS").textContent = tk.message ? tk.message.subject || t("(no subject)") : "";
   openSheet("#taskSheet");
 }
 
@@ -12920,10 +12938,10 @@ $("#taskTitle").addEventListener("keydown", (e) => {
 });
 
 async function saveTask() {
-  const t = taskOpen;
-  if (!t) return;
+  const tk = taskOpen;
+  if (!tk) return;
   const title = $("#taskTitle").value.trim();
-  if (!title) { toast("A task needs a title"); $("#taskTitle").focus(); return; }
+  if (!title) { toast(t("A task needs a title")); $("#taskTitle").focus(); return; }
   const date = $("#taskDate").value;
   const time = $("#taskTime").value;
   const rem = $("#taskRem").value;
@@ -12931,17 +12949,17 @@ async function saveTask() {
   // Only what was changed is sent for the two times. The inputs show minutes,
   // so sending them back unchanged could move a time that has seconds, and a
   // reminder that has since passed must not be refused for being left alone.
-  if (date !== t.init.date || time !== t.init.time) {
+  if (date !== tk.init.date || time !== tk.init.time) {
     if (!date) { body.due = null; body.allDay = false; }
     else if (!time) { const [y, m, d] = date.split("-").map(Number); body.due = Date.UTC(y, m - 1, d); body.allDay = true; }
     else { body.due = new Date(`${date}T${time}`).getTime(); body.allDay = false; }
   }
-  if (rem !== t.init.rem) body.reminder = rem ? new Date(rem).getTime() : null;
+  if (rem !== tk.init.rem) body.reminder = rem ? new Date(rem).getTime() : null;
   $("#taskSave").disabled = true;
-  const res = await api(taskUrl(t.id), taskJson("POST", body)).catch(() => null);
+  const res = await api(taskUrl(tk.id), taskJson("POST", body)).catch(() => null);
   $("#taskSave").disabled = false;
   const d = res ? await res.json().catch(() => ({})) : {};
-  if (!res || !res.ok) { toast(d.error || "Could not save that task"); return; }
+  if (!res || !res.ok) { toast(tw(d.error) || t("Could not save that task")); return; }
   closeSheets();
   taskOpen = null;
   await loadTasks();
@@ -12949,18 +12967,18 @@ async function saveTask() {
 $("#taskSave").addEventListener("click", saveTask);
 
 async function deleteTask() {
-  const t = taskOpen;
-  if (!t) return;
+  const tk = taskOpen;
+  if (!tk) return;
   closeSheets();
   taskOpen = null;
-  const res = await api(taskUrl(t.id), { method: "DELETE" }).catch(() => null);
-  if (!res || !res.ok) { toast("Could not delete that task"); return loadTasks(); }
+  const res = await api(taskUrl(tk.id), { method: "DELETE" }).catch(() => null);
+  if (!res || !res.ok) { toast(t("Could not delete that task")); return loadTasks(); }
   await loadTasks();
   // Undo makes the task again, with the same words, dates and link. It is a
   // new row, so a reminder that has passed is left off rather than refused.
-  toast("Task deleted", async () => {
-    const back = await addTaskFull(t);
-    if (back && t.doneAt != null) await api(`${taskUrl(back.id)}/complete`,{ method: "POST" }).catch(() => null);
+  toast(t("Task deleted"), async () => {
+    const back = await addTaskFull(tk);
+    if (back && tk.doneAt != null) await api(`${taskUrl(back.id)}/complete`,{ method: "POST" }).catch(() => null);
     await loadTasks();
   });
 }
@@ -12991,10 +13009,10 @@ $("#tasksList").addEventListener("click", async (e) => {
   }
   if (e.target.closest("[data-tk-clear]")) {
     const n = tasksData ? tasksData.doneCount : 0;
-    const yes = await ask("Clear completed tasks?", `${n} done ${n === 1 ? "task" : "tasks"} will be deleted. This cannot be undone.`, { ok: "Clear", danger: true });
+    const yes = await ask(t("Clear completed tasks?"), t("{n, plural, one {# done task will be deleted.} other {# done tasks will be deleted.}} This cannot be undone.", { n }), { ok: t("Clear"), danger: true });
     if (!yes) return;
     const res = await api("/api/tasks/clear-completed", { method: "POST" }).catch(() => null);
-    toast(res && res.ok ? "Cleared" : "Could not clear them");
+    toast(res && res.ok ? t("Cleared") : t("Could not clear them"));
     loadTasks();
     return;
   }
@@ -13029,19 +13047,19 @@ const rTask = document.createElement("button");
 rTask.type = "button";
 rTask.id = "rTask";
 rTask.className = "rbtn ico overflowable";
-rTask.title = "Add to tasks";
-rTask.setAttribute("aria-label", "Add to tasks");
+rTask.title = t("Add to tasks");
+rTask.setAttribute("aria-label", t("Add to tasks"));
 rTask.innerHTML = TASK_SVG('<circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.8 2.8L16.2 9.5"/>', 16);
 $("#rPdf").after(rTask);
 OVERFLOW_IDS.splice(OVERFLOW_IDS.indexOf("#rPdf") + 1, 0, "#rTask");
 rTask.addEventListener("click", async () => {
   if (!current) return;
   const m = current.message;
-  const t = await addTask((m.subject || "").trim() || "(no subject)", m.id);
-  if (!t) return;
+  const tk = await addTask((m.subject || "").trim() || t("(no subject)"), m.id);
+  if (!tk) return;
   loadTasks();
-  toast("Added to tasks", async () => {
-    await api(taskUrl(t.id), { method: "DELETE" }).catch(() => null);
+  toast(t("Added to tasks"), async () => {
+    await api(taskUrl(tk.id), { method: "DELETE" }).catch(() => null);
     loadTasks();
   });
 });
@@ -13082,20 +13100,21 @@ async function loadFollowups() {
 /** The follow-up a list row stands for: its own message's, or one in its conversation. */
 const fuFor = (m, sub = false) => (m && (fuById.get(m.id) || (!sub && m.thread_key && fuByThread.get(m.thread_key)))) || null;
 const fuOver = (f) => f.due <= Date.now();
-const fuWhen = (f) => (f.kind === "noreply" ? "No reply by " : "") + fmtFull(f.due);
+const fuWhen = (f) => (f.kind === "noreply" ? t("No reply by {when}", { when: fmtFull(f.due) }) : fmtFull(f.due));
 
 /** The chip under a list row's snippet; what rowHtml shows of a follow-up. */
 function fuRow(m, sub) {
   const f = fuFor(m, sub);
   if (!f) return "";
   const over = fuOver(f);
-  const text = over ? `Overdue · ${fmtWhen(f.due)}` : f.kind === "noreply" ? `No reply by ${fmtWhen(f.due)}` : `Follow up · ${fmtWhen(f.due)}`;
+  const when = fmtWhen(f.due);
+  const text = over ? t("Overdue · {when}", { when }) : f.kind === "noreply" ? t("No reply by {when}", { when }) : t("Follow up · {when}", { when });
   return `<div class="fu-line"><span class="fu-chip${over ? " over" : ""}" title="${esc(fuWhen(f))}">${over ? FU_ALERT : FU_CLOCK}${esc(text)}</span></div>`;
 }
 /** What a screen reader hears for the same thing. */
 function fuLabel(m, sub) {
   const f = fuFor(m, sub);
-  return !f ? "" : fuOver(f) ? "Follow-up overdue" : f.kind === "noreply" ? `Waiting for a reply until ${fmtWhen(f.due)}` : `Follow up ${fmtWhen(f.due)}`;
+  return !f ? "" : fuOver(f) ? t("Follow-up overdue") : f.kind === "noreply" ? t("Waiting for a reply until {when}", { when: fmtWhen(f.due) }) : t("Follow up, due {when}", { when: fmtWhen(f.due) });
 }
 
 /** Whether a message is one you sent, so it can wait for an answer. */
@@ -13109,9 +13128,9 @@ function fuIsMine(m) {
 /* The button beside the star, and the strip under the header. */
 fuEl("rStar").insertAdjacentHTML(
   "afterend",
-  `<button class="rbtn ico overflowable" id="rFollowUp" type="button" aria-label="Follow up" aria-haspopup="dialog" title="Follow up: be reminded about this message">${FU_CLOCK.replace('width="13" height="13"', 'width="16" height="16"')}</button>`
+  `<button class="rbtn ico overflowable" id="rFollowUp" type="button" aria-label="${t("Follow up")}" aria-haspopup="dialog" title="${t("Follow up: be reminded about this message")}">${FU_CLOCK.replace('width="13" height="13"', 'width="16" height="16"')}</button>`
 );
-fuEl("rCats").insertAdjacentHTML("afterend", `<div class="fu-banner" id="rFollow" role="group" aria-label="Follow-up" hidden></div>`);
+fuEl("rCats").insertAdjacentHTML("afterend", `<div class="fu-banner" id="rFollow" role="group" aria-label="${t("Follow-up")}" hidden></div>`);
 OVERFLOW_IDS.push("#rFollowUp");
 
 function paintFollow() {
@@ -13122,19 +13141,26 @@ function paintFollow() {
   const over = !!f && fuOver(f);
   btn.classList.toggle("on", !!f && !over);
   btn.classList.toggle("over", over);
-  btn.setAttribute("aria-label", !f ? "Follow up" : over ? `Follow up, overdue since ${fmtFull(f.due)}` : `Follow up, ${fuWhen(f)}`);
+  btn.setAttribute(
+    "aria-label",
+    !f ? t("Follow up")
+    : over ? t("Follow up, overdue since {when}", { when: fmtFull(f.due) })
+    : f.kind === "noreply" ? t("Follow up, no reply by {when}", { when: fmtFull(f.due) })
+    : t("Follow up, {when}", { when: fmtFull(f.due) })
+  );
   box.hidden = !f;
   box.classList.toggle("over", over);
   if (!f) return;
+  const when = esc(fmtFull(f.due));
   const said = f.kind === "noreply"
     ? over
-      ? `<b>Overdue.</b> Nobody has replied since you sent this. The reminder was due ${esc(fmtFull(f.due))}.`
-      : `<b>Waiting for a reply.</b> You will be reminded ${esc(fmtFull(f.due))} if nobody has answered by then.`
+      ? `<b>${t("Overdue.")}</b> ${t("Nobody has replied since you sent this. The reminder was due {when}.", { when })}`
+      : `<b>${t("Waiting for a reply.")}</b> ${t("You will be reminded {when} if nobody has answered by then.", { when })}`
     : over
-    ? `<b>Overdue.</b> You wanted to follow up on this ${esc(fmtFull(f.due))}.`
-    : `<b>Follow up</b> ${esc(fmtFull(f.due))}`;
+    ? `<b>${t("Overdue.")}</b> ${t("You wanted to follow up on this {when}.", { when })}`
+    : `<b>${t("Follow up")}</b> ${when}`;
   box.innerHTML = `${over ? FU_ALERT : FU_CLOCK}<span class="grow">${said}</span>` +
-    `<button class="ghost" type="button" data-fu="change">Change</button><button class="ghost" type="button" data-fu="done">Mark complete</button>`;
+    `<button class="ghost" type="button" data-fu="change">${t("Change")}</button><button class="ghost" type="button" data-fu="done">${t("Mark complete")}</button>`;
 }
 fuEl("rFollow").addEventListener("click", (e) => {
   const b = e.target.closest("[data-fu]");
@@ -13154,11 +13180,11 @@ function fuChoices(now = new Date()) {
   const out = [];
   const later = new Date(now.getTime() + 3 * 3600_000);
   later.setMinutes(0, 0, 0);
-  if (later.toDateString() === now.toDateString() && later.getHours() <= 21) out.push(["Later today", later]);
-  out.push(["Tomorrow morning", at(1, 8)]);
+  if (later.toDateString() === now.toDateString() && later.getHours() <= 21) out.push([t("Later today"), later]);
+  out.push([t("Tomorrow morning"), at(1, 8)]);
   // The Monday after tomorrow, so it never repeats the line above.
   const toMonday = (8 - now.getDay()) % 7 || 7;
-  out.push(["Next week", at(toMonday < 2 ? toMonday + 7 : toMonday, 8)]);
+  out.push([t("Next week"), at(toMonday < 2 ? toMonday + 7 : toMonday, 8)]);
   return out;
 }
 const fuInput = (ms) => new Date(ms - new Date(ms).getTimezoneOffset() * 60000).toISOString().slice(0, 16);
@@ -13167,13 +13193,16 @@ function openFollow() {
   const m = current.message;
   const f = fuById.get(m.id);
   const mine = fuIsMine(m);
-  fuEl("fuSub").textContent = f ? `Now: ${fuWhen(f)}${fuOver(f) ? " (overdue)" : ""}.` : "Starred on every device, and a reminder when the time comes.";
+  const sub = !f ? "" : f.kind === "noreply"
+    ? fuOver(f) ? t("Now: no reply by {when} (overdue).", { when: fmtFull(f.due) }) : t("Now: no reply by {when}.", { when: fmtFull(f.due) })
+    : fuOver(f) ? t("Now: {when} (overdue).", { when: fmtFull(f.due) }) : t("Now: {when}.", { when: fmtFull(f.due) });
+  fuEl("fuSub").textContent = f ? sub : t("Starred on every device, and a reminder when the time comes.");
   $("#fuList").innerHTML = fuChoices()
     .map(([label, d]) => `<button class="mi" data-fu-at="${d.getTime()}"><span class="grow">${esc(label)}</span><span class="side">${esc(whenText(d))}</span></button>`)
     .join("");
   $("#fuNoWrap").hidden = !mine;
   $("#fuDays").innerHTML = [1, 2, 3, 5, 7]
-    .map((n) => `<button class="ghost" type="button" data-fu-days="${n}" title="${esc(whenText(Date.now() + n * FU_DAY))}">${n} day${n > 1 ? "s" : ""}</button>`)
+    .map((n) => `<button class="ghost" type="button" data-fu-days="${n}" title="${esc(whenText(Date.now() + n * FU_DAY))}">${t("{n, plural, one {# day} other {# days}}", { n })}</button>`)
     .join("");
   const soon = new Date(Date.now() + 3 * 3600_000);
   soon.setMinutes(0, 0, 0);
@@ -13186,7 +13215,7 @@ fuEl("rFollowUp").addEventListener("click", openFollow);
 
 async function setFollow(kind, due) {
   if (!current) return;
-  if (!(due > Date.now() + 60_000)) { toast("Pick a time at least a minute from now"); return; }
+  if (!(due > Date.now() + 60_000)) { toast(t("Pick a time at least a minute from now")); return; }
   const id = current.message.id;
   closeSheets();
   const res = await api("/api/followups", {
@@ -13195,7 +13224,7 @@ async function setFollow(kind, due) {
     body: JSON.stringify({ message_id: id, kind, due: Math.round(due) }),
   }).catch(() => null);
   const d = res ? await res.json().catch(() => ({})) : {};
-  if (!res || !res.ok) { toast(d.error || "Could not set the follow-up"); return; }
+  if (!res || !res.ok) { toast(tw(d.error) || t("Could not set the follow-up")); return; }
   if (kind === "flag") {
     // The server starred it at iCloud; the page shows the star it now has.
     for (const r of [messages, threadRows, [current.message]]) {
@@ -13205,16 +13234,16 @@ async function setFollow(kind, due) {
     $("#rStar").classList.add("on");
     $("#rStar").setAttribute("aria-pressed", "true");
   }
-  toast(kind === "flag" ? `Follow up ${whenText(due)}` : `Reminder ${whenText(due)}, unless somebody replies`);
+  toast(kind === "flag" ? t("Follow up {when}", { when: whenText(due) }) : t("Reminder {when}, unless somebody replies", { when: whenText(due) }));
   await loadFollowups();
   renderList();
   paintFollow();
 }
 async function completeFollow(id) {
   const res = await api(`/api/followups/${id}/complete`, { method: "POST" }).catch(() => null);
-  if (!res || !res.ok) { toast("Could not mark it complete"); return; }
+  if (!res || !res.ok) { toast(t("Could not mark it complete")); return; }
   closeSheets();
-  toast("Marked complete");
+  toast(t("Marked complete"));
   await loadFollowups();
   renderList();
   paintFollow();
@@ -13240,10 +13269,11 @@ reminderOpeners.followup = (ref) => openMsg(ref);
 fuEl("cSubjWrap").insertAdjacentHTML(
   "afterend",
   `<div class="field fu-comp" id="cFuRow">${FU_CLOCK.replace('width="13" height="13"', 'width="15" height="15"')}` +
-    `<label class="fu-l" for="cFu">Remind me if nobody replies</label>` +
-    `<select id="cFu"><option value="">No</option><option value="1">After 1 day</option><option value="2">After 2 days</option>` +
-    `<option value="3">After 3 days</option><option value="5">After 5 days</option><option value="7">After 7 days</option><option value="date">On a date&hellip;</option></select>` +
-    `<input id="cFuAt" type="datetime-local" aria-label="Date and time to be reminded if nobody has replied" hidden></div>`
+    `<label class="fu-l" for="cFu">${t("Remind me if nobody replies")}</label>` +
+    `<select id="cFu"><option value="">${t("No")}</option>` +
+    [1, 2, 3, 5, 7].map((n) => `<option value="${n}">${t("After {n, plural, one {# day} other {# days}}", { n })}</option>`).join("") +
+    `<option value="date">${t("On a date…")}</option></select>` +
+    `<input id="cFuAt" type="datetime-local" aria-label="${t("Date and time to be reminded if nobody has replied")}" hidden></div>`
 );
 fuEl("cFu").addEventListener("change", () => {
   const date = fuEl("cFu").value === "date";
@@ -13257,7 +13287,7 @@ function fuCompose() {
   if (v !== "date") return { followup_days: Number(v) };
   const at = new Date(fuEl("cFuAt").value).getTime();
   if (!(at > Date.now() + 60_000)) {
-    $("#cErr").textContent = "Pick a reminder time that is still ahead";
+    $("#cErr").textContent = t("Pick a reminder time that is still ahead");
     $("#cErr").classList.add("show");
     return null;
   }
@@ -13269,7 +13299,7 @@ function fuReset() {
   fuEl("cFuAt").value = "";
 }
 /** Said after "Sent" when the reminder asked for could not be set. */
-const fuNote = (d) => (d && d.followup === false ? ", but the reminder could not be set" : "");
+const fuNote = (d) => (d && d.followup === false ? t(", but the reminder could not be set") : "");
 
 /* ══ calendar ═══════════════════════════════════════════════════════════
  *
