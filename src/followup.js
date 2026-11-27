@@ -32,6 +32,12 @@
  * costs a single read when there are none. That sweep is also what notices a
  * star taken off by a sync or a message deleted by one, so neither of those
  * paths had to learn about follow-ups.
+ *
+ * The query asks for two things apart: the waiting ones, soonest first, which
+ * it must never miss, and of the rest only those whose star or message has
+ * gone. It once read every open one by due date under one limit, and a
+ * reminded one stays until it is cleared, so two hundred reminded follow-ups
+ * would have hidden a newer waiting one for ever.
  */
 
 import { aliasesOf, accountById } from "./filing.js";
@@ -42,7 +48,7 @@ import { FLAG_FLAGGED, json } from "./util.js";
 
 export const KIND = "followup"; // the reminders table's kind for these
 const KINDS = ["flag", "noreply"];
-const OPEN_MAX = 200; // the most one sweep looks at
+const OPEN_MAX = 200; // the most one sweep looks at, of each of its two kinds
 const DAYS_MAX = 60;
 const DAY_MS = 86_400_000;
 
@@ -139,13 +145,15 @@ const subjectOf = (s) => String(s || "").trim() || "(no subject)";
  * parameters so a test controls the clock and the iCloud side.
  */
 export async function sweep(env, now = Date.now()) {
-  const { results } = await env.DB.prepare(
-    `SELECT f.message_id, f.account_id, f.thread_key, f.kind, f.due, f.state,
+  const cols = `f.message_id, f.account_id, f.thread_key, f.kind, f.due, f.state,
             m.id AS present, m.starred, m.date, m.subject, m.from_email, m.to_line
-       FROM followups f LEFT JOIN messages m ON m.id=f.message_id
-      ORDER BY f.due LIMIT ?`
+       FROM followups f LEFT JOIN messages m ON m.id=f.message_id`;
+  const { results } = await env.DB.prepare(
+    `SELECT * FROM (SELECT ${cols} WHERE f.state='waiting' ORDER BY f.due LIMIT ?)
+     UNION ALL
+     SELECT * FROM (SELECT ${cols} WHERE f.state<>'waiting' AND (m.id IS NULL OR (f.state='reminded' AND m.starred=0)) LIMIT ?)`
   )
-    .bind(OPEN_MAX)
+    .bind(OPEN_MAX, OPEN_MAX)
     .all();
   let fired = 0;
   for (const f of results ?? []) {

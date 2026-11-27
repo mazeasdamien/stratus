@@ -268,6 +268,8 @@ CREATE TABLE IF NOT EXISTS followups (
   created_at  INTEGER NOT NULL
 );
 
+CREATE INDEX IF NOT EXISTS idx_followups_waiting ON followups(due) WHERE state='waiting';
+
 CREATE TABLE IF NOT EXISTS calendars (
   id          TEXT PRIMARY KEY,
   name        TEXT NOT NULL,

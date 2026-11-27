@@ -276,6 +276,32 @@ try {
     reset();
   }
 
+  /* ── many reminded ones do not hide a waiting one ── */
+  {
+    // Reminded follow-ups stay until they are cleared, and are all due before the new one.
+    const fu = DB.raw.prepare("INSERT INTO followups (message_id, account_id, thread_key, kind, due, state, created_at) VALUES (?, 'acct1', '', 'flag', ?, 'reminded', 0)");
+    for (let i = 0; i < 250; i++) fu.run(put({ starred: 1 }), clock - DAY + i);
+    const before = log.length;
+    await sweep(env);
+    eq(log.length - before, 1, "with 250 reminded and nothing waiting, a sweep is still one query");
+
+    const s = sent("<t7@x>", { subject: "Proposal" });
+    const due = clock + 10 * MIN;
+    await call("POST", "/api/followups", { message_id: s, kind: "noreply", due });
+    clock = due + 1;
+    await cron();
+    eq(open().find((f) => f.message_id === s).state, "reminded", "the waiting one fires at its time");
+    ok(reminder(s)?.fired_at, "and its reminder rings");
+    eq(open().filter((f) => f.state === "reminded").length, 251, "the reminded ones are left as they were");
+
+    // One of the 250 has its star taken off: it is the one the sweep reads, and ends.
+    const gone = open().find((f) => f.message_id !== s).message_id;
+    DB.raw.prepare("UPDATE messages SET starred=0 WHERE id=?").run(gone);
+    await sweep(env);
+    ok(!open().some((f) => f.message_id === gone), "a reminded one whose star came off is still noticed");
+    reset();
+  }
+
   /* ── search ── */
   {
     const m = put({});

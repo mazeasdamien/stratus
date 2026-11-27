@@ -316,6 +316,8 @@ export const SCHEMA = [
   state       TEXT NOT NULL DEFAULT 'waiting', -- waiting | reminded | rang (reminded, its star never set)
   created_at  INTEGER NOT NULL
 )`,
+  // The sweep asks for the waiting ones, soonest first, every minute.
+  `CREATE INDEX IF NOT EXISTS idx_followups_waiting ON followups(due) WHERE state='waiting'`,
   // The calendar (src/calendar.js). Events live here, not at iCloud. Invitations
   // found in mail stay in `events` above and are never copied into these.
   `CREATE TABLE IF NOT EXISTS calendars (
