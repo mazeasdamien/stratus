@@ -63,6 +63,16 @@ const server = createServer(async (req, res) => {
     knobs = Object.fromEntries(url.searchParams);
     return json({});
   }
+  // Switches a scenario flips in the middle of a run, without clearing the log.
+  if (p === "/__set") {
+    Object.assign(knobs, Object.fromEntries(url.searchParams));
+    for (const [k, v] of Object.entries(knobs)) if (v === "") delete knobs[k];
+    return json({});
+  }
+  // A dropped connection: the socket dies with no answer, which is what fetch
+  // calls a TypeError. And a session the server no longer accepts.
+  if (p.startsWith("/api/") && knobs.down) return void req.socket.destroy();
+  if (p.startsWith("/api/") && knobs.unauth) return json({ error: "This device is not activated" }, 401);
   if (!p.startsWith("/api/")) {
     try {
       const file = p === "/" ? "/index.html" : p;
@@ -79,7 +89,7 @@ const server = createServer(async (req, res) => {
   let parsed = null;
   try { parsed = body ? JSON.parse(body) : null; } catch { /* not json */ }
   if (req.method !== "GET") log.push({ method: req.method, path: p, body: parsed });
-  else if (p === "/api/messages") log.push({ method: "GET", path: p, query: Object.fromEntries(url.searchParams) });
+  else if (p === "/api/messages" || /^\/api\/messages\/\w+$/.test(p)) log.push({ method: "GET", path: p, query: Object.fromEntries(url.searchParams) });
   const wait = (ms) => new Promise((r) => setTimeout(r, Number(ms) || 0));
 
   if (p === "/api/accounts") return json({ accounts });
@@ -109,6 +119,7 @@ const server = createServer(async (req, res) => {
     });
   }
   if (detail) {
+    await wait(knobs.detailDelay);
     const files = detail[1] === "m2" ? [{ filename: "one.pdf", type: "application/pdf", size: 9, part: "2" }, { filename: "two.pdf", type: "application/pdf", size: 9, part: "3" }] : [];
     return json({
       message: messages.find((m) => m.id === detail[1]), account: accounts[0], invite: null, rsvp: "",
@@ -427,6 +438,121 @@ try {
     await fresh();
     const n = await ev(`enterSelmode(); const first = document.querySelector("#list [data-id]"); togglePick(first.closest(".wrap") || first); const before = picked.size; renderFolders(); document.querySelector('[data-folder="archive"]').click(); await wait(400); return { before, after: picked.size, selmode: document.body.classList.contains("selmode") };`);
     ok(n.before === 1 && n.after === 0 && !n.selmode, `changing folder ends the selection — ${JSON.stringify(n)}`);
+  });
+  /* ── offline mail ── */
+  const setKnob = (q) => fetch(`${APP}/__set?${q}`);
+  const dbNames = () => ev(`return (await indexedDB.databases()).map((d) => d.name);`);
+  const flag = () => ev(`return localStorage.getItem("dmzs-offline");`);
+  /** A clean page with Offline mail off (database deleted), or on with a list and one opened message kept. */
+  const offlineFresh = async (on, switches = {}) => {
+    await fresh(switches);
+    await ev(`await offlineWipe();`);
+    if (on) await ev(`setOfflineFlag(true); await refreshAll(); await openMsg("m1", messages[0]); await wait(400);`);
+  };
+
+  await scenario("offline-off", async () => {
+    await offlineFresh(false);
+    await ev(`await refreshAll(); await openMsg("m1", messages[0]); await wait(400); await openMsg("m2", messages[1]); await wait(400); await wait(2600);`);
+    ok((await dbNames()).length === 0, `with the setting off, reading a list and two messages creates no database — ${JSON.stringify(await dbNames())}`);
+    ok((await flag()) === null, "and the setting is not left on");
+    // Offline with it off, the page fails exactly as before: nothing said, nothing shown.
+    await setKnob("down=1");
+    const r = await ev(`await loadList(); await wait(300); return { note: !$("#offListNote").hidden, toast: $("#toast").textContent };`);
+    ok(!r.note && !/saved|connection/.test(r.toast), `and a lost connection shows no offline copy and says nothing new — ${JSON.stringify(r)}`);
+    ok((await dbNames()).length === 0, "still no database");
+  });
+
+  await scenario("offline-copy", async () => {
+    await offlineFresh(true);
+    // Let the fill take what has not been opened.
+    const kept = await ev(`for (let i = 0; i < 60 && !(await offlineStore.keys()).includes("msg:m3"); i++) await wait(150); return await offlineStore.keys();`);
+    ok(["list:|inbox", "msg:m1", "msg:m2", "msg:m3", "meta:accounts", "meta:folders"].every((k) => kept.includes(k)), `the list, the opened message, the filled ones and what the list stands on are kept — ${JSON.stringify(kept)}`);
+    // The connection drops, and the page is opened cold.
+    await setKnob("down=1");
+    await cdp("Page.navigate", { url: APP + "/" });
+    let up = false;
+    for (let i = 0; i < 40 && !up; i++) {
+      await sleep(150);
+      up = await ev("return typeof messages !== 'undefined' && messages.length > 0", 3000).catch(() => false);
+    }
+    ok(up, "a page opened with no connection still lists the mail");
+    await ev(`window.wait = (ms) => new Promise((r) => setTimeout(r, ms));`);
+    const l = await ev(`return { n: messages.length, rows: document.querySelectorAll("#list [data-id]").length, accounts: accounts.length, note: $("#offListNote").hidden ? "" : $("#offListNote").textContent };`);
+    ok(l.n === 3 && l.rows === 3 && l.accounts === 1, `the list is painted from the copy — ${JSON.stringify(l)}`);
+    ok(/Offline copy, saved \S+/.test(l.note), `and marked as an offline copy with when it was saved — "${l.note}"`);
+    const m = await ev(`await openMsg("m2", messages[1]); await wait(300); return { subj: current.message.subject, html: current.body.html, note: $("#offReadNote").hidden ? "" : $("#offReadNote").textContent };`);
+    ok(m.subj === "Two" && /hello/.test(m.html), `a message that was filled in the background opens offline — ${m.subj}`);
+    ok(/Offline copy, saved \S+.*Attachments are not kept/.test(m.note), `and says it is a copy, and that attachments are not kept — "${m.note}"`);
+    // A folder that was never opened has no copy, and says so.
+    const gone = await ev(`await api("/api/messages?folder=archive&limit=51").catch(() => 0); await wait(200); return $("#toast").textContent;`);
+    ok(/not saved on this device/.test(gone), `a folder with no copy says so — ${gone}`);
+    // Back online the server answers, and the marks go.
+    await setKnob("down=");
+    const back = await ev(`await loadList(); await openMsg("m1", messages[0]); await wait(300); return { list: $("#offListNote").hidden, read: $("#offReadNote").hidden };`);
+    ok(back.list && back.read, `online again, the notes are gone — ${JSON.stringify(back)}`);
+  });
+
+  await scenario("offline-fill", async () => {
+    await fresh({ detailDelay: 600 });
+    await ev(`await offlineWipe(); setOfflineFlag(true); offlineFillSoon(true);`);
+    await fetch(`${APP}/__reset?detailDelay=600`);
+    const details = async () => (await seen()).filter((l) => /^\/api\/messages\/\w+$/.test(l.path));
+    let n = 0;
+    for (let i = 0; i < 80 && n < 2; i++) { await sleep(100); n = (await details()).length; }
+    ok(n >= 2, `the background fill asks for messages — ${n}`);
+    await ev(`$("#offSwitch").click(); await wait(100);`);
+    const at = (await details()).length;
+    await sleep(2200);
+    const after = await details();
+    ok(after.length === at && at < 3, `switching the setting off stops it at once — ${at} requests when it went off, ${after.length} later`);
+    ok(after.every((l) => l.query.peek === "1"), `and every message it asked for was asked for with peek=1 — ${JSON.stringify(after.map((l) => [l.path, l.query.peek]))}`);
+    ok((await dbNames()).length === 0 && (await flag()) === null, "and nothing is left behind");
+  });
+
+  await scenario("offline-refused", async () => {
+    await offlineFresh(true);
+    await setKnob("down=1");
+    const r = await ev(`
+      await openMsg("m1", messages[0]); await wait(200);
+      $("#rStar").click(); await wait(400);
+      const star = Number(current.message.starred);
+      const starToast = $("#toast").textContent;
+      const filed = await fileMessage("m1", "archive"); await wait(100);
+      const fileToast = $("#toast").textContent;
+      openCompose(); await wait(150); fill("Written offline", "still mine"); await wait(1200);
+      const draft = JSON.parse(localStorage.getItem(draftSlot()) || "null");
+      return { star, starToast, filed, fileToast, still: messages.some((m) => m.id === "m1"), draft: draft && draft.subject, composing: document.body.classList.contains("composing") };`);
+    ok(r.star === 0 && /needs a connection/.test(r.starToast), `a star offline changes nothing and says it needs a connection — ${JSON.stringify([r.star, r.starToast])}`);
+    ok(r.filed === null && /needs a connection/.test(r.fileToast) && r.still, `so does filing a message — ${JSON.stringify([r.filed, r.fileToast, r.still])}`);
+    ok(r.composing && r.draft === "Written offline", `a message can still be written, and is kept on this device — ${JSON.stringify([r.composing, r.draft])}`);
+    ok((await seen()).filter((l) => l.method === "POST").length === 0, "and nothing reached the server");
+  });
+
+  await scenario("offline-401", async () => {
+    await offlineFresh(true);
+    ok((await dbNames()).includes("stratus-offline"), "there is a copy to lose");
+    await setKnob("unauth=1");
+    await ev(`await api("/api/folders").catch(() => {}); await wait(600);`);
+    ok((await dbNames()).length === 0, `a 401 from the API leaves no database — ${JSON.stringify(await dbNames())}`);
+    ok((await flag()) === null, "and turns the setting off");
+    await setKnob("unauth=");
+    await ev(`await refreshAll(); await wait(2200);`);
+    ok((await dbNames()).length === 0, "and nothing brings it back");
+  });
+
+  await scenario("offline-switch-off", async () => {
+    await offlineFresh(true);
+    ok((await dbNames()).includes("stratus-offline"), "there is a copy to remove");
+    await ev(`$("#offSwitch").click(); await wait(700);`);
+    ok((await dbNames()).length === 0 && (await flag()) === null, `turning the setting off leaves no database — ${JSON.stringify(await dbNames())}`);
+    // Back on, then the remove button.
+    const on = await ev(`$("#offSwitch").click(); await wait(900); await openMsg("m1", messages[0]); await wait(400); return { on: $("#offSwitch").getAttribute("aria-checked"), persistNote: $("#offMsg").hidden ? "" : $("#offMsg").textContent };`);
+    ok(on.on === "true" && (await dbNames()).includes("stratus-offline"), `switching it on again keeps a copy — ${JSON.stringify(on)}`);
+    const held = await ev(`$("#acctBtn").click(); await wait(300); return $("#offState").textContent;`);
+    ok(/holds \d+ message/.test(held), `Settings says how much it holds — ${held}`);
+    await ev(`$("#offRemove").click(); await wait(700);`);
+    ok((await dbNames()).length === 0 && (await flag()) === null, "the remove button leaves no database either");
+    ok((await ev(`return $("#offSwitch").getAttribute("aria-checked");`)) === "false", "and the setting is off");
   });
 } finally {
   ws.close();
