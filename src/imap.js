@@ -181,7 +181,10 @@ class Imap {
    * is ready for the bytes — and then both sides sit waiting for the other.
    */
   async commandLiteral(cmd, payload) {
-    const bytes = this.encoder.encode(payload);
+    // Bytes go out as they are. A string is text and is encoded as UTF-8; an
+    // imported message is 8-bit, and encoding its latin1 form would double
+    // every byte above 127.
+    const bytes = typeof payload === "string" ? this.encoder.encode(payload) : payload;
     if (bytes.length > MAX_APPEND) throw new Error(`IMAP literal too large (${bytes.length} bytes)`);
     const verb = cmd.split(" ")[0];
     const tag = "d" + String(++this.seq).padStart(4, "0");

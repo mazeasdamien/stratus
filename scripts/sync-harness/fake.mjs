@@ -149,7 +149,8 @@ export class FakeImap {
         for (;;) {
           if (lit) {
             if (pending.length < lit.need + 2) return;
-            self.add(lit.box, pending.slice(0, lit.need), lit.flags);
+            // The date-time the client gave, kept so a test can see it arrive.
+            self.add(lit.box, pending.slice(0, lit.need), lit.flags).internalDate = lit.date;
             pending = pending.slice(lit.need + 2);
             send(`${lit.tag} OK APPEND completed\r\n`);
             lit = null;
@@ -160,14 +161,14 @@ export class FakeImap {
           const line = pending.slice(0, i);
           pending = pending.slice(i + 2);
           // The one command with a literal: `+`, then the message itself.
-          const ap = /^(\S+) APPEND "(.*)" \((.*)\) \{(\d+)\}$/.exec(line);
+          const ap = /^(\S+) APPEND "(.*)" \((.*)\)(?: "(.*)")? \{(\d+)\}$/.exec(line);
           if (ap) {
             self.log.push(`APPEND "${ap[2]}"`);
             if (!self.boxes.has(ap[2])) {
               send(`${ap[1]} NO [TRYCREATE] no such mailbox\r\n`);
               continue;
             }
-            lit = { tag: ap[1], box: ap[2], flags: ap[3].split(" ").filter(Boolean), need: Number(ap[4]) };
+            lit = { tag: ap[1], box: ap[2], flags: ap[3].split(" ").filter(Boolean), date: ap[4] || "", need: Number(ap[5]) };
             send("+ go ahead\r\n");
             continue;
           }

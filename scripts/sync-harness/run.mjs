@@ -851,5 +851,8 @@ eq(row("<att@x>").att_names, "devis-2026.pdf", "the backfill reads the names bac
 eq(await searchIds("devis has:attachment"), ["Devis joint"], "and then has:attachment finds it");
 eq(DB.raw.prepare("SELECT COUNT(*) n FROM messages WHERE att_names IS NULL").get().n, 0, "nothing is left waiting");
 
+// ── import (src/transfer.js), its own file ──
+await (await import("./transfer.mjs")).checkTransfer({ ok, eq, env, imap, DB, MAIL, handleApi, pass1 });
+
 console.log(`${fail ? "✗" : "✓"} ${pass} assertions passées, ${fail} échec(s) (caps ${caps.join(" ")})`);
 process.exit(fail ? 1 : 0);
