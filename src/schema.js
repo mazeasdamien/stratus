@@ -474,24 +474,30 @@ export const MIGRATIONS = [
   ["events_floating", `DELETE FROM settings WHERE key='events_seeded'`],
   // The addresses kept by hand before there was an address book become its
   // first cards: one per address, named as it was named. contacts_added is
-  // left where it is and no longer written.
+  // left where it is and no longer written. An address some card already
+  // holds is skipped, so running this again (a restored snapshot brings back
+  // an older list of migrations) makes no second card.
   [
     "contacts_book",
     `INSERT OR IGNORE INTO contacts (id, uid, name, emails, created_at, updated_at)
-     SELECT lower(hex(randomblob(8))), lower(hex(randomblob(16))), name,
-            json_array(json_object('type', '', 'value', email)), created_at, created_at
-       FROM contacts_added`,
+     SELECT lower(hex(randomblob(8))), lower(hex(randomblob(16))), a.name,
+            json_array(json_object('type', '', 'value', a.email)), a.created_at, a.created_at
+       FROM contacts_added a
+      WHERE NOT EXISTS (SELECT 1 FROM contacts c, json_each(c.emails) e
+                         WHERE lower(json_extract(e.value, '$.value')) = lower(a.email))`,
   ],
   // The one plain-text signature becomes a signature named "Default", used by
   // every address for new mail and for replies, so nobody's mail changes on
   // the day this ships. Its text is escaped and its line breaks made <br>.
-  // Nothing happens where there was no signature.
+  // Nothing happens where there was no signature, nor where a "Default" with
+  // that same text is already there, so running it again makes no second one.
   ["signatures_default", [
     `INSERT INTO signatures (id, name, html, position, created_at, updated_at)
-     SELECT lower(hex(randomblob(8))), 'Default',
-            replace(replace(replace(replace(replace(value, char(13), ''), '&', '&amp;'), '<', '&lt;'), '>', '&gt;'), char(10), '<br>'),
+     SELECT lower(hex(randomblob(8))), 'Default', s.html,
             0, CAST(strftime('%s','now') AS INTEGER)*1000, CAST(strftime('%s','now') AS INTEGER)*1000
-       FROM settings WHERE key='signature' AND trim(value) <> ''`,
+       FROM (SELECT replace(replace(replace(replace(replace(value, char(13), ''), '&', '&amp;'), '<', '&lt;'), '>', '&gt;'), char(10), '<br>') AS html
+               FROM settings WHERE key='signature' AND trim(value) <> '') s
+      WHERE NOT EXISTS (SELECT 1 FROM signatures g WHERE g.name='Default' AND g.html=s.html)`,
     `INSERT OR IGNORE INTO signature_use (address, new_id, reply_id) SELECT '*', id, id FROM signatures WHERE name='Default'`,
     `DELETE FROM settings WHERE key='signature'`,
   ]],
@@ -572,18 +578,21 @@ export async function ensureSchema(env) {
   } catch {
     ran = [];
   }
+  //
+  // Each migration and the line that records it are one batch, which D1 runs
+  // as one transaction: it is done and recorded, or neither. Recording them
+  // all at the end, as this once did, meant one that threw made every one
+  // before it run again a minute later.
   const todo = MIGRATIONS.filter(([name]) => !ran.includes(name));
   for (const [name, sql] of todo) {
-    for (const one of [].concat(sql)) await env.DB.prepare(one).run();
     ran.push(name);
+    await env.DB.batch([
+      ...[].concat(sql).map((one) => env.DB.prepare(one)),
+      env.DB.prepare(
+        "INSERT INTO settings (key, value) VALUES ('migrations', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value"
+      ).bind(JSON.stringify(ran)),
+    ]);
     console.log(`schema: migrated ${name}`);
-  }
-  if (todo.length) {
-    await env.DB.prepare(
-      "INSERT INTO settings (key, value) VALUES ('migrations', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value"
-    )
-      .bind(JSON.stringify(ran))
-      .run();
   }
   await env.DB.prepare(
     "INSERT INTO settings (key, value) VALUES ('schema_fp', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value"
