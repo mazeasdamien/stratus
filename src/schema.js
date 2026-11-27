@@ -64,6 +64,10 @@ export const SCHEMA = [
   -- none. Here only: iCloud has no colour that is not also a flag.
   color       INTEGER NOT NULL DEFAULT 0,
   has_body   INTEGER NOT NULL DEFAULT 0,   -- 1 once the defused body sits in R2
+  -- File names of the attachments, one per line, for has:attachment and
+  -- attachment:name. NULL is "not looked at yet", which is what every message
+  -- stored before this column is; '' is "looked, there are none".
+  att_names   TEXT,
   -- Where the provider has it: IMAP mailbox path and UID within it. What lets
   -- a sync notice a flag changed or a message expunged on another device.
   -- 0 and '' until a sync has seen the message there.
@@ -224,6 +228,7 @@ export const HEAL_COLUMNS = {
     mailbox: "TEXT NOT NULL DEFAULT ''",
     uid: "INTEGER NOT NULL DEFAULT 0",
     color: "INTEGER NOT NULL DEFAULT 0",
+    att_names: "TEXT",
   },
   accounts: {
     label: "TEXT NOT NULL DEFAULT ''",
@@ -247,6 +252,9 @@ export const AFTER_HEAL = [
   // Reconciling looks rows up by where the provider has them, a UID range at
   // a time. Without this every pass reads the whole mailbox's rows.
   `CREATE INDEX IF NOT EXISTS idx_messages_uid     ON messages(account_id, mailbox, uid)`,
+  // The messages whose attachments have not been read yet. Holds nothing once
+  // the backfill is done, so asking "is there any left" costs no row reads.
+  `CREATE INDEX IF NOT EXISTS idx_messages_att_todo ON messages(account_id) WHERE att_names IS NULL`,
 ];
 
 /**

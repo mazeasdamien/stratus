@@ -7,7 +7,7 @@ import { imapFetchHead, imapFetchMeta, imapFetchRaw } from "./imap.js";
 import { decodeWords, htmlToText } from "./mime.js";
 import { parseHeaders } from "./rfc822.js";
 import { MAX_BODY_BYTES, icloudAct } from "./mailbox.js";
-import { indexMessage } from "./store.js";
+import { attNames, indexMessage } from "./store.js";
 import { indexEvent } from "./ics.js";
 import { readLargeBody, rowFromRaw } from "./sync.js";
 import { bodyKey, json } from "./util.js";
@@ -84,7 +84,9 @@ export async function fetchBodyNow(env, account, msg) {
   await env.MAIL.put(bodyKey(msg.id), JSON.stringify(out), {
     httpMetadata: { contentType: "application/json" },
   });
-  await env.DB.prepare("UPDATE messages SET has_body=1 WHERE id=?").bind(msg.id).run();
+  await env.DB.prepare("UPDATE messages SET has_body=1, att_names=? WHERE id=?")
+    .bind(attNames(out.attachments), msg.id)
+    .run();
   await indexMessage(env, msg.id, msg, htmlToText(out.html || ""));
   if (out.calendar) await indexEvent(env, msg.id, msg.account_id, out.calendar, msg.subject);
   return out;

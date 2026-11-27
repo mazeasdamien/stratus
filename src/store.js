@@ -61,8 +61,8 @@ export async function storeRows(env, accountId, rows) {
         `INSERT INTO messages
            (id, account_id, pid, mid, thread_key, refs, folder, from_name, from_email,
             to_line, cc_line, bcc_line, subject, snippet, date, unread, starred, has_body,
-            mailbox, uid, created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?)
+            mailbox, uid, att_names, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?)
          -- Put yourself on the Cc of something you send and the provider keeps
          -- two copies of one message: the one in Sent and the one delivered to
          -- the inbox, sharing a Message-ID and therefore sharing this row.
@@ -79,7 +79,8 @@ export async function storeRows(env, accountId, rows) {
            -- A copy filed locally (sent, draft) has no UID yet, and must not
            -- erase the one a sync has already found for the same message.
            mailbox=CASE WHEN excluded.uid > 0 THEN excluded.mailbox ELSE messages.mailbox END,
-           uid=CASE WHEN excluded.uid > 0 THEN excluded.uid ELSE messages.uid END
+           uid=CASE WHEN excluded.uid > 0 THEN excluded.uid ELSE messages.uid END,
+           att_names=COALESCE(excluded.att_names, messages.att_names)
          --
          -- Except over a copy that was thrown away. Bcc yourself and the inbox
          -- copy is the one you delete once you have seen it; the row followed
@@ -109,6 +110,7 @@ export async function storeRows(env, accountId, rows) {
         r.starred ? 1 : 0,
         r.mailbox || "",
         Number(r.uid) || 0,
+        r.att_names ?? null,
         now
       )
     );
@@ -168,17 +170,20 @@ export async function unindex(env, ids) {
 }
 
 /**
- * A user's words → an FTS5 MATCH expression.
+ * The attachment file names of a message, one per line, as messages.att_names
+ * keeps them.
  *
- * Reduced to letters and digits before anything else: FTS5's query language
- * treats quotes, colons, carets and hyphens as syntax, so an address pasted
- * into the search box would be a syntax error rather than a search. The last
- * word gets a prefix star, so "lily" finds "Lilyn" while you are still typing.
+ * An inline picture (a logo in a signature) has a content id and a file name
+ * and is no attachment to anyone looking for one, so it is left out. (The
+ * reader still lists it among the files; this is only about what a search
+ * for mail "with an attachment" should find.)
  */
-export function ftsQuery(term) {
-  const words = String(term || "").toLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
-  if (!words.length) return null;
-  return words.map((w, i) => (i === words.length - 1 ? `${w}*` : w)).join(" AND ");
+export function attNames(list) {
+  return (Array.isArray(list) ? list : [])
+    .filter((a) => a?.filename && !(a.cid && /^image\//i.test(a.type || "")))
+    .map((a) => String(a.filename).replace(/\s+/g, " "))
+    .join("\n")
+    .slice(0, 1000);
 }
 
 /**

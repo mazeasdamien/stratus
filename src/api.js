@@ -20,7 +20,8 @@ import { ensureBody } from "./bodies.js";
 import { accountById, aiKey, aiModel, aliasesOf, fileDraftCopy, forgetLocal, moveAtProvider, senderFor } from "./filing.js";
 import { folderNameFor, icloudAct, icloudPassword, mailboxList, renameCursor, resolveMailbox, theAccount, threadAct, threadRowsIn, withImap } from "./mailbox.js";
 import { deliver, outboxLease, parkIfUncertain } from "./outgoing.js";
-import { flagAccount, forgetMessages, ftsQuery, imapError, unindex } from "./store.js";
+import { parseSearch } from "./query.js";
+import { flagAccount, forgetMessages, imapError, unindex } from "./store.js";
 import { countDestroyed, forgetBlockedLocally, mailboxNames, noteMailbox, purgeBlockedAtProvider, syncAccount } from "./sync.js";
 import { ATTACHMENT_HEADERS, FLAG_FLAGGED, FLAG_SEEN, bodyKey, hashHex, json } from "./util.js";
 
@@ -843,7 +844,7 @@ export async function handleApi(request, env, path, ctx, session) {
     return json({ ok: true }, 200, { "Set-Cookie": sessionCookie(token) });
   }
 
-  // GET /api/messages?folder=&account=&q=&starred=&before=&before_id=&limit=
+  // GET /api/messages?folder=&account=&q=&tz=&starred=&before=&before_id=&limit=
   // folder=all searches across everything, which is what the search box uses.
   // `before` and `before_id` are the date and id of the last row of the page
   // before this one.
@@ -937,19 +938,12 @@ export async function handleApi(request, env, path, ctx, session) {
     if (term) {
       let sql = `SELECT ${COLS}, 1 AS n FROM messages m WHERE ${P("m")}`;
       const vals = [...pv];
-      // Full text, including message bodies. Falls back to a LIKE over the
-      // headers when the term reduces to nothing the index can match.
-      const match = ftsQuery(term);
-      if (match) {
-        sql += " AND m.id IN (SELECT id FROM search WHERE search MATCH ?)";
-        vals.push(match);
-      } else {
-        // Escaped, so a search for "100%" or "a_b" means those characters
-        // and not LIKE's wildcards.
-        sql += " AND (m.subject LIKE ? ESCAPE '\\' OR m.from_email LIKE ? ESCAPE '\\' OR m.from_name LIKE ? ESCAPE '\\')";
-        const like = `%${term.replace(/[\\%_]/g, "\\$&")}%`;
-        vals.push(like, like, like);
-      }
+      // Words and operators, in src/query.js. `tz` is the reader's
+      // getTimezoneOffset, which is what makes after:/before:/on: mean their
+      // day and not the UTC one.
+      const q = parseSearch(term, { tzOffsetMin: p.get("tz") });
+      sql += q.where.map((w) => ` AND ${w}`).join("");
+      vals.push(...q.values);
       sql += `${cursor} ORDER BY m.date DESC, m.id DESC LIMIT ?`;
       const { results } = await env.DB.prepare(sql).bind(...vals, ...cv, limit).all();
       return json({ messages: results ?? [] });

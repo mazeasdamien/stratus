@@ -10,7 +10,7 @@ import { flagState, planWindow, strikes, uidSet } from "./reconcile.js";
 import { decodePart, flattenStructure, parseHeaders, parseMessage, parseSexp } from "./rfc822.js";
 import { SYSTEM_FOLDERS } from "./filing.js";
 import { IMAP_CAP, MAX_BODY_BYTES, folderNameFor, icloudPassword } from "./mailbox.js";
-import { flagAccount, forgetMessages, indexMessage, storeRows } from "./store.js";
+import { attNames, flagAccount, forgetMessages, indexMessage, storeRows } from "./store.js";
 import { indexEvent } from "./ics.js";
 import { bodyKey, defuse, hashHex, json } from "./util.js";
 
@@ -62,6 +62,7 @@ export function rowFromRaw({ uid, flags, raw }, folder) {
       date: Date.parse(h.date || "") || Date.now(),
       unread: /\\Seen/i.test(flags) ? 0 : 1,
       starred: /\\Flagged/i.test(flags) ? 1 : 0,
+      att_names: attNames(m.attachments),
     },
     body: bodyFromParts({
       html: defused.html,
@@ -229,6 +230,43 @@ export async function backfillSearch(env, account, limit) {
       .run();
   }
   return (results ?? []).length;
+}
+
+/**
+ * Fills in attachment names for stored mail that predates the column.
+ *
+ * The list is already kept with every body in R2, so nothing is fetched from
+ * iCloud: this reads up to `limit` bodies a pass until none are left, the same
+ * pace as backfillSearch. Until a message is reached it matches neither
+ * has:attachment nor attachment:name.
+ */
+export async function backfillAttachments(env, account, limit) {
+  const { results } = await env.DB.prepare(
+    "SELECT id FROM messages WHERE account_id=? AND att_names IS NULL LIMIT ?"
+  )
+    .bind(account.id, limit)
+    .all();
+
+  const stmts = [];
+  for (const { id } of results ?? []) {
+    let obj;
+    try {
+      obj = await env.MAIL.get(bodyKey(id));
+    } catch {
+      continue; // R2 hiccup: this one is asked again next pass
+    }
+    // No stored body, or one that does not parse, has nothing to list — and
+    // must leave the queue, or it would be first in line forever.
+    let names = "";
+    try {
+      if (obj) names = attNames(JSON.parse(await obj.text()).attachments);
+    } catch {
+      /* unreadable body: no names */
+    }
+    stmts.push(env.DB.prepare("UPDATE messages SET att_names=? WHERE id=? AND att_names IS NULL").bind(names, id));
+  }
+  if (stmts.length) await env.DB.batch(stmts);
+  return stmts.length;
 }
 
 /**
@@ -721,6 +759,8 @@ export async function syncIcloud(env, account, tally = {}) {
           if (!row.snippet && parsed.html) {
             row.snippet = htmlToText(parsed.html).replace(/\s+/g, " ").trim().slice(0, 280);
           }
+          // The headers-only fetch saw no attachments; the structure did.
+          row.att_names = attNames(doc.attachments);
         }
         rows.push(row);
         const id = await hashHex(`msg|${account.id}|${row.pid}`, 16);
@@ -784,6 +824,7 @@ export async function syncIcloud(env, account, tally = {}) {
     // one go: reading 700 bodies out of R2 in a single invocation would blow
     // both the time and the memory budget.
     await backfillSearch(env, account, 20);
+    await backfillAttachments(env, account, 20);
 
     await env.DB.prepare(
       "UPDATE accounts SET sync_state=?, last_sync=?, status='ok', last_error=NULL WHERE id=?"

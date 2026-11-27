@@ -32,6 +32,9 @@ import { seal, open } from "./src/crypto.js";
 import { BODY_VERSION, bodyFromParts, unsubFromHeaders } from "./src/body.js";
 import { MailAuthError, isAuthFailure } from "./src/errors.js";
 import { readFileSync, readdirSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
+import { OPERATORS, parseSearch } from "./src/query.js";
+import { SCHEMA } from "./src/schema.js";
 
 let pass = 0;
 let fail = 0;
@@ -1476,6 +1479,178 @@ console.log("\n── sessions : révocation, portée de l'extension ──");
     err = e.message;
   }
   ok(/E_SENDER_DOMAIN_NOT_AVAILABLE/.test(err) && /nope/.test(err), "le refus de Cloudflare remonte avec son code");
+}
+
+console.log("\n── recherche : opérateurs ──────────────────");
+{
+  // Le vrai schéma dans un vrai SQLite : une erreur de syntaxe FTS5 dans une
+  // expression MATCH fait échouer ces tests, pas la production.
+  const db = new DatabaseSync(":memory:");
+  for (const s of SCHEMA) db.exec(s);
+  const D = (iso) => Date.parse(iso);
+  const MSGS = [
+    // id, expéditeur, e-mail, to, cc, sujet, corps, non lu, étoile, couleur, pièces jointes, date
+    ["m1", "Ada Lovelace", "ada@math.org", "me@x.fr", "bob@x.fr", "Budget 2027", "the numbers for the budget", 1, 0, 0, "budget.xlsx\nnotes.txt", "2026-10-15T12:00:00Z"],
+    ["m2", "Bob", "bob@x.fr", "ada@math.org", "", "Lunch", "pizza on friday", 0, 1, 2, "", "2026-09-30T23:30:00Z"],
+    ["m3", "Ada Lovelace", "ada@math.org", "me@x.fr", "", "Re: budget", "see attached", 1, 0, 5, null, "2026-10-01T09:00:00Z"],
+    ["m4", "Zoé", "zoe@x.fr", "me@x.fr", "", "100% sure", "release the budget near and or not", 0, 0, 0, "", "2026-11-02T08:00:00Z"],
+    ["m5", "Carol", "carol@x.fr", "me@x.fr", "", "Relevé", "a_b matches only itself", 0, 0, 3, "Relevé mars.pdf", "2026-10-31T23:30:00Z"],
+  ];
+  const ins = db.prepare(
+    `INSERT INTO messages (id, account_id, pid, from_name, from_email, to_line, cc_line, subject, date, unread, starred, color, att_names, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0)`
+  );
+  const fts = db.prepare("INSERT INTO search (id, subject, sender, body) VALUES (?,?,?,?)");
+  for (const [id, name, email, to, cc, subject, body, unread, starred, color, att, at] of MSGS) {
+    ins.run(id, "a", id, name, email, to, cc, subject, D(at), unread, starred, color, att);
+    fts.run(id, subject, `${name} ${email}`, body);
+  }
+  const search = (term, tz = 0) => {
+    const q = parseSearch(term, { tzOffsetMin: tz });
+    ok(q.values.length <= 80, `peu de valeurs liées pour « ${term} » (${q.values.length})`);
+    const sql = `SELECT m.id FROM messages m WHERE 1=1${q.where.map((w) => " AND " + w).join("")} ORDER BY m.id`;
+    return db.prepare(sql).all(...q.values).map((r) => r.id);
+  };
+
+  // Le cas de la demande, tel quel.
+  eq(search("budget from:ada has:attachment after:2026-10-01 is:unread"), ["m1"], "la requête complète");
+
+  console.log("  mots, -mot, « phrase »");
+  eq(search("budget"), ["m1", "m3", "m4"], "des mots simples, comme avant");
+  eq(search("budg"), ["m1", "m3", "m4"], "le dernier mot est un préfixe");
+  eq(search("budg numbers"), [], "mais pas un mot du milieu : il est fini, donc entier");
+  eq(search("budget numb"), ["m1"], "tout se combine par ET, le préfixe va au dernier");
+  eq(search("releve"), ["m5"], "les accents sont repliés");
+  eq(search('"near and or"'), ["m4"], "une phrase exacte");
+  eq(search('"and near"'), [], "dans l'ordre");
+  eq(search("budget -lunch"), ["m1", "m3", "m4"], "-mot écarte un mot absent");
+  eq(search("budget -numbers"), ["m3", "m4"], "-mot écarte ce qui le contient");
+  eq(search("-budget"), ["m2", "m5"], "une requête faite de négations seules");
+  eq(search('budget -"near and"'), ["m1", "m3"], "-\"phrase\"");
+  eq(search("zoe@x.fr"), ["m4"], "une adresse collée se cherche comme avant");
+  eq(search("https://zoe.x.fr/a?b=c#d"), [], "une URL collée est une recherche, pas une erreur");
+  eq(search("100%"), ["m4"], "100% se cherche par ses chiffres");
+  eq(search("%%"), [], "« %% » retombe sur LIKE et ne vaut pas joker");
+  eq(search("a_b"), ["m5"], "a_b par l'index");
+
+  console.log("  from: to: cc:");
+  eq(search("from:ada"), ["m1", "m3"], "from: par le nom ou l'adresse");
+  eq(search("from:math.org"), ["m1", "m3"], "from: par un morceau d'adresse");
+  eq(search('from:"ada lovelace"'), ["m1", "m3"], "une valeur entre guillemets");
+  eq(search('from:"lovelace ada"'), [], "avec l'espace de la valeur");
+  eq(search("FROM:Bob"), ["m2"], "clé et valeur insensibles à la casse");
+  eq(search("to:ada"), ["m2"], "to:");
+  eq(search("cc:bob"), ["m1"], "cc:");
+  eq(search("from:a_b"), [], "_ n'est pas un joker dans from:");
+  eq(search("from:%"), [], "% non plus");
+
+  console.log("  subject: body:");
+  eq(search("subject:budget"), ["m1", "m3"], "subject: ne regarde que le sujet");
+  eq(search("body:budget"), ["m1", "m4"], "body: ne regarde que le corps");
+  eq(search('subject:"budget 2027"'), ["m1"], "subject: avec une phrase");
+  eq(search("subject:budg"), ["m1", "m3"], "subject: en cours de frappe est un préfixe");
+  eq(search("subject:budget body:friday"), [], "deux colonnes se combinent par ET");
+  eq(search("subject:lunch body:friday"), ["m2"], "deux colonnes qui s'accordent");
+  eq(search("subject:budget -numbers"), ["m3"], "colonne et négation ensemble");
+
+  console.log("  has: attachment:");
+  eq(search("has:attachment"), ["m1", "m5"], "has:attachment — le NULL (pas encore lu) n'y est pas");
+  eq(search("attachment:budget"), ["m1"], "attachment: par un morceau du nom");
+  eq(search("attachment:RELEV"), ["m5"], "la casse ASCII ne compte pas");
+  eq(search("attachment:relevé"), ["m5"], "les accents sont gardés tels quels");
+  eq(search('attachment:"mars.pdf"'), ["m5"], "attachment: entre guillemets");
+  eq(search("attachment:%"), [], "% n'est pas un joker dans attachment:");
+  eq(search("has:everything"), [], "has: inconnu = mots simples");
+
+  console.log("  is: category:");
+  eq(search("is:unread"), ["m1", "m3"], "is:unread");
+  eq(search("is:read"), ["m2", "m4", "m5"], "is:read");
+  eq(search("is:flagged"), ["m2"], "is:flagged");
+  eq(search("is:starred"), ["m2"], "is:starred est la même étoile");
+  eq(search("category:orange"), ["m2"], "category:orange = couleur 2");
+  eq(search("category:blue"), ["m3"], "category:blue = couleur 5");
+  eq(search("category:yellow is:read"), ["m5"], "category: et is: ensemble");
+  eq(search("category:green"), [], "personne n'est vert");
+  eq(search("category:purple"), [], "category: inconnue = mots simples");
+
+  console.log("  after: before: on:, dans le fuseau du lecteur");
+  eq(search("after:2026-10-15"), ["m1", "m4", "m5"], "after: inclut le jour même");
+  eq(search("before:2026-10-15"), ["m2", "m3"], "before: s'arrête avant ce jour");
+  eq(search("on:2026-10-15"), ["m1"], "on:");
+  eq(search("after:2026-10-01 before:2026-11-01"), ["m1", "m3", "m5"], "une plage");
+  eq(search("on:2026-10-01"), ["m3"], "en UTC, m2 (30/09 23:30Z) est le 30 septembre");
+  eq(search("on:2026-10-01", -120), ["m2", "m3"], "à Paris (-120), il est déjà le 1er octobre");
+  eq(search("on:2026-09-30", -120), [], "et plus le 30");
+  eq(search("on:2026-10-31", 0), ["m5"], "m5 (31/10 23:30Z) est le 31 en UTC");
+  eq(search("on:2026-10-31", -120), [], "mais le 1er novembre à Paris");
+  eq(search("on:2026-11-01", -120), ["m5"], "…");
+  eq(search("on:2026-10-31", 300), ["m5"], "et à New York (+300) toujours le 31, à 18:30");
+  eq(search("on:2026-10-15", "abc"), ["m1"], "un décalage inutilisable est lu comme UTC");
+  eq(search("on:2026-10-01", 99999), ["m3"], "et un décalage absurde aussi");
+  eq(search("after:2026/10/15"), ["m1", "m4", "m5"], "les / sont admis");
+
+  console.log("  ce qui n'est pas compris se cherche comme des mots");
+  eq(search("after:2026-13-45"), [], "une date impossible : mots « after 2026 13 45 »");
+  eq(parseSearch("after:2026-02-30").where.length, 1, "le 30 février aussi");
+  ok(parseSearch("after:2026-02-30").where[0].includes("MATCH"), "… et ce sont bien des mots");
+  eq(search("after:tomorrow"), [], "after:tomorrow");
+  eq(search("colour:red budget"), [], "clé inconnue : « colour red budget » ET");
+  eq(search("colour:red"), [], "clé inconnue seule");
+  eq(search("from:"), [], "from: sans valeur");
+  eq(search("constructor:x __proto__:y toString:z"), [], "des noms d'Object ne sont pas des opérateurs");
+  eq(search("is:constructor"), [], "ni des valeurs");
+  ok(!Object.hasOwn(OPERATORS, "constructor"), "la table ne connaît que ses clés");
+  eq(search("-from:ada"), ["m1", "m2", "m3", "m4", "m5"], "-clé:valeur écarte la phrase « from ada », il ne nie pas l'opérateur");
+
+  console.log("  hostile : jamais d'erreur SQL ni FTS5");
+  const hostile = [
+    '"', '""', '"""', '*', '**', '^budget', '(budget', 'budget)', '(', ')', ':', '::', 'budget:', ':budget',
+    '-', '--', '---budget', '- -', '-"', '-""', '"-', 'NEAR(a b)', 'NEAR/2', 'a OR b', 'a AND', 'NOT a', 'OR', 'AND', 'NOT', 'a NOT b',
+    '{subject}: budget', 'subject: budget', 'subject:{a}', 'subject:"', 'subject:""', 'subject:*', 'subject:-', 'body:(', 'body:")',
+    'from:"', 'from:""', "from:'", "from:'; DROP TABLE messages; --", "'; DROP TABLE messages; --", '" OR 1=1 --',
+    'attachment:"', 'has:', 'has::', 'is:', 'category:', 'after:', 'after:"', 'on:"2026-10-01', 'before:-1', 'on:0000-01-01', 'on:9999-12-31',
+    'on:2026-10-01 on:2026-10-02', 'a:b:c:d', '\\', '\\"', '%', '_', '\0', 'budget\0', '\n', '\t"a\tb"\n', '😀', '"😀"', 'subject:😀',
+    '+', '+a', 'a+b', 'a.b', '@', '<script>', 'a"b"c', 'a""b', '"a""b"', '$', '[]', '{}', 'ΑΒΓ', 'ǅ', '١٢٣', '́', 'á',
+  ];
+  for (const term of hostile) {
+    let threw = "";
+    try { search(term); } catch (e) { threw = e.message; }
+    ok(!threw, `« ${JSON.stringify(term)} » ne casse rien : ${threw}`);
+  }
+  eq(db.prepare("SELECT count(*) n FROM messages").get().n, MSGS.length, "et la table est intacte");
+
+  console.log("  au plafond des 120 caractères");
+  const capped = [
+    "from:" + "x".repeat(115),
+    "-" + "x".repeat(119),
+    "x".repeat(120),
+    ("from:\"ada lovelace\" ").repeat(7).slice(0, 120),
+    ("-a ").repeat(40),
+    ("from:a ").repeat(18).slice(0, 120),
+    ("is:read ").repeat(15),
+    ("subject:b body:c ").repeat(8).slice(0, 120),
+    ("\"a b\" -\"c d\" ").repeat(10).slice(0, 120),
+    "é".repeat(120),
+    '"' + "a ".repeat(59),
+  ];
+  for (const term of capped) {
+    eq(term.length <= 120, true, "le terme fait au plus 120 caractères : " + term.length);
+    let threw = "";
+    try { search(term); } catch (e) { threw = e.message; }
+    ok(!threw, `« ${term.slice(0, 40)}… » (${term.length}) ne casse rien : ${threw}`);
+  }
+  // Le pire cas en valeurs liées : D1 en refuse plus de 100 par requête, et la
+  // route en ajoute déjà jusqu'à 42 (dossier « envoyés » et compte).
+  const most = Math.max(...capped.map((t) => parseSearch(t).values.length));
+  ok(most + 42 <= 100, `au plus ${most} valeurs liées pour 120 caractères`);
+
+  console.log("  la forme de ce qui est rendu");
+  eq(parseSearch("budget"), { where: ["m.id IN (SELECT id FROM search WHERE search MATCH ?)"], values: ['"budget"*'] }, "un mot");
+  eq(parseSearch("budget -zz").values, ['"budget"', '"zz"'], "un mot et une négation, chacun sa MATCH");
+  eq(parseSearch("a b subject:c").values[0], '"a" AND "b" AND subject : "c"*', "mots et colonne dans une seule MATCH, le dernier en préfixe");
+  eq(parseSearch("%%").values, ["%\\%\\%%", "%\\%\\%%", "%\\%\\%%"], "sans mot indexable : LIKE sur les en-têtes, échappé");
+  eq(parseSearch("").where.length, 1, "le vide ne casse pas");
+  eq(parseSearch("on:2026-10-01", { tzOffsetMin: -120 }).values, [Date.UTC(2026, 9, 1) - 120 * 60000, Date.UTC(2026, 9, 1) - 120 * 60000 + 86400000], "on: = minuit local, 24 h");
 }
 
 console.log(`\n${fail === 0 ? "✓" : "✗"} ${pass} assertions passées, ${fail} échec(s)\n`);

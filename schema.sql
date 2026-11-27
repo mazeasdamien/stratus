@@ -49,6 +49,10 @@ CREATE TABLE IF NOT EXISTS messages (
   -- none. Here only: iCloud has no colour that is not also a flag.
   color       INTEGER NOT NULL DEFAULT 0,
   has_body   INTEGER NOT NULL DEFAULT 0,   -- 1 once the defused body sits in R2
+  -- File names of the attachments, one per line, for has:attachment and
+  -- attachment:name. NULL is "not looked at yet", which is what every message
+  -- stored before this column is; '' is "looked, there are none".
+  att_names   TEXT,
   -- Where the provider has it: IMAP mailbox path and UID within it. What lets
   -- a sync notice a flag changed or a message expunged on another device.
   -- 0 and '' until a sync has seen the message there.
@@ -162,3 +166,5 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS idx_events_start ON events(start_ms);
 
 CREATE INDEX IF NOT EXISTS idx_messages_uid     ON messages(account_id, mailbox, uid);
+
+CREATE INDEX IF NOT EXISTS idx_messages_att_todo ON messages(account_id) WHERE att_names IS NULL;
