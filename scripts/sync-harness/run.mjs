@@ -529,6 +529,66 @@ await flushOutbox(env);
 eq(wentOut("Unsure now"), 1, "so the cron does not send it again at its appointed time");
 await api("POST", `/api/outbox/${unsureNow.body.id}/cancel`);
 
+// ── Follow-ups ride the real send and the real sync ──
+{
+  const DAY = 86_400_000;
+  const open = () => DB.raw.prepare("SELECT message_id, kind, state, due FROM followups ORDER BY created_at, message_id").all().map((r) => ({ ...r }));
+  const sentRow = (subject) => DB.raw.prepare("SELECT * FROM messages WHERE folder='sent' AND subject=?").get(subject);
+  const reminderFor = (id) => DB.raw.prepare("SELECT * FROM reminders WHERE kind='followup' AND ref=?").get(id);
+
+  // Sent now: the follow-up is on the Sent copy, and counts its days from the send.
+  const before = Date.now();
+  const sentFu = await api("POST", "/api/send", { ...direct("Follow me"), followup_days: 3 });
+  const s1 = sentRow("Follow me");
+  eq([sentFu.status, sentFu.body?.followup], [202, true], "a send that asked for a reminder says one was set");
+  eq(open().map((f) => [f.message_id, f.kind, f.state]), [[s1?.id, "noreply", "waiting"]], "it is attached to the Sent copy of that very message");
+  ok(open()[0].due >= before + 3 * DAY && open()[0].due <= Date.now() + 3 * DAY, "due three days after the send");
+  eq(reminderFor(s1.id), undefined, "and nothing rings yet");
+  eq(s1.thread_key, s1.mid, "the Sent copy keys its conversation on its own Message-ID, which a reply will quote");
+
+  // Scheduled: nothing exists until it has gone, and then it is attached to the copy that was filed.
+  const sched = await api("POST", "/api/send", { ...later, subject: "Follow later", followup_days: 2 });
+  eq([sched.status, open().length, !!sentRow("Follow later")], [202, 1, false], "a scheduled message has no follow-up before it goes");
+  DB.raw.prepare("UPDATE outbox SET at=? WHERE id=?").run(Date.now() - 1000, sched.body.id);
+  await flushOutbox(env);
+  const s2 = sentRow("Follow later");
+  eq(open().map((f) => f.message_id), [s1.id, s2?.id], "the outbox's delivery attaches it to its own Sent copy");
+
+  // A refusal and an uncertain answer go nowhere, so nothing is attached.
+  smtp.drop = "refuse";
+  const refused = await api("POST", "/api/send", { ...direct("Follow refused"), followup_days: 3 });
+  smtp.drop = "after-data";
+  const lostFu = await api("POST", "/api/send", { ...direct("Follow lost"), followup_days: 3 });
+  smtp.drop = "";
+  eq([refused.status, lostFu.status, sentRow("Follow refused"), sentRow("Follow lost"), open().length], [502, 504, undefined, undefined, 2], "a send that failed, or may not have gone, sets no follow-up");
+
+  // Somebody answers: the sync stores the reply and the cron cancels the follow-up, quietly.
+  const reply = latin(
+    `From: Zoé <zoe@x.fr>\r\nTo: me@example.com\r\nSubject: Re: Follow me\r\nDate: ${new Date(Date.now() + 60_000).toUTCString()}\r\nMessage-ID: <fu-reply@x>\r\n` +
+      `In-Reply-To: ${s1.mid}\r\nReferences: ${s1.mid}\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nyes\r\n`
+  );
+  imap.add("INBOX", reply);
+  for (let i = 0; i < 4; i++) await pass1("follow-up reply " + i);
+  eq(row("<fu-reply@x>")?.thread_key, s1.mid, "the reply lands in the conversation of the message you sent");
+  eq(open().map((f) => f.message_id), [s2.id], "the reply cancels that follow-up and not the other");
+  eq(reminderFor(s1.id), undefined, "with nothing to ring");
+
+  // The star is taken off on another device: the sync notices, and the follow-up ends.
+  const F = imap.add("INBOX", msg("<fu-flag@x>", "Flag me"), [SEEN]);
+  for (let i = 0; i < 3; i++) await pass1("follow-up flag " + i);
+  const flagged = await api("POST", "/api/followups", { message_id: row("<fu-flag@x>").id, kind: "flag", due: Date.now() + DAY });
+  eq(flagged.status, 200, "a flag follow-up is set through the route: " + JSON.stringify(flagged.body));
+  ok(imap.find("INBOX", F.uid).flags.has(BS + "Flagged"), "and the message is starred at the provider");
+  ok(reminderFor(row("<fu-flag@x>").id), "with its reminder");
+  imap.setFlag("INBOX", F.uid, BS + "Flagged", false);
+  for (let i = 0; i < 3; i++) await pass1("follow-up unflag " + i);
+  eq(row("<fu-flag@x>").starred, 0, "the sync takes the star off here");
+  eq([open().some((f) => f.message_id === row("<fu-flag@x>").id), reminderFor(row("<fu-flag@x>").id)], [false, undefined], "and the follow-up and its reminder go with it");
+
+  // Leave nothing behind, so later sections see the world they expect.
+  DB.raw.exec("DELETE FROM followups; DELETE FROM reminders WHERE kind='followup'");
+}
+
 // ── The list: the same answer as the query it replaced, and pages that skip nothing ──
 // A conversation with a mix of read, unread and starred messages in one folder.
 imap.add("INBOX", msg("<p1@x>", "Pager one"), [BS + "Flagged"]);
