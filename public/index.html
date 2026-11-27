@@ -7329,7 +7329,7 @@ function saveDraftLocal() {
     // announced once and forgotten. A save that failed at midnight is still
     // failing at nine, and a toast nobody caught is not a diagnosis.
     localStorage.setItem(slot, JSON.stringify({ ...d, why: draftWhy, files }));
-    setSaved("Kept");
+    setSaved(t("Kept"));
   } catch {
     // Out of quota, and nearly always for one reason: the pictures quoted
     // from the message being answered, which sit in the body as data URIs of
@@ -7339,12 +7339,12 @@ function saveDraftLocal() {
     try {
       const lean = d.html.replace(/(<img\b[^>]*?\ssrc=")data:[^"]*"/gi, '$1"');
       localStorage.setItem(slot, JSON.stringify({ ...d, html: lean, why: draftWhy, files }));
-      setSaved("Kept, without its pictures");
+      setSaved(t("Kept, without its pictures"));
     } catch {
       // Said out loud rather than swallowed: silently stopping is how someone
       // finds out at the worst possible moment.
       localStorage.removeItem(slot);
-      setSaved("Too large to keep here — saved on close", true);
+      setSaved(t("Too large to keep here — saved on close"), true);
     }
   }
 }
@@ -7398,7 +7398,7 @@ function keptDraft() {
 /** Puts a kept draft back in the composer it came out of. */
 function resumeKept(d) {
   openCompose({
-    title: d.title || "Draft",
+    title: d.title || t("Draft"),
     account: d.account_id,
     from: d.from,
     to: d.to,
@@ -7414,7 +7414,7 @@ function resumeKept(d) {
   if (d.bcc) {
     addrSet("#cBcc", "#cBccChips", d.bcc);
     $("#cBccWrap").hidden = false;
-    markToggle("#cBccToggle", "#cBccWrap", "Bcc");
+    markToggle("#cBccToggle", "#cBccWrap", t("Bcc"));
   }
   draftWhy = d.why || "";
   // Not clean: this copy never reached Apple, and closing must try again.
@@ -7423,11 +7423,11 @@ function resumeKept(d) {
   // the old one is let go, so there is no moment with no local copy.
   saveDraftLocal();
   if (d.slot && d.slot !== draftSlot()) localStorage.removeItem(d.slot);
-  setSaved(d.why ? `Not saved to Drafts: ${d.why}` : "Kept", !!d.why);
+  setSaved(d.why ? t("Not saved to Drafts: {reason}", { reason: d.why }) : t("Kept"), !!d.why);
   // The local copy holds words, not files. Said, because the message looks
   // complete and would otherwise be sent without them.
   if (Array.isArray(d.files) && d.files.length) {
-    toast(`Not kept with it — attach again: ${d.files.join(", ")}`);
+    toast(t("Not kept with it — attach again: {files}", { files: d.files.join(", ") }));
   }
 }
 for (const id of ["#cTo", "#cCc", "#cBcc", "#cSubj", "#cBody"]) {
@@ -7448,7 +7448,7 @@ $("#cImp").addEventListener("change", () => {
  * Returns the reason it failed, or "" when it worked.
  */
 async function saveDraftRemote(d, files, session, slot) {
-  setSaved("Saving…");
+  setSaved(t("Saving…"));
   const res = await api("/api/draft", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -7466,13 +7466,13 @@ async function saveDraftRemote(d, files, session, slot) {
   const stillOpen = draftSession === session;
 
   if (!res || !res.ok) {
-    const why = body.error || "the server refused it";
+    const why = tw(body.error) || t("the server refused it");
     if (stillOpen) setSaved(why, true);
     return why;
   }
   if (stillOpen) draftPid = body.pid || draftPid;
   if (!body.filed) {
-    const why = `Apple would not keep a copy: ${body.filedError || "unknown reason"}`;
+    const why = t("Apple would not keep a copy: {reason}", { reason: tw(body.filedError) || t("unknown reason") });
     if (stillOpen) setSaved(why, true);
     return why;
   }
@@ -7487,7 +7487,7 @@ async function saveDraftRemote(d, files, session, slot) {
     }
     if (!kept || Number(kept.at || 0) <= Number(d.at || 0)) localStorage.removeItem(slot);
   }
-  if (stillOpen) setSaved("Saved to Drafts");
+  if (stillOpen) setSaved(t("Saved to Drafts"));
   return "";
 }
 
@@ -7551,7 +7551,7 @@ function keepDraft() {
 
   draftSaving = saveDraftRemote(snap, files, session, slot)
     .then((why) => {
-      toast(why ? `Draft kept in this browser only — ${why}` : "Draft saved");
+      toast(why ? t("Draft kept in this browser only — {reason}", { reason: why }) : t("Draft saved"));
       // A failed save leaves the local copy as the only one, so it must not be
       // treated as settled the next time round — and the reason has to survive
       // with it, because the local copy is now the only record that it failed.
@@ -7571,7 +7571,7 @@ function keepDraft() {
 }
 
 $("#cDiscard").addEventListener("click", async () => {
-  if (draftDirty() && !(await ask("Throw this draft away?", "It is not kept anywhere after this.", { ok: "Discard", danger: true }))) return;
+  if (draftDirty() && !(await ask(t("Throw this draft away?"), t("It is not kept anywhere after this."), { ok: t("Discard"), danger: true }))) return;
   await dropDraft();
   closeSheets();
   refreshAll();
@@ -7597,9 +7597,9 @@ function resumeKeptDraft() {
   // reload is not being kept on purpose — something is refusing it, and the
   // toast is where you already are.
   toast(
-    d.why ? `Unfinished message — not saved to Drafts: ${d.why}` : "An unfinished message was kept",
+    d.why ? t("Unfinished message — not saved to Drafts: {reason}", { reason: d.why }) : t("An unfinished message was kept"),
     () => resumeKept(d),
-    "Resume"
+    t("Resume")
   );
 }
 $("#scrim").addEventListener("click", () =>
@@ -7618,16 +7618,18 @@ $("#repairSelf").addEventListener("click", async (e) => {
   const btn = e.currentTarget;
   btn.disabled = true;
   const was = btn.textContent;
-  btn.textContent = "Asking iCloud…";
+  btn.textContent = t("Asking iCloud…");
   const res = await api("/api/repair/self-copies", { method: "POST" }).catch(() => null);
   btn.disabled = false;
   btn.textContent = was;
   const d = res ? await res.json().catch(() => ({})) : {};
-  if (!res || !res.ok) { toast(d.error || "Could not check"); return; }
-  if (!d.checked) { toast("Nothing filed under Sent has your own address on it"); return; }
-  if (!d.moved) { toast(`Checked ${d.checked} — none of them is in your inbox at iCloud`); return; }
+  if (!res || !res.ok) { toast(tw(d.error) || t("Could not check")); return; }
+  if (!d.checked) { toast(t("Nothing filed under Sent has your own address on it")); return; }
+  if (!d.moved) { toast(t("{n, plural, one {Checked # message, and it is not in your inbox at iCloud} other {Checked # messages, and none of them is in your inbox at iCloud}}", { n: d.checked })); return; }
   toast(
-    `Moved ${d.moved} back to the inbox${d.remaining ? ` — ${d.remaining} left, press again` : ""}`
+    d.remaining
+      ? t("{n, plural, one {Moved # message back to the inbox} other {Moved # messages back to the inbox}}, {left} left: press again", { n: d.moved, left: d.remaining })
+      : t("{n, plural, one {Moved # message back to the inbox} other {Moved # messages back to the inbox}}", { n: d.moved })
   );
   refreshAll();
 });
@@ -7638,9 +7640,13 @@ async function refreshBackup() {
   const d = res && res.ok ? await res.json().catch(() => ({})) : {};
   const l = d.latest;
   let text = l
-    ? `Last snapshot ${new Date(l.uploaded).toLocaleString(LOCALE)} — ${l.messages} messages, ${Math.round(l.bytes / 1024)} KB.`
-    : "No snapshot yet. The first one is taken tonight, or now.";
-  if (d.error) text += ` The last attempt failed (${new Date(d.error.at).toLocaleString(LOCALE)}): ${d.error.error}`;
+    ? t("Last snapshot {when}: {n, plural, one {# message} other {# messages}}, {size} KB.", {
+        when: new Date(l.uploaded).toLocaleString(LOCALE),
+        n: l.messages,
+        size: Math.round(l.bytes / 1024).toLocaleString(LOCALE),
+      })
+    : t("No snapshot yet. The first one is taken tonight, or now.");
+  if (d.error) text += " " + t("The last attempt failed ({when}): {reason}", { when: new Date(d.error.at).toLocaleString(LOCALE), reason: tw(d.error.error) });
   $("#backupState").textContent = text;
 }
 $("#backupBox").addEventListener("toggle", (e) => { if (e.currentTarget.open) refreshBackup(); });
@@ -7650,14 +7656,14 @@ $("#backupNow").addEventListener("click", async (e) => {
   const res = await api("/api/backup", { method: "POST" }).catch(() => null);
   btn.disabled = false;
   const d = res ? await res.json().catch(() => ({})) : {};
-  toast(res && res.ok ? "Snapshot taken" : d.error || "Could not take a snapshot");
+  toast(res && res.ok ? t("Snapshot taken") : tw(d.error) || t("Could not take a snapshot"));
   refreshBackup();
 });
 $("#backupRestore").addEventListener("click", async (e) => {
   const yes = await ask(
-    "Restore from the last snapshot?",
-    "Rows missing from the database come back from the snapshot. Nothing that exists now is changed or removed.",
-    { ok: "Restore" }
+    t("Restore from the last snapshot?"),
+    t("Rows missing from the database come back from the snapshot. Nothing that exists now is changed or removed."),
+    { ok: t("Restore") }
   );
   if (!yes) return;
   const btn = e.currentTarget;
@@ -7669,10 +7675,10 @@ $("#backupRestore").addEventListener("click", async (e) => {
   }).catch(() => null);
   btn.disabled = false;
   const d = res ? await res.json().catch(() => ({})) : {};
-  if (!res || !res.ok) { toast(d.error || "Could not restore"); return; }
-  if (!d.key) { toast("There is no snapshot to restore from"); return; }
+  if (!res || !res.ok) { toast(tw(d.error) || t("Could not restore")); return; }
+  if (!d.key) { toast(t("There is no snapshot to restore from")); return; }
   const n = Object.values(d.restored || {}).reduce((a, b) => a + b, 0);
-  toast(n ? `Restored ${n} missing rows` : "Nothing was missing");
+  toast(n ? t("{n, plural, one {Restored # missing row} other {Restored # missing rows}}", { n }) : t("Nothing was missing"));
   if (n) refreshAll();
 });
 
@@ -7685,24 +7691,24 @@ $("#icSave").addEventListener("click", async () => {
   err.classList.remove("show");
   const btn = $("#icSave");
   btn.disabled = true;
-  btn.textContent = "Checking with Apple…";
+  btn.textContent = t("Checking with Apple…");
   const res = await api("/api/accounts/icloud", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email: $("#icEmail").value.trim(), password: $("#icPass").value.trim() }),
   }).catch(() => null);
   btn.disabled = false;
-  btn.textContent = "Connect";
+  btn.textContent = t("Connect");
   if (!res || !res.ok) {
     const d = res ? await res.json().catch(() => ({})) : {};
-    err.textContent = d.error || "Could not connect";
+    err.textContent = tw(d.error) || t("Could not connect");
     err.classList.add("show");
     return;
   }
   // Never leave the password sitting in a field once it is stored.
   $("#icPass").value = "";
   closeSheets();
-  toast("iCloud connected — fetching your newest mail");
+  toast(t("iCloud connected — fetching your newest mail"));
   await refreshAll();
   // The first pass now, rather than whenever the cron next comes round.
   const made = await res.json().catch(() => ({}));
@@ -7719,7 +7725,7 @@ for (const id of ["#icEmail", "#icPass"]) {
 $("#icShow").addEventListener("click", (e) => {
   const show = $("#icPass").type === "password";
   $("#icPass").type = show ? "text" : "password";
-  e.currentTarget.textContent = show ? "Hide" : "Show";
+  e.currentTarget.textContent = show ? t("Hide") : t("Show");
   e.currentTarget.setAttribute("aria-pressed", String(show));
 });
 $("#list").addEventListener("click", (e) => {
@@ -7733,19 +7739,19 @@ $("#acctList").addEventListener("click", async (e) => {
     localStorage.setItem("dmzs-primary", prim.dataset.primary);
     composeAcct = prim.dataset.primary;
     await loadAccounts();
-    toast("Default account changed");
+    toast(t("Default account changed"));
     return;
   }
   const sync = e.target.closest("[data-syncacc]");
   if (sync) {
-    toast("Syncing…");
+    toast(t("Syncing…"));
     const res = await api(`/api/accounts/${sync.dataset.syncacc}/sync`, { method: "POST" }).catch(() => null);
     const d = res ? await res.json().catch(() => ({})) : {};
     // A failed sync used to say "Up to date", which is the one thing it
     // certainly was not.
-    if (!res || !res.ok) toast(d.error || "Could not reach iCloud");
-    else if (d.busy) toast("Already syncing — new mail will appear in a moment");
-    else toast(d.fetched ? `${d.fetched} new` : "Up to date");
+    if (!res || !res.ok) toast(tw(d.error) || t("Could not reach iCloud"));
+    else if (d.busy) toast(t("Already syncing — new mail will appear in a moment"));
+    else toast(d.fetched ? t("{n, plural, one {# new message} other {# new messages}}", { n: d.fetched }) : t("Up to date"));
     await Promise.all([loadAccounts(), loadList()]);
     return;
   }
@@ -7756,9 +7762,9 @@ $("#acctList").addEventListener("click", async (e) => {
     // the connection. The mail survives at the provider and re-downloads, but
     // slowly, so this should never happen by a mis-tap.
     const yes = await ask(
-      `Disconnect ${a ? a.email : "this account"}?`,
-      "Its stored messages here are deleted too. Mail at the provider is untouched, and reconnecting re-downloads it.",
-      { ok: "Disconnect", danger: true }
+      a ? t("Disconnect {email}?", { email: a.email }) : t("Disconnect this account?"),
+      t("Its stored messages here are deleted too. Mail at the provider is untouched, and reconnecting re-downloads it."),
+      { ok: t("Disconnect"), danger: true }
     );
     if (!yes) return;
     // This used to say "Removed" without ever asking the server, so the
@@ -7766,10 +7772,10 @@ $("#acctList").addEventListener("click", async (e) => {
     const res = await api(`/api/accounts/${del.dataset.delacc}`, { method: "DELETE" }).catch(() => null);
     if (!res || !res.ok) {
       const d = res ? await res.json().catch(() => ({})) : {};
-      toast(d.error || "Could not disconnect — nothing was removed");
+      toast(tw(d.error) || t("Could not disconnect — nothing was removed"));
       return;
     }
-    toast(`Removed ${a ? a.email : "account"}`);
+    toast(a ? t("Removed {email}", { email: a.email }) : t("Account removed"));
     if (accountFilter === del.dataset.delacc) accountFilter = "";
     await Promise.all([loadAccounts(), loadList()]);
   }
@@ -7822,12 +7828,12 @@ function openCompose(opts = {}) {
   // kept as a draft. The composer it froze is handed back for the new one.
   if (document.body.classList.contains("composing") && !outgoingNow()) keepDraft();
   $("#composeSheet").inert = false;
-  $("#cSend").textContent = "Send";
+  $("#cSend").textContent = t("Send");
   replyTo = opts.reply || null;
   replyKnown = replyParticipants(opts);
   composeAcct = opts.account || composeAcct || (accounts[0] && accounts[0].id) || "";
   composeFrom = String(opts.from || "").toLowerCase();
-  $("#cTitle").textContent = opts.title || (replyTo ? "Reply" : "New message");
+  $("#cTitle").textContent = opts.title || (replyTo ? t("Reply") : t("New message"));
   addrSet("#cTo", "#cToChips", opts.to || "");
   addrSet("#cCc", "#cCcChips", opts.cc || "");
   $("#cCcWrap").hidden = !opts.cc;
@@ -7858,7 +7864,7 @@ function openCompose(opts = {}) {
   draftPid = opts.pid || "";
   draftRowId = opts.rowId || "";
   draftClean = true;
-  setSaved(opts.pid ? "Saved to Drafts" : "");
+  setSaved(opts.pid ? t("Saved to Drafts") : "");
   // From: your mailboxes first, then the addresses that only send. With one
   // of each this is the whole point of the row, so it is not hidden the way
   // the account filter is.
