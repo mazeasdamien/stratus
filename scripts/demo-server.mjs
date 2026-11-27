@@ -9,6 +9,7 @@ import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { demoContacts } from "./demo-contacts.mjs";
+import { CLIENT_VERSION } from "../src/version.js";
 
 const root = join(fileURLToPath(new URL("..", import.meta.url)), "public");
 const port = Number(process.argv[2] || 8765);
@@ -107,7 +108,7 @@ const MIME = {
 };
 
 const json = (res, data, status = 200) => {
-  res.writeHead(status, { "Content-Type": "application/json", "X-Shell": "v40" });
+  res.writeHead(status, { "Content-Type": "application/json", "X-Shell": CLIENT_VERSION });
   res.end(JSON.stringify(data));
 };
 
