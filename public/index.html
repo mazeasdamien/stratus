@@ -5440,7 +5440,10 @@ async function loadCategories() {
   const res = await api("/api/categories").catch(() => null);
   if (!res || !res.ok) return;
   const d = await res.json().catch(() => ({}));
-  if (Array.isArray(d.categories)) categories = d.categories;
+  // The five the migration made carry English names; they show in the language until the owner renames one, which is then theirs.
+  const firstFive = ["Red", "Orange", "Yellow", "Green", "Blue"];
+  const shown = [t("Red"), t("Orange"), t("Yellow"), t("Green"), t("Blue")];
+  if (Array.isArray(d.categories)) categories = d.categories.map((c) => (c.id >= 1 && c.id <= 5 && c.name === firstFive[c.id - 1] ? { ...c, name: shown[c.id - 1] } : c));
   renderList();
   paintReaderTags();
 }
@@ -8468,7 +8471,8 @@ async function loadSignatures() {
   const res = await api("/api/signatures").catch(() => null);
   if (!res || !res.ok) return;
   const d = await res.json().catch(() => ({}));
-  signatures = d.signatures || [];
+  // The one the migration made is named in English; it shows in the language until it is renamed.
+  signatures = (d.signatures || []).map((s) => (s.name === "Default" ? { ...s, name: t("Default") } : s));
   sigUse = d.use || {};
 }
 
@@ -13352,6 +13356,8 @@ const calMidnight = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 /** Whole days on the wall clock, so a day with a clock change is still one day. */
 const calAddDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n, d.getHours(), d.getMinutes());
 const calSameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+/** The calendar made on first use is named in English; it shows in the language until it is renamed. */
+const calNamed = (list) => list.map((c) => (c.name === "Calendar" && c.kind === "local" ? { ...c, name: t("Calendar") } : c));
 const calIso = (d) => `${d.getFullYear()}-${calTwo(d.getMonth() + 1)}-${calTwo(d.getDate())}`;
 const calFromIso = (s) => {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || "");
@@ -13438,7 +13444,7 @@ async function calLoad() {
   const ed = e && e.ok ? await e.json().catch(() => null) : null;
   // A failed read keeps what is drawn, as the timeline's did.
   cal.failed = !(cd && ed);
-  if (cd) cal.calendars = cd.calendars || [];
+  if (cd) cal.calendars = calNamed(cd.calendars || []);
   if (ed) cal.occ = (ed.events || []).map(calPrep);
   cal.loaded = true;
   calRender();
@@ -14674,7 +14680,7 @@ async function calLoadCalendars() {
   if (cal.calendars.length) return;
   const c = await api("/api/calendar/calendars").catch(() => null);
   const d = c && c.ok ? await c.json().catch(() => null) : null;
-  if (d) cal.calendars = d.calendars || [];
+  if (d) cal.calendars = calNamed(d.calendars || []);
 }
 
 /* ── reactions ──
