@@ -120,7 +120,7 @@ const WINDOWS_TO_IANA = {
 };
 
 /** Resolves an iCalendar TZID (Windows name, prefixed path, or IANA) to an IANA identifier. */
-function resolveTz(tz) {
+export function resolveTz(tz) {
   if (!tz) return null;
   let clean = String(tz).trim().replace(/^["'\\]+|["'\\]+$/g, "");
   if (clean.startsWith("/")) clean = clean.slice(1);
@@ -132,7 +132,7 @@ function resolveTz(tz) {
 }
 
 /** The offset (ms) of a named zone at a moment, from Intl — null if the name is not IANA. */
-function zoneOffset(tz, utcMs) {
+export function zoneOffset(tz, utcMs) {
   const resolved = resolveTz(tz);
   if (!resolved) return null;
   try {
@@ -197,6 +197,23 @@ function when(prop, zones) {
   return { ms: wall, allDay: false, floating: true };
 }
 
+/** VTIMEZONE offsets by TZID, for zones Intl does not know by name. */
+function zonesOf(all) {
+  const zones = {};
+  let tzid = null;
+  let part = null;
+  for (const l of all) {
+    if (l.name === "BEGIN" && l.value === "VTIMEZONE") tzid = "";
+    else if (l.name === "END" && l.value === "VTIMEZONE") tzid = null;
+    else if (tzid !== null && l.name === "TZID") tzid = l.value, (zones[tzid] = zones[tzid] || {});
+    else if (tzid && l.name === "BEGIN") part = l.value;
+    else if (tzid && l.name === "TZOFFSETTO" && part) {
+      zones[tzid][part === "DAYLIGHT" ? "daylight" : "standard"] = offsetMs(l.value);
+    }
+  }
+  return zones;
+}
+
 const mailto = (v) => String(v || "").replace(/^mailto:/i, "").trim().toLowerCase();
 
 /** The address if it is an https one, as the URL parser writes it; else "". */
@@ -218,19 +235,7 @@ export function parseIcs(text) {
   if (!all.length) return null;
   const method = (all.find((l) => l.name === "METHOD")?.value || "").toUpperCase();
 
-  // VTIMEZONE offsets by TZID, for zones Intl does not know by name.
-  const zones = {};
-  let tzid = null;
-  let part = null;
-  for (const l of all) {
-    if (l.name === "BEGIN" && l.value === "VTIMEZONE") tzid = "";
-    else if (l.name === "END" && l.value === "VTIMEZONE") tzid = null;
-    else if (tzid !== null && l.name === "TZID") tzid = l.value, (zones[tzid] = zones[tzid] || {});
-    else if (tzid && l.name === "BEGIN") part = l.value;
-    else if (tzid && l.name === "TZOFFSETTO" && part) {
-      zones[tzid][part === "DAYLIGHT" ? "daylight" : "standard"] = offsetMs(l.value);
-    }
-  }
+  const zones = zonesOf(all);
 
   const start = all.findIndex((l) => l.name === "BEGIN" && l.value === "VEVENT");
   if (start < 0) return null;
@@ -368,4 +373,194 @@ export async function indexEvent(env, messageId, accountId, calendarText, fallba
     Date.now()
   ).run().catch(() => {});
   return inv;
+}
+
+// ── whole calendars ────────────────────────────────────────
+//
+// The calendar view reads and writes a file full of events, not one invitation:
+// a subscription is a feed of them and an import or an export is a file of
+// them. They go through the same line reader and the same time rules as an
+// invitation above.
+
+const DAY = 86_400_000;
+
+/** An ISO 8601 duration ("-PT15M", "P1DT2H", "PT0S", "P1W") in ms, or null. */
+function duration(v) {
+  const m = /^([+-])?P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/.exec(String(v || "").trim());
+  if (!m) return null;
+  const ms = (((+m[2] || 0) * 7 + (+m[3] || 0)) * 24 + (+m[4] || 0)) * 3600_000 + (+m[5] || 0) * 60_000 + (+m[6] || 0) * 1000;
+  return m[1] === "-" ? -ms : ms;
+}
+
+/**
+ * Minutes before the start an alarm rings, from its TRIGGER, or null when it
+ * rings after the start or is not one a reminder can say. An absolute trigger
+ * is counted back from the start.
+ */
+function alarmMinutes(alarm, startMs, zones) {
+  const t = alarm.find((l) => l.name === "TRIGGER");
+  if (!t) return null;
+  let ms;
+  if (t.params.VALUE === "DATE-TIME") {
+    const at = when(t, zones);
+    ms = at ? at.ms - startMs : null;
+  } else {
+    ms = duration(t.value);
+  }
+  if (ms === null || ms > 0) return null;
+  const min = Math.round(-ms / 60_000);
+  return min <= 40_320 ? min : null;
+}
+
+/** The IANA zone an event's start is written in: "" for none (a date, or an hour with no zone). */
+function zoneOf(prop, start) {
+  if (!start || start.allDay || start.floating) return "";
+  if (/Z$/i.test(prop.value.trim())) return "UTC";
+  const tz = resolveTz(prop.params.TZID);
+  // A zone only the file's VTIMEZONE knows still has its instants right here;
+  // its recurrences are expanded in UTC.
+  return tz && zoneOffset(tz, start.ms) !== null ? tz : "UTC";
+}
+
+/**
+ * Every VEVENT of a calendar, as the fields the calendar stores.
+ *
+ *   { calendarName, events, skipped }
+ *
+ * Each event is { uid, summary, location, description, url, startMs, endMs,
+ * allDay, tzid, rrule, exdates, recurrenceId, reminderMin }. Times follow the
+ * rule used everywhere else: an instant, except that an all-day date or an
+ * hour with no zone is its wall time written as UTC (and `tzid` is "").
+ * `rrule` is the rule's text, unchecked. An event with no start, a cancelled
+ * one, or one past `max` is counted in `skipped` and left out.
+ */
+export function parseCalendar(text, { max = 2000 } = {}) {
+  const all = lines(text);
+  const zones = zonesOf(all);
+  const calendarName = unescapeText(all.find((l) => l.name === "X-WR-CALNAME")?.value || "").slice(0, 120);
+  const events = [];
+  let skipped = 0;
+  for (let i = 0; i < all.length; i++) {
+    if (!(all[i].name === "BEGIN" && all[i].value === "VEVENT")) continue;
+    const ev = [];
+    const alarms = [];
+    let alarm = null;
+    for (i++; i < all.length && !(all[i].name === "END" && all[i].value === "VEVENT"); i++) {
+      const l = all[i];
+      if (l.name === "BEGIN" && l.value === "VALARM") alarm = [];
+      else if (l.name === "END" && l.value === "VALARM") alarm && alarms.push(alarm), (alarm = null);
+      else if (alarm) alarm.push(l);
+      else ev.push(l);
+    }
+    const one = (n) => ev.find((l) => l.name === n);
+    const dtstart = one("DTSTART");
+    const start = when(dtstart, zones);
+    if (!start || (one("STATUS")?.value || "").toUpperCase() === "CANCELLED" || events.length >= max) {
+      skipped++;
+      continue;
+    }
+    let end = when(one("DTEND"), zones);
+    if (!end) {
+      const d = duration(one("DURATION")?.value);
+      end = { ms: start.ms + (d !== null && d >= 0 ? d : start.allDay ? DAY : 0) };
+    }
+    // An all-day end is the day after the last one, so it is never at or before the start.
+    const endMs = start.allDay ? Math.max(end.ms, start.ms + DAY) : Math.max(end.ms, start.ms);
+    const recurrence = when(one("RECURRENCE-ID"), zones);
+    const exdates = ev
+      .filter((l) => l.name === "EXDATE")
+      .flatMap((l) => l.value.split(",").map((v) => when({ value: v, params: l.params }, zones)))
+      .filter(Boolean)
+      .map((x) => x.ms);
+    const rawUrl = one("URL")?.value || "";
+    const minutes = alarms.map((a) => alarmMinutes(a, start.ms, zones)).find((m) => m !== null);
+    events.push({
+      uid: one("UID")?.value?.trim() || "",
+      summary: unescapeText(one("SUMMARY")?.value).slice(0, 300),
+      location: unescapeText(one("LOCATION")?.value).slice(0, 300),
+      description: unescapeText(one("DESCRIPTION")?.value).slice(0, 4000),
+      url: httpsUrl(rawUrl),
+      startMs: start.ms,
+      endMs,
+      allDay: !!start.allDay,
+      tzid: zoneOf(dtstart, start),
+      rrule: (one("RRULE")?.value || "").trim(),
+      exdates,
+      recurrenceId: recurrence ? recurrence.ms : null,
+      reminderMin: minutes === undefined ? null : minutes,
+    });
+  }
+  return { calendarName, events, skipped };
+}
+
+const pad = (n, w = 2) => String(n).padStart(w, "0");
+const icsDay = (d) => `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}`;
+const icsHour = (d) => `${icsDay(d)}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}`;
+
+/** A stored time as an iCalendar property's parameters and value, by the event's kind. */
+function icsTime(ms, e) {
+  if (e.all_day) return [";VALUE=DATE", icsDay(new Date(ms))];
+  if (!e.tzid) return ["", icsHour(new Date(ms))];
+  if (e.tzid === "UTC") return ["", icsHour(new Date(ms)) + "Z"];
+  const wall = ms + (zoneOffset(e.tzid, ms) ?? 0);
+  return [`;TZID=${e.tzid}`, icsHour(new Date(wall))];
+}
+
+const escapeText = (v) =>
+  String(v || "").replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+
+/** Folds a line at 75 octets without cutting a character in two. */
+function foldOctets(line) {
+  const enc = new TextEncoder();
+  if (enc.encode(line).length <= 75) return line;
+  const parts = [];
+  let cur = "";
+  let bytes = 0;
+  let room = 75;
+  for (const ch of line) {
+    const n = enc.encode(ch).length;
+    if (bytes + n > room) {
+      parts.push(cur);
+      cur = "";
+      bytes = 0;
+      room = 74; // the continuation's leading space takes one
+    }
+    cur += ch;
+    bytes += n;
+  }
+  parts.push(cur);
+  return parts.join("\r\n ");
+}
+
+/**
+ * A calendar as an .ics file.
+ *
+ * `rows` are cal_events rows. A timed event is written in its own zone by
+ * TZID and no VTIMEZONE block; Apple, Google and Fastmail read the zone's
+ * name, a client that wants the block spelled out would not.
+ */
+export function writeCalendar(name, rows, now = new Date()) {
+  const out = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Stratus//Calendar//EN", "CALSCALE:GREGORIAN", `X-WR-CALNAME:${escapeText(name)}`];
+  for (const e of rows) {
+    const [sp, sv] = icsTime(e.start_ms, e);
+    const [ep, evv] = icsTime(e.end_ms, e);
+    out.push("BEGIN:VEVENT", `UID:${e.uid}`, `DTSTAMP:${stamp(now)}`, `DTSTART${sp}:${sv}`, `DTEND${ep}:${evv}`);
+    if (e.recurrence_id !== null && e.recurrence_id !== undefined) {
+      const [rp, rv] = icsTime(e.recurrence_id, e);
+      out.push(`RECURRENCE-ID${rp}:${rv}`);
+    }
+    if (e.rrule) out.push(`RRULE:${e.rrule}`);
+    const ex = String(e.exdates || "").split(",").filter(Boolean).map(Number);
+    if (ex.length) out.push(`EXDATE${icsTime(ex[0], e)[0]}:${ex.map((x) => icsTime(x, e)[1]).join(",")}`);
+    out.push(`SUMMARY:${escapeText(e.summary)}`);
+    if (e.location) out.push(`LOCATION:${escapeText(e.location)}`);
+    if (e.description) out.push(`DESCRIPTION:${escapeText(e.description)}`);
+    if (e.url) out.push(`URL:${e.url}`);
+    if (e.reminder_min !== null && e.reminder_min !== undefined) {
+      out.push("BEGIN:VALARM", "ACTION:DISPLAY", `DESCRIPTION:${escapeText(e.summary || "Reminder")}`, `TRIGGER:-PT${Math.round(e.reminder_min)}M`, "END:VALARM");
+    }
+    out.push("END:VEVENT");
+  }
+  out.push("END:VCALENDAR");
+  return out.map(foldOctets).join("\r\n") + "\r\n";
 }
