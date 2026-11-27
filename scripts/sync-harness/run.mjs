@@ -483,6 +483,25 @@ ok(holds("Sent Messages", smtp.sent.at(-1).raw.match(/^Message-ID: (.*)$/m)?.[1]
 const sentAgain = await api("POST", `/api/outbox/${waiting}/send`);
 await flushOutbox(env);
 eq([sentAgain.status, wentOut("Later")], [404, 1], "a second press, and the next cron, send nothing more");
+
+// ── A reaction is an ordinary reply: the same send, threaded into the conversation ──
+{
+  const { reactionMessage } = await import("../../public/reaction.js");
+  const target = row("<rtbig@x>"); // from zoe@x.fr, Reply-To big@list.example
+  const body = reactionMessage({ message: target, to: ["big@list.example"], emoji: "🎉" });
+  const sentBefore = smtp.sent.length;
+  const res = await api("POST", "/api/send", body);
+  const wire = smtp.sent.at(-1)?.raw || "";
+  const head = wire.split("\r\n\r\n")[0];
+  eq([res.status, smtp.sent.length - sentBefore], [202, 1], "a reaction goes out through /api/send, once");
+  ok(/^To: big@list\.example$/m.test(head) && /^From: (?:.*<)?me@example\.com>?$/m.test(head), `to the Reply-To, from the account's address — ${head.split("\r\n").filter((l) => /^(To|From):/.test(l)).join(" | ")}`);
+  ok(/^In-Reply-To: <rtbig@x>$/m.test(head) && /^References: .*<rtbig@x>$/m.test(head), "threaded into the conversation: In-Reply-To and References name the message");
+  ok(/^Subject: Re: A very large one$/m.test(head), "with the reply's subject");
+  // The text part is base64; its first block is the plain-text alternative.
+  const block = /base64\r\n\r\n([\s\S]*?)\r\n--/.exec(wire)?.[1] || "";
+  eq(Buffer.from(block.replace(/\r\n/g, ""), "base64").toString("utf8"), "🎉\n\nThis is a reaction to “A very large one”.", "and its body is the emoji and a line saying what it is");
+  ok(holds("Sent Messages", wire.match(/^Message-ID: (.*)$/m)?.[1].trim()), "the copy is filed in Sent");
+}
 // The cron's own delivery, and Edit, give the lease back when they are done.
 const due = await api("POST", "/api/send", { ...later, subject: "Due" });
 const kept = await api("POST", "/api/send", { ...later, subject: "Kept" });

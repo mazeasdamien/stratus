@@ -551,6 +551,47 @@ try {
     ok(s.asking, "but the same five in a new message are");
   });
 
+  await scenario("reaction", async () => {
+    await fresh();
+    // m3's sender asked for answers to go to a Reply-To address.
+    const s = await ev(`
+      await openMsg("m3", messages[2]); await wait(700);
+      const offered = !$("#rReact").hidden;
+      $("#rReact").click(); await wait(200);
+      const picker = { up: $("#reactSheet").classList.contains("up"), faces: [...document.querySelectorAll("#reactRow [data-emoji]")].map((b) => b.dataset.emoji), to: $("#reactTo").textContent };
+      document.querySelector('#reactRow [data-emoji="🎉"]').click(); await wait(300);
+      const held = !!pendingSend;
+      const early = (await (await fetch("/__log")).json()).filter((l) => l.path === "/api/send").length;
+      pendingSend && pendingSend.fire(); await wait(500);
+      return { offered, picker, held, early };`);
+    ok(s.offered && s.picker.up && s.picker.faces.join("") === "👍❤️🎉😂😮😢" && /customer@x\.fr/.test(s.picker.to), `the reader offers six reactions and shows where one will go — ${JSON.stringify(s.picker)}`);
+    const sent = await posts("/api/send");
+    const b = sent[0]?.body || {};
+    ok(s.held && s.early === 0 && sent.length === 1, `it waits in the undo hold and then goes through /api/send once — held ${s.held}, sent ${sent.length}`);
+    ok(b.to === "customer@x.fr" && b.reply_to === "m3" && b.subject === "Re: Three" && /^🎉\n\n.*reaction/.test(b.text || "") && b.account_id === "a1", `a reply to the Reply-To address, threaded to the message, saying what it is — ${JSON.stringify({ to: b.to, reply_to: b.reply_to, subject: b.subject, text: b.text })}`);
+    ok((await drafts()).length === 0, "and nothing is left in Drafts");
+    // Undo takes it back without a composer.
+    await fresh();
+    const u = await ev(`
+      await openMsg("m3", messages[2]); await wait(700);
+      $("#rReact").click(); await wait(200);
+      document.querySelector('#reactRow [data-emoji="👍"]').click(); await wait(200);
+      cancelPendingSend(); await wait(200);
+      return { held: !!pendingSend, composing: document.body.classList.contains("composing") };`);
+    ok(!u.held && !u.composing && (await posts("/api/send")).length === 0, `Undo sends nothing and opens no composer — ${JSON.stringify(u)}`);
+  });
+
+  await scenario("reaction-warned", async () => {
+    // Not offered on a message with a sender warning.
+    await fresh();
+    const w = await ev(`
+      await openMsg("m1", messages[0]); await wait(700);
+      const before = !$("#rReact").hidden;
+      current.message.from_name = "PayPal"; await renderSenderWarning(current.message); await wait(100);
+      return { before, warned: !$("#rWarn").hidden, after: !$("#rReact").hidden };`);
+    ok(w.before && w.warned && !w.after, `a message carrying the warning gets no reaction button — ${JSON.stringify(w)}`);
+  });
+
   await scenario("stale-selection", async () => {
     await fresh();
     const n = await ev(`enterSelmode(); const first = document.querySelector("#list [data-id]"); togglePick(first.closest(".wrap") || first); const before = picked.size; renderFolders(); document.querySelector('[data-folder="archive"]').click(); await wait(400); return { before, after: picked.size, selmode: document.body.classList.contains("selmode") };`);

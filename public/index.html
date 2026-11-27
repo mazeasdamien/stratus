@@ -623,6 +623,12 @@ body.composing:not(.overlay) #scrim{opacity:0;pointer-events:none}
 #rWarn .wtxt p{margin:0}
 #rWarn .wtxt p + p{margin-top:4px}
 #rWarn .wtxt b{font-weight:650}
+/* The reaction picker: six round targets, wrapping rather than shrinking. */
+.reactrow{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 12px}
+.react{width:48px;height:48px;border-radius:50%;background:var(--fill);font-size:25px;line-height:1;
+  display:inline-flex;align-items:center;justify-content:center;transition:transform .1s,background .12s}
+.react:active{transform:scale(.92);background:var(--press2)}
+.react:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .obox{display:flex;flex-direction:column;gap:6px;padding:10px 0;border-bottom:1px solid var(--line)}
 .obox .grow{display:flex;flex-direction:column;gap:2px;min-width:0}
 .obox .grow span{font-size:var(--t-s,12px);color:var(--t2);overflow-wrap:anywhere}
@@ -2522,6 +2528,15 @@ body.selmode .xf-chip{bottom:calc(var(--sab) + 92px)}
   </div>
 </div>
 
+<!-- ── reactions ── The six choices from the reader's reaction button, and
+     where the reply will go. Filled in when it opens. -->
+<div class="sheet" id="reactSheet" role="dialog" aria-label="React with an emoji" tabindex="-1">
+  <div class="grab"></div>
+  <div class="sh-t">React</div>
+  <div class="reactrow" id="reactRow" role="group" aria-label="Choose a reaction"></div>
+  <div class="sh-s" id="reactTo"></div>
+</div>
+
 <div class="sheet" id="snoozeSheet">
   <div class="grab"></div>
   <div class="sh-t">Snooze until</div>
@@ -3008,6 +3023,7 @@ body.selmode .xf-chip{bottom:calc(var(--sab) + 92px)}
 <!-- The pure checks the page runs before a send; test/ imports the same files. -->
 <script type="module" src="/sendguard.js"></script>
 <script type="module" src="/senderguard.js"></script>
+<script type="module" src="/reaction.js"></script>
 <script>
 "use strict";
 
@@ -10060,6 +10076,8 @@ function cancelPendingSend() {
   const { body, which } = pendingSend;
   clearTimeout(pendingSend.timer);
   pendingSend = null;
+  // A reaction has no composer to give it back to: it simply does not go.
+  if (which.reaction) return toast("Reaction not sent");
   $("#composeSheet").inert = false;
   $("#cSend").textContent = "Send";
   // Undone after the composer moved on to another message: there is no
@@ -10095,13 +10113,26 @@ $("#cSend").addEventListener("click", async () => {
     asking = false;
   }
   if (!body || outgoingNow()) return;
-  const which = sendIdentity();
-  // The words exist in this browser until the server has answered.
-  saveDraftLocal();
-  $("#composeSheet").inert = true;
-  $("#cSend").textContent = "Sending…";
+  holdSend(body, sendIdentity());
+});
+
+/**
+ * Puts a message on its way: five seconds to take it back, then the send.
+ *
+ * The composer's Send and a reaction both end here, so there is one hold, one
+ * Undo and one way for the message to go. `which.reaction` marks the one that
+ * has no composer behind it: nothing is frozen, nothing is put back on Undo.
+ */
+function holdSend(body, which) {
+  const composer = !which.reaction;
+  if (composer) {
+    // The words exist in this browser until the server has answered.
+    saveDraftLocal();
+    $("#composeSheet").inert = true;
+    $("#cSend").textContent = "Sending…";
+  }
   const who = body.to.split(",")[0].trim() + (body.to.includes(",") || body.cc || body.bcc ? " and others" : "");
-  toast(`Sending to ${who}`, () => cancelPendingSend(), "Undo");
+  toast(`${composer ? "Sending" : "Reacting"} to ${who}`, () => cancelPendingSend(), "Undo");
   const fire = async () => {
     if (!pendingSend) return;
     clearTimeout(pendingSend.timer);
@@ -10113,21 +10144,23 @@ $("#cSend").addEventListener("click", async () => {
     } finally {
       sendingNow = false;
     }
-    $("#composeSheet").inert = false;
-    $("#cSend").textContent = "Send";
+    if (composer) {
+      $("#composeSheet").inert = false;
+      $("#cSend").textContent = "Send";
+    }
     if (!d) return;
     toast(
       d.filed === false
         // It went, and it is in your Sent folder here. What failed is the copy
         // at Apple, so the reason travels with the message.
         ? `Sent — Apple would not keep a copy: ${d.filedError || "unknown reason"}`
-        : "Sent" + fuNote(d)
+        : (composer ? "Sent" + fuNote(d) : "Reaction sent")
     );
     // The copy is filed by now, so Sent and its counts are already stale.
     refreshAll();
   };
   pendingSend = { timer: setTimeout(fire, 5000), fire, body, which };
-});
+}
 
 /* ── sender warnings ──
    A bar above a message when its sender poses as a brand, sits at a look-alike
@@ -10139,6 +10172,8 @@ $("#cSend").addEventListener("click", async () => {
 
 /** True while the open message carries the bar. Reactions are not offered then. */
 let senderWarned = false;
+/** True once the warnings for the open message have been worked out, so a reaction is not offered before they are. */
+let senderChecked = false;
 
 /** The warnings for a message, or none for a saved contact or yourself. */
 function senderWarningsFor(m) {
@@ -10153,6 +10188,8 @@ function senderWarningsFor(m) {
 async function renderSenderWarning(m) {
   $("#rWarn").hidden = true;
   senderWarned = false;
+  senderChecked = false;
+  syncReactButton();
   // Waits for the address book, so a saved contact is never flashed as a
   // stranger while it loads.
   await loadContacts();
@@ -10162,6 +10199,8 @@ async function renderSenderWarning(m) {
   $("#rWarnText").innerHTML = found.map((w) => `<p>${esc(w.text)}</p>`).join("") +
     (found.length ? `<p><b>Be careful with links and attachments in this message.</b></p>` : "");
   $("#rWarn").hidden = !found.length;
+  senderChecked = true;
+  syncReactButton();
 }
 
 /* ── before sending ──
@@ -14430,6 +14469,61 @@ async function calLoadCalendars() {
   const d = c && c.ok ? await c.json().catch(() => null) : null;
   if (d) cal.calendars = d.calendars || [];
 }
+
+/* ── reactions ──
+   One emoji, sent as a short reply. The message is built in public/reaction.js
+   (window.Reaction) and goes out through holdSend, the one path every message
+   takes: the hold to undo it, then /api/send, then the copy in Sent. A reaction
+   is not offered on a message that carries a sender warning, nor on your own
+   mail, nor before the warning has been looked for. */
+
+const rReact = document.createElement("button");
+rReact.type = "button";
+rReact.id = "rReact";
+rReact.className = "rbtn ico overflowable";
+rReact.hidden = true;
+rReact.title = "React with an emoji";
+rReact.setAttribute("aria-label", "React with an emoji");
+rReact.setAttribute("aria-haspopup", "dialog");
+rReact.innerHTML =
+  '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.6 14.2c.8 1.1 1.9 1.7 3.4 1.7s2.6-.6 3.4-1.7"/><circle cx="9" cy="10" r=".7" fill="currentColor"/><circle cx="15" cy="10" r=".7" fill="currentColor"/></svg>';
+$("#rForward").before(rReact);
+OVERFLOW_IDS.splice(OVERFLOW_IDS.indexOf("#rForward"), 0, "#rReact");
+
+/** Whom a reaction to the open message would go to, and from where; null where it is not offered. */
+function reactionTarget() {
+  if (!current || !window.Reaction) return null;
+  const m = current.message;
+  const email = String(m.from_email || "").toLowerCase();
+  if (!email || accounts.some((a) => identitiesOf(a).includes(email))) return null;
+  // As a reply would be addressed: to the Reply-To where the sender set one.
+  const { to } = replyTargets(m, false, (current.body || {}).replyTo || "");
+  return to.length ? { m, to, from: replyFrom(m) } : null;
+}
+
+function syncReactButton() {
+  rReact.hidden = !senderChecked || senderWarned || !reactionTarget();
+}
+
+rReact.addEventListener("click", () => {
+  const t = reactionTarget();
+  if (!t || senderWarned) return;
+  $("#reactRow").innerHTML = window.Reaction.REACTIONS.map(
+    (r) => `<button class="react" data-emoji="${r.emoji}" aria-label="${esc(r.name)}" title="${esc(r.name)}">${r.emoji}</button>`
+  ).join("");
+  $("#reactTo").innerHTML = `Goes to <b>${esc(t.to.join(", "))}</b>${t.from ? ` from ${esc(t.from)}` : ""}, as a reply in this conversation.`;
+  openSheet("#reactSheet");
+});
+
+$("#reactRow").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-emoji]");
+  const t = reactionTarget();
+  if (!b || !t || senderWarned) return;
+  if (outgoingNow()) return toast("The previous message is still going out — try again in a moment");
+  const body = window.Reaction.reactionMessage({ message: t.m, to: t.to, from: t.from, emoji: b.dataset.emoji });
+  closeOverlays();
+  holdSend(body, { session: -1, pid: "", slot: `${DRAFT_KEY}:react-${crypto.randomUUID()}`, key: crypto.randomUUID(), reaction: true });
+});
 
 /* ── init ── */
 (async function init() {
