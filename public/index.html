@@ -9507,8 +9507,10 @@ const XF_NEW = "__new__";
 const xf = { running: false, kind: "", total: 0, done: 0, added: 0, dupes: 0, failed: 0, errors: [], cancel: false, fatal: "", line: "", summary: "", warn: false };
 
 const xfSleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const xfMB = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
-const xfPlural = (n, one, many) => `${n.toLocaleString(LOCALE)} ${n === 1 ? one : many}`;
+const xfMB = (n) =>
+  n >= 1048576
+    ? t("{size} MB", { size: (n / 1048576).toLocaleString(LOCALE, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })
+    : t("{size} KB", { size: Math.max(1, Math.round(n / 1024)).toLocaleString(LOCALE) });
 
 /** One place that draws the sheet's status block, the buttons it locks and the chip. */
 function xfPaint() {
@@ -9543,11 +9545,11 @@ function xfBegin(kind, total = 0) {
 }
 function xfFail(label, reason) {
   xf.failed++;
-  if (xf.errors.length < 5) xf.errors.push(`• ${label}: ${reason}`);
+  if (xf.errors.length < 5) xf.errors.push(t("• {label}: {reason}", { label, reason }));
 }
 function xfProblems() {
   const more = xf.failed - xf.errors.length;
-  return `${xf.errors.join("\n")}${more > 0 ? `\n…and ${more.toLocaleString(LOCALE)} more` : ""}`;
+  return `${xf.errors.join("\n")}${more > 0 ? `\n${t("{n, plural, one {…and # more} other {…and # more}}", { n: more })}` : ""}`;
 }
 function xfEnd(summary, warn = false) {
   xf.running = false;
@@ -9556,7 +9558,7 @@ function xfEnd(summary, warn = false) {
   xf.line = "";
   xfPaint();
   // Said aloud even when the sheet is shut, where the result would otherwise go unseen.
-  if (!$("#xferSheet").classList.contains("up")) toast(summary.split("\n")[0], () => openSheet("#xferSheet"), "Details");
+  if (!$("#xferSheet").classList.contains("up")) toast(summary.split("\n")[0], () => openSheet("#xferSheet"), t("Details"));
   else say(summary.split("\n")[0]);
 }
 
@@ -9573,7 +9575,7 @@ function xfFillFolders() {
 
   const into = $("#xfFolder");
   const chosen = into.value;
-  into.innerHTML = `${options}<option value="${XF_NEW}">New folder…</option>`;
+  into.innerHTML = `${options}<option value="${XF_NEW}">${t("New folder…")}</option>`;
   const imported = folders.find((f) => String(f.label || f.folder).toLowerCase() === "imported");
   into.value = folders.some((f) => f.folder === chosen) || chosen === XF_NEW ? chosen : imported ? imported.folder : XF_NEW;
   $("#xfNewWrap").hidden = into.value !== XF_NEW;
@@ -9596,13 +9598,17 @@ $("#xfFiles").addEventListener("change", () => {
   const files = [...$("#xfFiles").files];
   const size = files.reduce((n, f) => n + f.size, 0);
   $("#xfPicked").textContent = files.length
-    ? `${xfPlural(files.length, "file", "files")}, ${xfMB(size)}: ${files.slice(0, 3).map((f) => f.name).join(", ")}${files.length > 3 ? ", …" : ""}`
-    : "No file chosen.";
+    ? t("{n, plural, one {# file} other {# files}}, {size}: {names}", {
+        n: files.length,
+        size: xfMB(size),
+        names: files.slice(0, 3).map((f) => f.name).join(", ") + (files.length > 3 ? ", …" : ""),
+      })
+    : t("No file chosen.");
   xfPaint();
 });
 $("#xfCancel").addEventListener("click", () => {
   xf.cancel = true;
-  xf.line = "Stopping…";
+  xf.line = t("Stopping…");
   xfPaint();
 });
 
@@ -9639,23 +9645,23 @@ async function xfPost(url, body) {
       res = await api(url, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body });
       data = (await res.json().catch(() => null)) || {};
     } catch (e) {
-      if (String(e.message) === "401") throw Object.assign(new Error("You have been signed out"), { fatal: true });
-      data = { error: "the connection dropped" };
+      if (String(e.message) === "401") throw Object.assign(new Error(t("You have been signed out")), { fatal: true });
+      data = { error: t("the connection dropped") };
     }
     if (res && res.ok) return data;
-    if (res && res.status === 409) throw Object.assign(new Error(data.error || "This account needs reconnecting"), { fatal: true });
+    if (res && res.status === 409) throw Object.assign(new Error(tw(data.error) || t("This account needs reconnecting")), { fatal: true });
     if ((!res || res.status >= 500) && tries < 1 && !xf.cancel) {
       await xfSleep(1500);
       continue;
     }
-    throw new Error(data.error || `the server answered ${res ? res.status : "nothing"}`);
+    throw new Error(tw(data.error) || (res ? t("the server answered {status}", { status: res.status }) : t("the server did not answer")));
   }
 }
 
 async function xfSend(m, target, label) {
   try {
-    if (m.oversize) throw new Error(`larger than ${XF_MAX / 1048576} MB (${xfMB(m.size)})`);
-    if (!m.raw.length) throw new Error("the message is empty");
+    if (m.oversize) throw new Error(t("larger than {max} MB ({size})", { max: XF_MAX / 1048576, size: xfMB(m.size) }));
+    if (!m.raw.length) throw new Error(t("the message is empty"));
     const where = `folder=${encodeURIComponent(target)}`;
     const mid = xfMid(m.raw);
     // Asked first, with no body, so a file run a second time does not upload
@@ -9678,10 +9684,16 @@ async function xfSend(m, target, label) {
 }
 
 function xfLine() {
-  const bits = [`${xf.kind === "import" ? "Importing" : "Exporting"} ${xf.done.toLocaleString(LOCALE)}${xf.total ? ` of ${xf.total.toLocaleString(LOCALE)}` : ""}`];
-  if (xf.dupes) bits.push(`${xf.dupes.toLocaleString(LOCALE)} already there`);
-  if (xf.failed) bits.push(`${xf.failed.toLocaleString(LOCALE)} failed`);
-  xf.line = xf.cancel ? "Stopping…" : bits.join(" · ");
+  const done = xf.done.toLocaleString(LOCALE);
+  const total = xf.total.toLocaleString(LOCALE);
+  const bits = [
+    xf.kind === "import"
+      ? xf.total ? t("Importing {done} of {total}", { done, total }) : t("Importing {done}", { done })
+      : xf.total ? t("Exporting {done} of {total}", { done, total }) : t("Exporting {done}", { done }),
+  ];
+  if (xf.dupes) bits.push(t("{n, plural, one {# already there} other {# already there}}", { n: xf.dupes }));
+  if (xf.failed) bits.push(t("{n, plural, one {# failed} other {# failed}}", { n: xf.failed }));
+  xf.line = xf.cancel ? t("Stopping…") : bits.join(" · ");
   xfPaint();
 }
 
@@ -9695,7 +9707,7 @@ $("#xfStart").addEventListener("click", async () => {
     target = $("#xfNew").value.trim();
     shown = target;
     if (!target || target.length > 120 || /["\\\r\n]/.test(target)) {
-      toast("Give the new folder a name without quotes or backslashes");
+      toast(t("Give the new folder a name without quotes or backslashes"));
       $("#xfNew").focus();
       return;
     }
@@ -9704,7 +9716,7 @@ $("#xfStart").addEventListener("click", async () => {
     if (same) target = same.folder;
   }
   xfBegin("import");
-  xf.line = "Counting messages…";
+  xf.line = t("Counting messages…");
   xfPaint();
 
   try {
@@ -9716,12 +9728,12 @@ $("#xfStart").addEventListener("click", async () => {
         n++;
         xf.total++;
         if (n % 200 === 0) {
-          xf.line = `Counting messages… ${xf.total.toLocaleString(LOCALE)}`;
+          xf.line = t("Counting messages… {n}", { n: xf.total.toLocaleString(LOCALE) });
           xfPaint();
         }
       }
       if (xf.cancel) break;
-      if (!n) xfFail(f.name, "no messages found in it");
+      if (!n) xfFail(f.name, t("no messages found in it"));
     }
     xfLine();
 
@@ -9739,21 +9751,20 @@ $("#xfStart").addEventListener("click", async () => {
     }
     await Promise.all(pending);
   } catch (e) {
-    xf.fatal = xf.fatal || `could not read the file (${(e && e.message) || e})`;
+    xf.fatal = xf.fatal || t("could not read the file ({reason})", { reason: (e && e.message) || e });
   }
 
   const lines = [];
-  const into = `“${shown}”`;
-  const left = xf.total - xf.done;
-  if (xf.fatal) lines.push(`Stopped after ${xf.done.toLocaleString(LOCALE)} of ${xf.total.toLocaleString(LOCALE)}: ${xf.fatal}.`);
-  else if (xf.cancel) lines.push(`Cancelled with ${left.toLocaleString(LOCALE)} of ${xf.total.toLocaleString(LOCALE)} not yet sent.`);
-  lines.push(`Imported ${xfPlural(xf.added, "message", "messages")} into ${into}.`);
-  if (xf.dupes) lines.push(`${xfPlural(xf.dupes, "message was", "messages were")} already in your account and skipped.`);
-  if (xf.failed) lines.push(`${xfPlural(xf.failed, "message", "messages")} could not be imported:\n${xfProblems()}`);
-  if (xf.cancel || xf.fatal) lines.push("Choose the same files again to carry on: what is already in is skipped.");
+  const total = xf.total.toLocaleString(LOCALE);
+  if (xf.fatal) lines.push(t("Stopped after {done} of {total}: {reason}.", { done: xf.done.toLocaleString(LOCALE), total, reason: xf.fatal }));
+  else if (xf.cancel) lines.push(t("Cancelled with {left, plural, one {# of {total}} other {# of {total}}} not yet sent.", { left: xf.total - xf.done, total }));
+  lines.push(t("Imported {n, plural, one {# message} other {# messages}} into “{folder}”.", { n: xf.added, folder: shown }));
+  if (xf.dupes) lines.push(t("{n, plural, one {# message was already in your account and skipped.} other {# messages were already in your account and skipped.}}", { n: xf.dupes }));
+  if (xf.failed) lines.push(`${t("{n, plural, one {# message could not be imported:} other {# messages could not be imported:}}", { n: xf.failed })}\n${xfProblems()}`);
+  if (xf.cancel || xf.fatal) lines.push(t("Choose the same files again to carry on: what is already in is skipped."));
   xfEnd(lines.join("\n"), Boolean(xf.fatal));
   $("#xfFiles").value = "";
-  $("#xfPicked").textContent = "No file chosen.";
+  $("#xfPicked").textContent = t("No file chosen.");
   await refreshAll();
   xfFillFolders();
   if (folders.some((f) => f.folder === target)) $("#xfFolder").value = target;
@@ -9767,10 +9778,10 @@ async function xfSink(name) {
     try {
       const handle = await window.showSaveFilePicker({
         suggestedName: name,
-        types: [{ description: "Mailbox archive", accept: { "application/mbox": [".mbox"] } }],
+        types: [{ description: t("Mailbox archive"), accept: { "application/mbox": [".mbox"] } }],
       });
       const out = await handle.createWritable();
-      return { write: (b) => out.write(b), close: () => out.close(), abort: () => out.abort().catch(() => {}), where: "to the file you chose" };
+      return { write: (b) => out.write(b), close: () => out.close(), abort: () => out.abort().catch(() => {}), download: false };
     } catch (e) {
       if (e && e.name === "AbortError") return null;
       // Any other refusal (a frame, a policy): the download below still works.
@@ -9783,7 +9794,7 @@ async function xfSink(name) {
       size += b.length;
       if (size > XF_BLOB_CAP) {
         parts.length = 0;
-        throw new Error(`this is more than the ${XF_BLOB_CAP / 1048576} MB a browser without direct file access can save as one file. Use Chrome or Edge, which write straight to disk, or export part of it from the selection bar`);
+        throw new Error(t("this is more than the {max} MB a browser without direct file access can save as one file. Use Chrome or Edge, which write straight to disk, or export part of it from the selection bar", { max: XF_BLOB_CAP / 1048576 }));
       }
       parts.push(b);
     },
@@ -9797,7 +9808,7 @@ async function xfSink(name) {
       setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
     },
     abort() { parts.length = 0; },
-    where: "as a download",
+    download: true,
   };
 }
 
@@ -9808,10 +9819,10 @@ async function xfFetchOne(it) {
       const res = await api(`/api/messages/${it.id}/eml`);
       if (res.ok) return { it, bytes: new Uint8Array(await res.arrayBuffer()) };
       const d = await res.json().catch(() => ({}));
-      if (res.status < 500 || tries) return { it, error: d.error || `the server answered ${res.status}` };
+      if (res.status < 500 || tries) return { it, error: tw(d.error) || t("the server answered {status}", { status: res.status }) };
     } catch (e) {
-      if (String(e.message) === "401") return { it, error: "You have been signed out", fatal: true };
-      if (tries) return { it, error: "the connection dropped" };
+      if (String(e.message) === "401") return { it, error: t("You have been signed out"), fatal: true };
+      if (tries) return { it, error: t("the connection dropped") };
     }
     await xfSleep(1500);
   }
@@ -9822,14 +9833,14 @@ async function xfExportTo(name, total, items) {
   const sink = await xfSink(name);
   if (!sink) return;
   xfBegin("export", total);
-  xf.line = "Exporting…";
+  xf.line = t("Exporting…");
   xfPaint();
   let written = 0;
   const window3 = [];
   const settle = async () => {
     const r = await window3.shift();
     if (r.fatal) xf.fatal = r.error;
-    else if (r.error) xfFail(r.it.subject || `message ${r.it.id.slice(0, 6)}`, r.error);
+    else if (r.error) xfFail(r.it.subject || t("message {id}", { id: r.it.id.slice(0, 6) }), r.error);
     else {
       sink.write(mbox.writeEntry(r.bytes, { date: r.it.date || Date.now(), flags: { seen: !r.it.unread, flagged: !!r.it.starred, answered: false, draft: false } }));
       written++;
@@ -9853,13 +9864,21 @@ async function xfExportTo(name, total, items) {
     sink.abort();
   }
   const lines = [];
-  if (problem) lines.push(`Export stopped: ${problem}.`);
-  else if (xf.fatal) lines.push(`Export stopped: ${xf.fatal}.`);
+  if (problem || xf.fatal) lines.push(t("Export stopped: {reason}.", { reason: problem || xf.fatal }));
   else {
-    if (xf.cancel) lines.push("Cancelled. The file holds the messages written so far.");
-    lines.push(`Exported ${xfPlural(written, "message", "messages")}${xf.total && !xf.cancel ? ` of ${xf.total.toLocaleString(LOCALE)}` : ""} ${sink.where}: ${name}`);
+    if (xf.cancel) lines.push(t("Cancelled. The file holds the messages written so far."));
+    const values = { n: written, total: xf.total.toLocaleString(LOCALE), name };
+    if (xf.total && !xf.cancel) {
+      lines.push(sink.download
+        ? t("Exported {n, plural, one {# message} other {# messages}} of {total} as a download: {name}", values)
+        : t("Exported {n, plural, one {# message} other {# messages}} of {total} to the file you chose: {name}", values));
+    } else {
+      lines.push(sink.download
+        ? t("Exported {n, plural, one {# message} other {# messages}} as a download: {name}", values)
+        : t("Exported {n, plural, one {# message} other {# messages}} to the file you chose: {name}", values));
+    }
   }
-  if (xf.failed) lines.push(`${xfPlural(xf.failed, "message", "messages")} could not be read from iCloud and ${xf.failed === 1 ? "is" : "are"} not in the file:\n${xfProblems()}`);
+  if (xf.failed) lines.push(`${t("{n, plural, one {# message could not be read from iCloud and is not in the file:} other {# messages could not be read from iCloud and are not in the file:}}", { n: xf.failed })}\n${xfProblems()}`);
   xfEnd(lines.join("\n"), Boolean(problem || xf.fatal));
 }
 
@@ -9868,7 +9887,7 @@ async function* xfFolderItems(name) {
   for (;;) {
     const res = await api(`/api/transfer/ids?folder=${encodeURIComponent(name)}${after ? `&after=${after}` : ""}`);
     const d = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(d.error || `the server answered ${res.status}`);
+    if (!res.ok) throw new Error(tw(d.error) || t("the server answered {status}", { status: res.status }));
     if (d.total !== undefined) {
       xf.total = d.total;
       xfLine();
@@ -9904,7 +9923,7 @@ async function* xfPickedItems(rows) {
 }
 $("#bulkExport").addEventListener("click", () => {
   if (xf.running) {
-    toast("An import or export is already running");
+    toast(t("An import or export is already running"));
     return;
   }
   const rows = [...picked].map((id) => messages.find((m) => m.id === id) || { id });
