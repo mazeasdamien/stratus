@@ -12991,20 +12991,21 @@ async function loadFollowups() {
 /** The follow-up a list row stands for: its own message's, or one in its conversation. */
 const fuFor = (m, sub = false) => (m && (fuById.get(m.id) || (!sub && m.thread_key && fuByThread.get(m.thread_key)))) || null;
 const fuOver = (f) => f.due <= Date.now();
-const fuWhen = (f) => (f.kind === "noreply" ? "No reply by " : "") + fmtFull(f.due);
+const fuWhen = (f) => (f.kind === "noreply" ? t("No reply by {when}", { when: fmtFull(f.due) }) : fmtFull(f.due));
 
 /** The chip under a list row's snippet; what rowHtml shows of a follow-up. */
 function fuRow(m, sub) {
   const f = fuFor(m, sub);
   if (!f) return "";
   const over = fuOver(f);
-  const text = over ? `Overdue · ${fmtWhen(f.due)}` : f.kind === "noreply" ? `No reply by ${fmtWhen(f.due)}` : `Follow up · ${fmtWhen(f.due)}`;
+  const when = fmtWhen(f.due);
+  const text = over ? t("Overdue · {when}", { when }) : f.kind === "noreply" ? t("No reply by {when}", { when }) : t("Follow up · {when}", { when });
   return `<div class="fu-line"><span class="fu-chip${over ? " over" : ""}" title="${esc(fuWhen(f))}">${over ? FU_ALERT : FU_CLOCK}${esc(text)}</span></div>`;
 }
 /** What a screen reader hears for the same thing. */
 function fuLabel(m, sub) {
   const f = fuFor(m, sub);
-  return !f ? "" : fuOver(f) ? "Follow-up overdue" : f.kind === "noreply" ? `Waiting for a reply until ${fmtWhen(f.due)}` : `Follow up ${fmtWhen(f.due)}`;
+  return !f ? "" : fuOver(f) ? t("Follow-up overdue") : f.kind === "noreply" ? t("Waiting for a reply until {when}", { when: fmtWhen(f.due) }) : t("Follow up, due {when}", { when: fmtWhen(f.due) });
 }
 
 /** Whether a message is one you sent, so it can wait for an answer. */
@@ -13018,9 +13019,9 @@ function fuIsMine(m) {
 /* The button beside the star, and the strip under the header. */
 fuEl("rStar").insertAdjacentHTML(
   "afterend",
-  `<button class="rbtn ico overflowable" id="rFollowUp" type="button" aria-label="Follow up" aria-haspopup="dialog" title="Follow up: be reminded about this message">${FU_CLOCK.replace('width="13" height="13"', 'width="16" height="16"')}</button>`
+  `<button class="rbtn ico overflowable" id="rFollowUp" type="button" aria-label="${t("Follow up")}" aria-haspopup="dialog" title="${t("Follow up: be reminded about this message")}">${FU_CLOCK.replace('width="13" height="13"', 'width="16" height="16"')}</button>`
 );
-fuEl("rCats").insertAdjacentHTML("afterend", `<div class="fu-banner" id="rFollow" role="group" aria-label="Follow-up" hidden></div>`);
+fuEl("rCats").insertAdjacentHTML("afterend", `<div class="fu-banner" id="rFollow" role="group" aria-label="${t("Follow-up")}" hidden></div>`);
 OVERFLOW_IDS.push("#rFollowUp");
 
 function paintFollow() {
@@ -13031,19 +13032,26 @@ function paintFollow() {
   const over = !!f && fuOver(f);
   btn.classList.toggle("on", !!f && !over);
   btn.classList.toggle("over", over);
-  btn.setAttribute("aria-label", !f ? "Follow up" : over ? `Follow up, overdue since ${fmtFull(f.due)}` : `Follow up, ${fuWhen(f)}`);
+  btn.setAttribute(
+    "aria-label",
+    !f ? t("Follow up")
+    : over ? t("Follow up, overdue since {when}", { when: fmtFull(f.due) })
+    : f.kind === "noreply" ? t("Follow up, no reply by {when}", { when: fmtFull(f.due) })
+    : t("Follow up, {when}", { when: fmtFull(f.due) })
+  );
   box.hidden = !f;
   box.classList.toggle("over", over);
   if (!f) return;
+  const when = esc(fmtFull(f.due));
   const said = f.kind === "noreply"
     ? over
-      ? `<b>Overdue.</b> Nobody has replied since you sent this. The reminder was due ${esc(fmtFull(f.due))}.`
-      : `<b>Waiting for a reply.</b> You will be reminded ${esc(fmtFull(f.due))} if nobody has answered by then.`
+      ? `<b>${t("Overdue.")}</b> ${t("Nobody has replied since you sent this. The reminder was due {when}.", { when })}`
+      : `<b>${t("Waiting for a reply.")}</b> ${t("You will be reminded {when} if nobody has answered by then.", { when })}`
     : over
-    ? `<b>Overdue.</b> You wanted to follow up on this ${esc(fmtFull(f.due))}.`
-    : `<b>Follow up</b> ${esc(fmtFull(f.due))}`;
+    ? `<b>${t("Overdue.")}</b> ${t("You wanted to follow up on this {when}.", { when })}`
+    : `<b>${t("Follow up")}</b> ${when}`;
   box.innerHTML = `${over ? FU_ALERT : FU_CLOCK}<span class="grow">${said}</span>` +
-    `<button class="ghost" type="button" data-fu="change">Change</button><button class="ghost" type="button" data-fu="done">Mark complete</button>`;
+    `<button class="ghost" type="button" data-fu="change">${t("Change")}</button><button class="ghost" type="button" data-fu="done">${t("Mark complete")}</button>`;
 }
 fuEl("rFollow").addEventListener("click", (e) => {
   const b = e.target.closest("[data-fu]");
@@ -13063,11 +13071,11 @@ function fuChoices(now = new Date()) {
   const out = [];
   const later = new Date(now.getTime() + 3 * 3600_000);
   later.setMinutes(0, 0, 0);
-  if (later.toDateString() === now.toDateString() && later.getHours() <= 21) out.push(["Later today", later]);
-  out.push(["Tomorrow morning", at(1, 8)]);
+  if (later.toDateString() === now.toDateString() && later.getHours() <= 21) out.push([t("Later today"), later]);
+  out.push([t("Tomorrow morning"), at(1, 8)]);
   // The Monday after tomorrow, so it never repeats the line above.
   const toMonday = (8 - now.getDay()) % 7 || 7;
-  out.push(["Next week", at(toMonday < 2 ? toMonday + 7 : toMonday, 8)]);
+  out.push([t("Next week"), at(toMonday < 2 ? toMonday + 7 : toMonday, 8)]);
   return out;
 }
 const fuInput = (ms) => new Date(ms - new Date(ms).getTimezoneOffset() * 60000).toISOString().slice(0, 16);
@@ -13076,13 +13084,16 @@ function openFollow() {
   const m = current.message;
   const f = fuById.get(m.id);
   const mine = fuIsMine(m);
-  fuEl("fuSub").textContent = f ? `Now: ${fuWhen(f)}${fuOver(f) ? " (overdue)" : ""}.` : "Starred on every device, and a reminder when the time comes.";
+  const sub = !f ? "" : f.kind === "noreply"
+    ? fuOver(f) ? t("Now: no reply by {when} (overdue).", { when: fmtFull(f.due) }) : t("Now: no reply by {when}.", { when: fmtFull(f.due) })
+    : fuOver(f) ? t("Now: {when} (overdue).", { when: fmtFull(f.due) }) : t("Now: {when}.", { when: fmtFull(f.due) });
+  fuEl("fuSub").textContent = f ? sub : t("Starred on every device, and a reminder when the time comes.");
   $("#fuList").innerHTML = fuChoices()
     .map(([label, d]) => `<button class="mi" data-fu-at="${d.getTime()}"><span class="grow">${esc(label)}</span><span class="side">${esc(whenText(d))}</span></button>`)
     .join("");
   $("#fuNoWrap").hidden = !mine;
   $("#fuDays").innerHTML = [1, 2, 3, 5, 7]
-    .map((n) => `<button class="ghost" type="button" data-fu-days="${n}" title="${esc(whenText(Date.now() + n * FU_DAY))}">${n} day${n > 1 ? "s" : ""}</button>`)
+    .map((n) => `<button class="ghost" type="button" data-fu-days="${n}" title="${esc(whenText(Date.now() + n * FU_DAY))}">${t("{n, plural, one {# day} other {# days}}", { n })}</button>`)
     .join("");
   const soon = new Date(Date.now() + 3 * 3600_000);
   soon.setMinutes(0, 0, 0);
@@ -13095,7 +13106,7 @@ fuEl("rFollowUp").addEventListener("click", openFollow);
 
 async function setFollow(kind, due) {
   if (!current) return;
-  if (!(due > Date.now() + 60_000)) { toast("Pick a time at least a minute from now"); return; }
+  if (!(due > Date.now() + 60_000)) { toast(t("Pick a time at least a minute from now")); return; }
   const id = current.message.id;
   closeSheets();
   const res = await api("/api/followups", {
@@ -13104,7 +13115,7 @@ async function setFollow(kind, due) {
     body: JSON.stringify({ message_id: id, kind, due: Math.round(due) }),
   }).catch(() => null);
   const d = res ? await res.json().catch(() => ({})) : {};
-  if (!res || !res.ok) { toast(d.error || "Could not set the follow-up"); return; }
+  if (!res || !res.ok) { toast(tw(d.error) || t("Could not set the follow-up")); return; }
   if (kind === "flag") {
     // The server starred it at iCloud; the page shows the star it now has.
     for (const r of [messages, threadRows, [current.message]]) {
@@ -13114,16 +13125,16 @@ async function setFollow(kind, due) {
     $("#rStar").classList.add("on");
     $("#rStar").setAttribute("aria-pressed", "true");
   }
-  toast(kind === "flag" ? `Follow up ${whenText(due)}` : `Reminder ${whenText(due)}, unless somebody replies`);
+  toast(kind === "flag" ? t("Follow up {when}", { when: whenText(due) }) : t("Reminder {when}, unless somebody replies", { when: whenText(due) }));
   await loadFollowups();
   renderList();
   paintFollow();
 }
 async function completeFollow(id) {
   const res = await api(`/api/followups/${id}/complete`, { method: "POST" }).catch(() => null);
-  if (!res || !res.ok) { toast("Could not mark it complete"); return; }
+  if (!res || !res.ok) { toast(t("Could not mark it complete")); return; }
   closeSheets();
-  toast("Marked complete");
+  toast(t("Marked complete"));
   await loadFollowups();
   renderList();
   paintFollow();
@@ -13149,10 +13160,11 @@ reminderOpeners.followup = (ref) => openMsg(ref);
 fuEl("cSubjWrap").insertAdjacentHTML(
   "afterend",
   `<div class="field fu-comp" id="cFuRow">${FU_CLOCK.replace('width="13" height="13"', 'width="15" height="15"')}` +
-    `<label class="fu-l" for="cFu">Remind me if nobody replies</label>` +
-    `<select id="cFu"><option value="">No</option><option value="1">After 1 day</option><option value="2">After 2 days</option>` +
-    `<option value="3">After 3 days</option><option value="5">After 5 days</option><option value="7">After 7 days</option><option value="date">On a date&hellip;</option></select>` +
-    `<input id="cFuAt" type="datetime-local" aria-label="Date and time to be reminded if nobody has replied" hidden></div>`
+    `<label class="fu-l" for="cFu">${t("Remind me if nobody replies")}</label>` +
+    `<select id="cFu"><option value="">${t("No")}</option>` +
+    [1, 2, 3, 5, 7].map((n) => `<option value="${n}">${t("After {n, plural, one {# day} other {# days}}", { n })}</option>`).join("") +
+    `<option value="date">${t("On a date…")}</option></select>` +
+    `<input id="cFuAt" type="datetime-local" aria-label="${t("Date and time to be reminded if nobody has replied")}" hidden></div>`
 );
 fuEl("cFu").addEventListener("change", () => {
   const date = fuEl("cFu").value === "date";
@@ -13166,7 +13178,7 @@ function fuCompose() {
   if (v !== "date") return { followup_days: Number(v) };
   const at = new Date(fuEl("cFuAt").value).getTime();
   if (!(at > Date.now() + 60_000)) {
-    $("#cErr").textContent = "Pick a reminder time that is still ahead";
+    $("#cErr").textContent = t("Pick a reminder time that is still ahead");
     $("#cErr").classList.add("show");
     return null;
   }
@@ -13178,7 +13190,7 @@ function fuReset() {
   fuEl("cFuAt").value = "";
 }
 /** Said after "Sent" when the reminder asked for could not be set. */
-const fuNote = (d) => (d && d.followup === false ? ", but the reminder could not be set" : "");
+const fuNote = (d) => (d && d.followup === false ? t(", but the reminder could not be set") : "");
 
 /* ══ calendar ═══════════════════════════════════════════════════════════
  *
