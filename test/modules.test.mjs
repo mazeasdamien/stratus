@@ -18,6 +18,9 @@ const get = (path, env = {}) => handleApi(new Request("http://x" + path), env, p
 // With no module, an unknown route is the built-in 404.
 eq((await get("/api/nothing-here")).status, 404, "sans module, une route inconnue reste un 404");
 
+// The shipped modules sit out this file, which is about the registry, and are
+// put back after it so the test files that follow see the real ones.
+const shipped = MODULES.splice(0);
 const mod = { name: "probe" };
 MODULES.push(mod);
 try {
@@ -96,5 +99,5 @@ try {
   ok(queried.some((q) => q.includes("FROM messages")), "avec les tables du cœur");
   ok([...stored.keys()].some((k) => /probe_rows-0\.json$/.test(k)), "dans une part à elle");
 } finally {
-  MODULES.length = 0;
+  MODULES.splice(0, MODULES.length, ...shipped);
 }

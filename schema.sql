@@ -165,6 +165,21 @@ CREATE TABLE IF NOT EXISTS events (
 
 CREATE INDEX IF NOT EXISTS idx_events_start ON events(start_ms);
 
+CREATE TABLE IF NOT EXISTS reminders (
+  id           TEXT PRIMARY KEY,
+  kind         TEXT NOT NULL,                -- the feature: event, task, followup...
+  ref          TEXT NOT NULL,                -- that feature's own id for the thing
+  title        TEXT NOT NULL DEFAULT '',
+  body         TEXT NOT NULL DEFAULT '',
+  at           INTEGER NOT NULL,             -- ms, when it is due
+  fired_at     INTEGER,                      -- ms the cron picked it up; NULL until then
+  dismissed_at INTEGER,                      -- ms the user dismissed it
+  created_at   INTEGER NOT NULL,
+  UNIQUE (kind, ref)
+);
+
+CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(at) WHERE fired_at IS NULL;
+
 CREATE INDEX IF NOT EXISTS idx_messages_uid     ON messages(account_id, mailbox, uid);
 
 CREATE INDEX IF NOT EXISTS idx_messages_att_todo ON messages(account_id) WHERE att_names IS NULL;

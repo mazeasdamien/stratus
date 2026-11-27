@@ -17,6 +17,7 @@ import { isRelayed, relayMessage, relaySend } from "./relay.js";
 import { smtpCheck, smtpSend } from "./smtp.js";
 import { zipStream } from "./zip.js";
 import { moduleApi } from "./modules.js";
+import { recentReminders } from "./reminders.js";
 import { ensureBody } from "./bodies.js";
 import { accountById, aiKey, aiModel, aliasesOf, fileDraftCopy, forgetLocal, moveAtProvider, senderFor } from "./filing.js";
 import { folderNameFor, icloudAct, icloudPassword, mailboxList, renameCursor, resolveMailbox, theAccount, threadAct, threadRowsIn, withImap } from "./mailbox.js";
@@ -212,6 +213,10 @@ export async function handleApi(request, env, path, ctx, session) {
       total: all?.n || 0,
       from: row?.who || row?.who_email || "",
       subject: row?.subject || "",
+      // Reminders that have just fired, for the service worker to show. A
+      // push for one of them carries no mail at all. A database the schema
+      // pass has not reached yet has no such table; mail must still ring.
+      reminders: await recentReminders(env).catch(() => []),
     });
   }
 

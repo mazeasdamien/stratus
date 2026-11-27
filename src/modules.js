@@ -1,3 +1,5 @@
+import { remindersModule } from "./reminders.js";
+
 /**
  * Where a feature plugs into the Worker without editing the shared files.
  *
@@ -29,7 +31,7 @@
  *
  * The array is mutable so a test can add a module and take it out again.
  */
-export const MODULES = [];
+export const MODULES = [remindersModule];
 
 /** The first Response a module gives for this request, or null. */
 export async function moduleApi(request, env, path, ctx, session) {
