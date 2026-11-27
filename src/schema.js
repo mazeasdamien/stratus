@@ -269,6 +269,23 @@ export const SCHEMA = [
   UNIQUE (kind, ref)
 )`,
   `CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(at) WHERE fired_at IS NULL`,
+  // To-do items, src/tasks.js. done_at is the one field that says a task is
+  // done; due is a moment, or the date written in UTC when due_all_day is set.
+  `CREATE TABLE IF NOT EXISTS tasks (
+  id          TEXT PRIMARY KEY,
+  title       TEXT NOT NULL,
+  notes       TEXT NOT NULL DEFAULT '',
+  due         INTEGER,                      -- ms; NULL for a task with no date
+  due_all_day INTEGER NOT NULL DEFAULT 0,   -- 1: due is a date, midnight UTC, with no time
+  reminder    INTEGER,                      -- ms the user asked to be nudged; see reminders.js
+  important   INTEGER NOT NULL DEFAULT 0,
+  done_at     INTEGER,                      -- ms; NULL while the task is open
+  message_id  TEXT,                         -- the mail it was made from; may no longer exist
+  position    INTEGER NOT NULL DEFAULT 0,   -- order of adding, for tasks with no date
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL
+)`,
+  `CREATE INDEX IF NOT EXISTS idx_tasks_open ON tasks(due) WHERE done_at IS NULL`,
 ];
 
 /**
