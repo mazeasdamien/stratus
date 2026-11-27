@@ -9,6 +9,7 @@ import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { demoContacts } from "./demo-contacts.mjs";
+import { readingBodies, readingMessages } from "./demo-reading.mjs";
 import { CLIENT_VERSION } from "../src/version.js";
 import { catalog, cleanRule } from "../src/rules.js";
 
@@ -106,6 +107,12 @@ const bodies = {
     },
   },
 };
+
+// A winmail.dat message and two that read right to left (scripts/demo-reading.mjs).
+for (const m of readingMessages) {
+  messages.push(m);
+  bodies[m.id] = { message: m, account: accounts[0], body: { attachments: [], blocked: 0, empty: false, missing: false, ...readingBodies[m.id] } };
+}
 
 // Fired reminders for the header button and its sheet. Dismiss and snooze
 // take one off for the life of the process, as the real routes would.

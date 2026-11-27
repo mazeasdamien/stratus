@@ -14,6 +14,7 @@
  */
 
 import { b64decode, qpBytes, decodeWords } from "./mime.js";
+import { parseTnef } from "./tnef.js";
 
 const MAX_DEPTH = 12; // a message nested deeper than this is not a message
 
@@ -37,6 +38,24 @@ export function bytesToLatin1(bytes) {
 }
 
 export const latin1ToBytes = (s) => Uint8Array.from(String(s), (c) => c.charCodeAt(0) & 0xff);
+
+/**
+ * A part's payload as it arrived, plus its Content-Transfer-Encoding, back to
+ * the file's own bytes. The download routes and the TNEF reader below both
+ * need this, and it used to be written out at each.
+ */
+export function partBytes(encoded, encoding) {
+  const enc = String(encoding || "").toLowerCase();
+  return enc === "base64"
+    ? b64decode(String(encoded).replace(/[^A-Za-z0-9+/=]/g, ""))
+    : enc === "quoted-printable"
+    ? qpBytes(encoded)
+    : latin1ToBytes(encoded);
+}
+
+/** True for the attachment Outlook wraps its rich-text mail in. */
+export const isTnefPart = (a) =>
+  /^application\/(?:ms-tnef|vnd\.ms-tnef)\b/i.test(a?.type || "") || /^winmail\.dat$/i.test(a?.filename || "");
 
 function decodeCharset(bytes, charset) {
   try {
@@ -368,9 +387,10 @@ function walk(headers, body, out, depth, path) {
 
   // An attachment is anything explicitly marked as one, plus any non-text part
   // carrying a filename — inline images arrive that way and still belong here.
-  if (disp.value === "attachment" || (filename && !ct.value.startsWith("text/"))) {
+  const tnef = /^application\/(?:ms-tnef|vnd\.ms-tnef)$/.test(ct.value);
+  if (disp.value === "attachment" || tnef || (filename && !ct.value.startsWith("text/"))) {
     out.attachments.push({
-      filename: filename || "(unnamed)",
+      filename: filename || (tnef ? "winmail.dat" : "(unnamed)"),
       type: ct.value || "application/octet-stream",
       encoding: String(enc).toLowerCase(),
       cid: String(headers["content-id"] || "").replace(/^<|>$/g, ""),
@@ -400,5 +420,26 @@ export function parseMessage(raw) {
   const headers = parseHeaders(head);
   const out = { headers, html: "", text: "", attachments: [] };
   walk(headers, body, out, 0, "");
+  openTnef(out);
   return out;
+}
+
+/**
+ * Lists the files inside a winmail.dat next to it, and uses the text inside
+ * as the message when the mail has none of its own.
+ *
+ * Each inner file is an attachment entry pointing at the same part as the
+ * winmail.dat, with `tnef` the file's position inside it: the download route
+ * fetches the part and cuts that one file out, so nothing inside is stored.
+ * `size` is the file's real length, not the encoded length the others carry.
+ */
+function openTnef(out) {
+  const outer = out.attachments.filter((a) => isTnefPart(a) && a.body !== undefined);
+  for (const a of outer) {
+    const { files, text } = parseTnef(partBytes(a.body, a.encoding));
+    if (!out.html && !out.text && text.trim()) out.text = text;
+    files.forEach((f, i) =>
+      out.attachments.push({ filename: f.name, type: f.type, encoding: a.encoding, cid: "", part: a.part, size: f.size, tnef: i })
+    );
+  }
 }

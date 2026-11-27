@@ -10,9 +10,10 @@ import { open, seal } from "./crypto.js";
 import { NoRouteError, isAuthFailure } from "./errors.js";
 import { httpsUrl, icsReply, indexEvent, parseIcs } from "./ics.js";
 import { imapCreate, imapDelete, imapEmpty, imapFetchMeta, imapFetchPart, imapFetchRaw, imapFlag, imapList, imapListRaw, imapMove, imapOpen, imapPurge, imapRename, imapSearch, imapSelect } from "./imap.js";
-import { b64decode, b64encode, blockMatches, buildRfc822, decodeMailboxName, encodeMailboxName, htmlToText, isBlockPattern, newMessageId, parseAddressList, qpBytes, replyReferences, textToHtml } from "./mime.js";
+import { b64encode, blockMatches, buildRfc822, decodeMailboxName, encodeMailboxName, htmlToText, isBlockPattern, newMessageId, parseAddressList, replyReferences, textToHtml } from "./mime.js";
 import { pushAll, vapidKeys } from "./push.js";
-import { latin1ToBytes } from "./rfc822.js";
+import { latin1ToBytes, partBytes } from "./rfc822.js";
+import { parseTnef } from "./tnef.js";
 import { isRelayed, relayMessage, relaySend } from "./relay.js";
 import { smtpCheck, smtpSend } from "./smtp.js";
 import { zipStream } from "./zip.js";
@@ -35,6 +36,31 @@ import { ATTACHMENT_HEADERS, FLAG_FLAGGED, FLAG_SEEN, bodyKey, hashHex, json } f
 const PINNED_IDS = `SELECT id FROM messages WHERE pinned=1
   UNION SELECT t.id FROM messages t
          WHERE t.thread_key<>'' AND t.thread_key IN (SELECT thread_key FROM messages WHERE pinned=1 AND thread_key<>'')`;
+
+/**
+ * One downloaded file, with the headers every attachment is served under.
+ *
+ * filename* is the RFC 5987 form; plain filename is the fallback for clients
+ * that do not read it, so an accented name survives either way. The same for
+ * a file in the message and one cut out of a winmail.dat: what is inside
+ * gets no kinder treatment than what is outside.
+ */
+function downloadResponse(bytes, filename, type) {
+  const safe = String(filename || "attachment").replace(/["\\\r\n]/g, "_");
+  return new Response(bytes, {
+    headers: {
+      "Content-Type": type || "application/octet-stream",
+      "Content-Disposition":
+        `attachment; filename="${safe.replace(/[^\x20-\x7e]/g, "_")}"; ` +
+        `filename*=UTF-8''${encodeURIComponent(safe)}`,
+      "Content-Length": String(bytes.length),
+      // Private: this is somebody's mail, and it passed through an edge cache
+      // once already on the way here.
+      "Cache-Control": "private, no-store",
+      ...ATTACHMENT_HEADERS(type),
+    },
+  });
+}
 
 export async function handleApi(request, env, path, ctx, session) {
   const fromModule = await moduleApi(request, env, path, ctx, session);
@@ -1073,30 +1099,14 @@ export async function handleApi(request, env, path, ctx, session) {
     }
     if (encoded === null) return json({ error: "Apple returned nothing for that part" }, 502);
 
-    const enc = String(att.encoding || "").toLowerCase();
-    const bytes =
-      enc === "base64"
-        ? b64decode(encoded.replace(/[^A-Za-z0-9+/=]/g, ""))
-        : enc === "quoted-printable"
-        ? qpBytes(encoded)
-        : latin1ToBytes(encoded);
-
-    // filename* is the RFC 5987 form; plain filename is the fallback for
-    // clients that do not read it, so an accented name survives either way.
-    const safe = String(att.filename || "attachment").replace(/["\\\r\n]/g, "_");
-    return new Response(bytes, {
-      headers: {
-        "Content-Type": att.type || "application/octet-stream",
-        "Content-Disposition":
-          `attachment; filename="${safe.replace(/[^\x20-\x7e]/g, "_")}"; ` +
-          `filename*=UTF-8''${encodeURIComponent(safe)}`,
-        "Content-Length": String(bytes.length),
-        // Private: this is somebody's mail, and it passed through an edge cache
-        // once already on the way here.
-        "Cache-Control": "private, no-store",
-        ...ATTACHMENT_HEADERS(att.type),
-      },
-    });
+    const whole = partBytes(encoded, att.encoding);
+    // A file inside a winmail.dat: the part just fetched is the container,
+    // and the file is cut out of it. The name and type are the ones the
+    // container gave when the body was built, so what is served matches what
+    // was listed; a container that no longer holds that file is a 404.
+    const inner = att.tnef === undefined ? null : parseTnef(whole).files[att.tnef];
+    if (att.tnef !== undefined && !inner) return json({ error: "That file is no longer inside the attachment" }, 404);
+    return downloadResponse(inner ? inner.data : whole, att.filename, att.type);
   }
 
   // GET /api/messages/:id/attachments.zip — every attachment, one file.
@@ -1147,20 +1157,25 @@ export async function handleApi(request, env, path, ctx, session) {
       return json({ error: "Message not found on the server" }, 404);
     }
 
+    let held = null;
     const stream = zipStream(
       // zipStream names entries from `.name`; attachments carry `.filename`.
       // Mapping it here rather than renaming the field keeps the zip writer
       // ignorant of what mail calls things.
       atts.map((a) => ({ ...a, name: a.filename })),
       async (a) => {
-        const encoded = await imapFetchPart(im, uid, a.part);
-        if (encoded === null) return null;
-        const enc = String(a.encoding || "").toLowerCase();
-        return enc === "base64"
-          ? b64decode(encoded.replace(/[^A-Za-z0-9+/=]/g, ""))
-          : enc === "quoted-printable"
-          ? qpBytes(encoded)
-          : latin1ToBytes(encoded);
+        // Files inside one winmail.dat follow each other and share its part,
+        // so the last part fetched is kept for the next, instead of one
+        // round trip to Apple per file.
+        if (held?.part !== a.part) {
+          held = null; // released before the next is fetched, not after
+          const encoded = await imapFetchPart(im, uid, a.part);
+          held = encoded === null ? null : { part: a.part, bytes: partBytes(encoded, a.encoding), files: null };
+        }
+        if (!held) return null;
+        if (a.tnef === undefined) return held.bytes;
+        held.files ||= parseTnef(held.bytes).files;
+        return held.files[a.tnef]?.data ?? null;
       },
       // Closed by the archive itself, once the last byte is out. Hanging up
       // any earlier gave a valid zip with nothing in it.

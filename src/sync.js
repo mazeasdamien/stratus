@@ -83,6 +83,8 @@ export function rowFromRaw({ uid, flags, raw }, folder) {
       part: a.part,
       encoding: a.encoding,
       cid: a.cid || "",
+      // A file inside a winmail.dat: its place in the container.
+      ...(a.tnef !== undefined && { tnef: a.tnef }),
     })),
   };
 }

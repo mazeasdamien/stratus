@@ -24,8 +24,12 @@
  * and the 8-bit bytes that a windows-1252 decoder used to mangle; a body
  * stored before either is read again from Apple, once, the next time it is
  * opened.
+ * Version 4 lists the files inside a winmail.dat beside it, and shows the
+ * text inside as the message when it has none of its own. A body stored
+ * before it has only the winmail.dat, so it is read again the next time it is
+ * opened, the same way.
  */
-export const BODY_VERSION = 3;
+export const BODY_VERSION = 4;
 
 const esc = (s) =>
   String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));

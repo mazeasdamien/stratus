@@ -4176,7 +4176,7 @@ async function openMsg(id, threadRow = null) {
       (a, i) => `<a class="att" href="/api/messages/${encodeURIComponent(m.id)}/attachment/${i}" download="${esc(a.filename)}" title="${esc(a.filename)}">
         ${fileIcon(a.type, a.filename)}
         <span class="nm">${esc(a.filename)}</span>
-        <span class="sz">${humanSize(Math.round((a.size || 0) * 0.75))}</span></a>`
+        <span class="sz">${humanSize(a.tnef === undefined ? Math.round((a.size || 0) * 0.75) : a.size || 0)}</span></a>`
     )
     .join("");
   $("#reader").classList.add("up");
