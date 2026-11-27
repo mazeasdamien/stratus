@@ -346,7 +346,7 @@ try {
     ok(fr.composer.send === "Envoyer" && /brouillon/i.test(fr.composer.discard), `the composer's buttons are in French — ${JSON.stringify(fr.composer)}`);
     ok(/^Archiv/.test(fr.toastText), `a toast after archiving is in French — ${fr.toastText}`);
     ok(/bloquer/i.test(fr.dialog), `a dialog is in French — ${fr.dialog}`);
-    ok(/mars/.test(fr.date) && /1\\s?234,5/.test(fr.number), `a date and a number are formatted for French — ${fr.date}, ${fr.number}`);
+    ok(/mars/.test(fr.date) && /1\s?234,5/.test(fr.number), `a date and a number are formatted for French — ${fr.date}, ${fr.number}`);
     // Back to English through the same chips a person uses.
     await ev(`$("#acctBtn").click(); await wait(100); $('#langPick [data-lang="en"]').click();`).catch(() => {});
     await sleep(400);
