@@ -13,7 +13,7 @@
 
 // Bump on every shell change. The activate handler deletes any cache whose
 // name is not this one, so an old index.html cannot outlive a deploy.
-const SHELL = "dmzs-mail-shell-v88";
+const SHELL = "dmzs-mail-shell-v89";
 
 const SHELL_FILES = [
   "/",
@@ -23,6 +23,12 @@ const SHELL_FILES = [
   "/icon-192-maskable.png",
   "/icon-512-maskable.png",
   "/apple-touch-icon.png",
+  // The page's own modules. Without them here the shell that paints offline
+  // has no send checks, no sender warnings and no reactions until each has
+  // happened to be fetched once.
+  "/sendguard.js",
+  "/senderguard.js",
+  "/reaction.js",
 ];
 
 // No catch on addAll. Every file here sits behind the session, so an update
