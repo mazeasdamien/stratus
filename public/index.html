@@ -792,6 +792,8 @@ textarea.field{width:100%;padding:11px 12px;font-size:14.5px;line-height:1.45;mi
 .vtab svg{color:currentColor}
 .vtab:hover{color:var(--t1);background:var(--press)}
 .vtab.on{background:var(--bg);color:var(--t1);box-shadow:0 1px 3px var(--shadow)}
+/* The longer French tab names (Calendrier, Contacts) still fit the narrowest phones. */
+@media (max-width:380px){.viewtabs{gap:2px}.vtab{padding:0 6px;gap:4px}}
 .tldot{width:6px;height:6px;border-radius:50%;background:var(--acc);flex:none}
 
 /* Timeline view */
@@ -1014,6 +1016,8 @@ textarea.field.cal-notes{min-height:84px}
   border:1px solid var(--line-strong);color:var(--t1);font-size:13.5px;font-weight:600;gap:7px}
 #folderBtn:active{background:var(--press2)}
 #folderBtn .caret{color:var(--t3);font-size:10px}
+/* A longer language's folder name must not squeeze the search box out of a narrow phone. */
+@media (max-width:380px){#folderBtn{padding:0 9px;gap:5px;font-size:13px}}
 /* Said while the connection is gone, because a list that stops changing looks
    exactly like a quiet inbox. */
 #offline{height:24px;padding:0 10px;border-radius:12px;display:inline-flex;align-items:center;
@@ -2021,6 +2025,8 @@ body.selmode .xf-chip{bottom:calc(var(--sab) + 92px)}
   #bulkbar .rbtn.ico{width:34px;padding:0}
   #bulkbar .n-sel{font-size:12.5px;line-height:1.15}
 }
+/* French is wider than English: the selection bar gives up a little more on the narrowest phones. */
+@media (max-width:380px){#bulkbar{padding-left:10px}#bulkbar .rbtn{padding:0 4px;font-size:12.5px}#bulkbar .rbtn.ico{width:28px}#bulkbar .n-sel{white-space:nowrap;flex:none;margin-right:2px}}
 
 /* ── offline mail ──
    The strip that says what is on screen is a saved copy, the same dashed edge
