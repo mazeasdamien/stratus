@@ -3421,7 +3421,7 @@ let sessionGone = false;
 function staleClient(want) {
   if (Date.now() - staleSaid < 5 * 60_000) return;
   staleSaid = Date.now();
-  toast(`This tab is running ${CLIENT}, the server is on ${want}`, () => location.reload(), "Reload");
+  toast(t("This tab is running {client}, the server is on {server}", { client: CLIENT, server: want }), () => location.reload(), t("Reload"));
 }
 
 /* ── offline mail ─────────────────────────────────────────────────────
@@ -3449,12 +3449,12 @@ const OFFLINE_LIMITS = { maxItems: 400, maxBytes: 30 * 1024 * 1024, maxEntry: 2 
 /** Drafts keep their own local copy; saving one offline is not a change to refuse. */
 const OFFLINE_EXEMPT = /^\/api\/draft(?:\/|$)/;
 const OFFLINE_MISS = {
-  list: "This folder is not saved on this device",
-  thread: "This conversation is not saved on this device",
-  msg: "This message is not saved on this device",
-  live: "That needs a connection",
+  list: t("This folder is not saved on this device"),
+  thread: t("This conversation is not saved on this device"),
+  msg: t("This message is not saved on this device"),
+  live: t("That needs a connection"),
 };
-const OFFLINE_REFUSED = "This needs a connection, and nothing was changed";
+const OFFLINE_REFUSED = t("This needs a connection, and nothing was changed");
 /** The background fill: how many messages a pass takes, when it starts, how often, and the pause between two. */
 const OFFLINE_FILL = { count: 30, delay: 1500, every: 120_000, gap: 250 };
 
@@ -3649,7 +3649,9 @@ function offlineNote(kind, at) {
   const el = $(kind === "msg" ? "#offReadNote" : "#offListNote");
   el.hidden = !at;
   if (!at) return;
-  el.textContent = `Offline copy, saved ${fmtWhen(at)}. ` + (kind === "msg" ? "Attachments are not kept on this device." : "Changes need a connection.");
+  el.textContent = kind === "msg"
+    ? t("Offline copy, saved {when}. Attachments are not kept on this device.", { when: fmtWhen(at) })
+    : t("Offline copy, saved {when}. Changes need a connection.", { when: fmtWhen(at) });
   el.title = new Date(at).toLocaleString(LOCALE);
 }
 /** Said after whatever the caller says about the same failure, so the plain reason is the last thing on screen. */
@@ -3757,12 +3759,11 @@ async function offlineFillPass() {
 function offlinePaint() {
   $("#offSwitch").setAttribute("aria-checked", String(offlineEnabled));
   const state = $("#offState");
-  if (!offlineEnabled) { state.textContent = "Nothing is stored on this device."; return; }
-  state.textContent = "Turned on. Nothing is stored yet.";
+  if (!offlineEnabled) { state.textContent = t("Nothing is stored on this device."); return; }
+  state.textContent = t("Turned on. Nothing is stored yet.");
   offlineStore.size().then((s) => {
     if (!offlineEnabled || !(s.messages || s.lists)) return;
-    const n = (k, one) => `${k} ${one}${k === 1 ? "" : "s"}`;
-    state.textContent = `This device holds ${n(s.messages, "message")} and ${n(s.lists, "folder list")}, ${humanSize(s.bytes)}.`;
+    state.textContent = t("This device holds {messages, plural, one {# message} other {# messages}} and {lists, plural, one {# folder list} other {# folder lists}}, {size}.", { messages: s.messages, lists: s.lists, size: humanSize(s.bytes) });
   }).catch(() => {});
 }
 $("#offSwitch").addEventListener("click", async () => {
@@ -3770,14 +3771,14 @@ $("#offSwitch").addEventListener("click", async () => {
   note.hidden = true;
   if (offlineEnabled) {
     await offlineWipe();
-    toast("Offline mail is off, and removed from this device");
+    toast(t("Offline mail is off, and removed from this device"));
     return;
   }
   setOfflineFlag(true);
   offlinePaint();
   try {
     if (navigator.storage && navigator.storage.persist && !(await navigator.storage.persist())) {
-      note.textContent = "This browser did not make the storage permanent, so it may clear the copy when space runs short. It works until it does.";
+      note.textContent = t("This browser did not make the storage permanent, so it may clear the copy when space runs short. It works until it does.");
       note.hidden = false;
     }
   } catch {}
@@ -3787,7 +3788,7 @@ $("#offSwitch").addEventListener("click", async () => {
 });
 $("#offRemove").addEventListener("click", async () => {
   await offlineWipe();
-  toast("Offline mail removed from this device, and turned off");
+  toast(t("Offline mail removed from this device, and turned off"));
 });
 $("#acctBtn").addEventListener("click", offlinePaint);
 offlinePaint();
@@ -3833,7 +3834,7 @@ function fmtFull(ms) {
 let accountsKnown = false;
 /** Why there is no account to act with: none connected, or none loaded. */
 const noAccountWhy = () =>
-  accountsKnown ? "Connect an account first" : "Your accounts could not be loaded — check the connection";
+  accountsKnown ? t("Connect an account first") : t("Your accounts could not be loaded — check the connection");
 
 async function loadAccounts() {
   try {
@@ -3892,7 +3893,7 @@ function renderAccounts() {
 
   // The tab itself: a count in the title and a red dot on the favicon. Both
   // are visible from another tab, which the in-app badge is not.
-  document.title = total ? `(${total}) Mail` : "Mail";
+  document.title = total ? t("({n}) Mail", { n: total }) : t("Mail");
   markFavicon(total > 0);
   const broken = accounts.filter((a) => a.status !== "ok").length;
   // "1 account" is a fact about the app, not about your mail. With several it
@@ -3901,19 +3902,21 @@ function renderAccounts() {
   // safe to build that way because every value interpolated here is a number
   // this function counted itself.
   const parts = [];
-  if (accounts.length > 1) parts.push(`${Number(accounts.length)} accounts`);
+  if (accounts.length > 1) parts.push(t("{n, plural, one {# account} other {# accounts}}", { n: Number(accounts.length) }));
   // Says what it counts. The folder button a line below shows the open
   // folder's unread, so "5 unread" over "Inbox 4" looked like a miscount.
-  parts.push(total ? `<b class="unread-n">${Number(total)} unread</b> in all folders` : "All read");
-  if (broken) parts.push(`${Number(broken)} need${broken > 1 ? "" : "s"} attention`);
+  parts.push(total
+    ? t("{count} in all folders", { count: `<b class="unread-n">${t("{n, plural, one {# unread} other {# unread}}", { n: Number(total) })}</b>` })
+    : t("All read"));
+  if (broken) parts.push(t("{n, plural, one {# needs attention} other {# need attention}}", { n: Number(broken) }));
   $("#hmeta").innerHTML = accounts.length
     ? parts.join(" · ")
     : accountsKnown
-    ? "No account connected yet"
-    : "Could not load your mail";
+    ? t("No account connected yet")
+    : t("Could not load your mail");
   // Rewritten twice a minute by the poll; as a live region it re-read "N
   // unread" every time. Now it speaks only when the count goes up.
-  if (total > lastSaidUnread && lastSaidUnread >= 0) say(`${total} unread`);
+  if (total > lastSaidUnread && lastSaidUnread >= 0) say(t("{n, plural, one {# unread} other {# unread}}", { n: total }));
   lastSaidUnread = total;
 
   // With a single account the filter is a row of buttons that all do nothing.
@@ -3921,7 +3924,7 @@ function renderAccounts() {
   $("#accPills").innerHTML =
     accounts.length < 2
       ? ""
-      : `<button class="pill${accountFilter === "" ? " on" : ""}" data-acc="">All</button>` +
+      : `<button class="pill${accountFilter === "" ? " on" : ""}" data-acc="">${t("All")}</button>` +
     accounts.map((a) =>
       `<button class="pill${accountFilter === a.id ? " on" : ""}" data-acc="${a.id}" title="${esc(a.email)}">
         <span class="dot" style="background:${acctColor(a)}"></span>${esc(PROVIDER[a.provider] || a.provider)}
@@ -3933,21 +3936,21 @@ function renderAccounts() {
     ? accounts.map((a) => {
         const age = a.last_sync ? Math.round((Date.now() - a.last_sync) / 60000) : null;
         const state = a.status !== "ok"
-          ? (a.status === "reauth" ? "reconnect needed" : (a.last_error || "error"))
-          : age === null ? "never synced" : age < 1 ? "just now" : `${age} min ago`;
+          ? (a.status === "reauth" ? t("reconnect needed") : (a.last_error ? tw(a.last_error) : t("error")))
+          : age === null ? t("never synced") : age < 1 ? t("just now") : t("{n} min ago", { n: age });
         return `<div class="mi${a.status !== "ok" ? " warn" : ""}">
           <span class="dot" style="width:9px;height:9px;border-radius:50%;background:${acctColor(a)};flex:none"></span>
           <span class="grow"><div class="tr">${esc(a.email)}</div>
           <div class="sub">${esc(PROVIDER[a.provider])} · ${esc(state)}</div></span>
           ${accounts[0] && accounts[0].id === a.id
-            ? `<span class="side" style="color:var(--acc)">Default</span>`
-            : `<button class="side" data-primary="${a.id}">Make default</button>`}
-          <button class="side" data-syncacc="${a.id}" style="color:var(--acc)">Sync</button>
-          <button class="side" data-delacc="${a.id}" style="color:var(--red)">Remove</button>
+            ? `<span class="side" style="color:var(--acc)">${t("Default")}</span>`
+            : `<button class="side" data-primary="${a.id}">${t("Make default")}</button>`}
+          <button class="side" data-syncacc="${a.id}" style="color:var(--acc)">${t("Sync")}</button>
+          <button class="side" data-delacc="${a.id}" style="color:var(--red)">${t("Remove")}</button>
         </div>`;
       }).join("")
     : `<div class="sh-s">${
-        accountsKnown ? "Nothing yet — connect one below." : "Your accounts could not be loaded. Check the connection, then refresh."
+        accountsKnown ? t("Nothing yet — connect one below.") : t("Your accounts could not be loaded. Check the connection, then refresh.")
       }</div>`;
 
   // The connect button says what it will do now, and sits where that puts
@@ -3959,8 +3962,8 @@ function renderAccounts() {
   const add = $("#addIcloud");
   const settled = accounts.length > 0 && !broken;
   add.textContent = !accounts.length
-    ? "Connect iCloud"
-    : broken ? "Reconnect iCloud" : "Change the app password, or add another account";
+    ? t("Connect iCloud")
+    : broken ? t("Reconnect iCloud") : t("Change the app password, or add another account");
   add.className = settled ? "ghost" : "cta";
   add.style.cssText = settled
     ? "width:100%;justify-content:center;min-height:34px;margin-top:6px"
