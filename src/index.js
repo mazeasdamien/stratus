@@ -442,7 +442,12 @@ function denied() {
       font:400 15px/1.6 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;text-align:center;padding:24px}
  strong{display:block;color:#f4f4f5;font-size:17px;font-weight:600;margin-bottom:6px}
 </style></head>
-<body><div><strong>Access denied</strong>This device is not activated.<br><a href="/auth" style="color:#f4f4f5">Activate it with your key</a></div></body></html>`,
+<body><div><strong>Access denied</strong>This device is not activated.<br><a href="/auth" style="color:#f4f4f5">Activate it with your key</a></div>
+<script>
+// A device with no session keeps no mail: this is where signing out at /logout
+// lands, and the app page never runs to remove the offline copy itself.
+try{indexedDB.deleteDatabase("stratus-offline");localStorage.removeItem("dmzs-offline")}catch(e){}
+</script></body></html>`,
     { status: 401, headers: { "Content-Type": "text/html; charset=utf-8" } }
   );
 }

@@ -3,6 +3,12 @@
  * private, change server-side (read state, archives), and the app is a
  * window onto the Worker rather than an offline archive. What this buys is
  * instant startup and an app shell that still paints with no connection.
+ *
+ * That holds for every device that has not asked otherwise. A device whose
+ * owner switched on "Offline mail" in Settings keeps a copy of recent mail,
+ * but in the page's own IndexedDB, written and read by the page and never by
+ * this worker. The one thing this worker does to it is delete it, when the
+ * server says the device is signed out (see the push handler).
  */
 
 // Bump on every shell change. The activate handler deletes any cache whose
@@ -120,6 +126,10 @@ self.addEventListener("push", (event) => {
         if (res.ok) {
           state = await res.json();
           failed = false;
+        } else if (res.status === 401) {
+          // Signed out, and perhaps never opened again: the page cannot be
+          // counted on to remove the offline copy of mail it was keeping.
+          indexedDB.deleteDatabase("stratus-offline");
         }
       } catch {
         /* offline: still worth ringing, just without the detail */

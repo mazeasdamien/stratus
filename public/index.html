@@ -1980,6 +1980,18 @@ body.selmode .xf-chip{bottom:calc(var(--sab) + 92px)}
   #bulkbar .rbtn.ico{width:34px;padding:0}
   #bulkbar .n-sel{font-size:12.5px;line-height:1.15}
 }
+
+/* ── offline mail ──
+   The strip that says what is on screen is a saved copy, the same dashed edge
+   as the Offline pill in the header, and the Offline mail section of Settings. */
+.offnote{margin:8px 12px 4px;padding:7px 12px;border-radius:var(--r-s);border:1px dashed var(--line-strong);
+  background:var(--elev);color:var(--t2);font-size:var(--t-s);line-height:1.4}
+.offnote[hidden]{display:none}
+#reader .offnote{margin:0;border-radius:0;border-width:0 0 1px;border-style:solid;border-color:var(--line);flex:none;padding:7px 16px}
+.off-row{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:2px 0 10px}
+.off-row .off-t{font-size:14px;font-weight:600;color:var(--t1)}
+.off-row .rl-sw{margin:0}
+#offMsg{margin:0 0 10px;font-size:12px}
 </style>
 </head>
 <body>
@@ -2067,6 +2079,7 @@ body.selmode .xf-chip{bottom:calc(var(--sab) + 92px)}
     </div>
     <!-- The list is a list, and every row in it is reachable from the keyboard
          with a name that carries what sighted users get from the layout. -->
+    <div class="offnote" id="offListNote" role="status" hidden></div>
     <div id="list" role="list" aria-label="Messages"></div>
     <div id="timelineView" role="region" aria-label="Calendar" hidden></div>
   </main>
@@ -2119,6 +2132,7 @@ body.selmode .xf-chip{bottom:calc(var(--sab) + 92px)}
   </div>
   <!-- Above the frame, never over it: anything painted on top of the message
        frame has cost it its first paint before. -->
+  <div class="offnote" id="offReadNote" role="status" hidden></div>
   <div id="rInvite" role="region" aria-label="Invitation" hidden></div>
   <div id="rSummary" role="region" aria-label="Summary" hidden>
     <div class="sumtxt" id="rSummaryText"></div>
@@ -2305,6 +2319,7 @@ body.selmode .xf-chip{bottom:calc(var(--sab) + 92px)}
     <button class="pill" role="tab" aria-selected="false" data-set="writing">Writing</button>
     <button class="pill" role="tab" aria-selected="false" data-set="notify">Notifications</button>
     <button class="pill" role="tab" aria-selected="false" data-set="appear">Appearance</button>
+    <button class="pill" role="tab" aria-selected="false" data-set="offline">Offline</button>
   </div>
 
   <section class="setsec on" data-set="accounts" role="tabpanel" aria-label="Accounts">
@@ -2413,6 +2428,17 @@ body.selmode .xf-chip{bottom:calc(var(--sab) + 92px)}
     </div>
     <div class="sh-s" style="margin:2px 0 0;font-size:12px">Compact tightens the rows and shows the subject and the start of the message on one line. Kept on this device only.</div>
     <button class="cta" id="openKeys" style="background:var(--elev2);color:var(--t1)">Keyboard shortcuts</button>
+  </section>
+
+  <section class="setsec" data-set="offline" role="tabpanel" aria-label="Offline mail" hidden>
+    <div class="off-row">
+      <span class="off-t" id="offSwLbl">Keep recent mail on this device</span>
+      <button class="rl-sw" type="button" role="switch" id="offSwitch" aria-checked="false" aria-labelledby="offSwLbl"></button>
+    </div>
+    <div class="sh-s" style="font-size:12px">Off by default, and set for this device alone. When it is on, this device keeps the first page of each folder as you last saw it, the text of the messages you open, and the newest in your inbox, so they stay readable without a connection. They are stored in this browser, readable by anyone who can use it, and the oldest go first once the copy passes 400 items or 30&nbsp;MB. Attachments are never kept. Nothing you change is queued: offline, archive, delete, star, move and send say they need a connection and do nothing. Signing out, a session that has ended, or switching this off removes the copy from this device.</div>
+    <div class="sh-s" id="offState" style="font-size:12px">Nothing is stored on this device.</div>
+    <div class="sh-s" id="offMsg" role="status" hidden></div>
+    <button class="cta danger" id="offRemove" type="button">Remove offline mail from this device</button>
   </section>
 </div>
 
@@ -3200,6 +3226,12 @@ async function api(path, opts = {}) {
       signal: apiSignal(path, opts),
       headers: { ...(opts.headers || {}), "X-Client": CLIENT },
     });
+  } catch (e) {
+    // No connection: a device that keeps offline mail answers from it (below,
+    // "offline mail"). Any other device gets the failure as it always did.
+    const kept = await offlineFallback(path, opts, e);
+    if (!kept) throw e;
+    return kept;
   } finally {
     busy(-1);
   }
@@ -3213,9 +3245,11 @@ async function api(path, opts = {}) {
     // answer rebuilding this same page under whatever you were reading.
     sessionGone = true;
     clearTimeout(pollTimer);
+    offlineWipe();
     sessionExpired();
     throw new Error("401");
   }
+  offlineSeen(path, opts, res);
   return res;
 }
 
@@ -3269,6 +3303,374 @@ function staleClient(want) {
   staleSaid = Date.now();
   toast(`This tab is running ${CLIENT}, the server is on ${want}`, () => location.reload(), "Reload");
 }
+
+/* ── offline mail ─────────────────────────────────────────────────────
+   A device that has switched this on in Settings keeps a copy of what it has
+   shown: the first page of each folder, the messages it opened, and the newest
+   in the inbox. A device that has not stores nothing, and every function here
+   starts by checking the switch, so the page behaves as it always did.
+
+   The copy lives in this page's own IndexedDB, behind offlineStore, which is
+   the only code that touches it. The service worker never reads or writes it.
+
+   It is only ever a fallback: api() asks the network first, a reply from the
+   server refreshes the copy, and the copy is what answers when the fetch
+   itself fails. Nothing that changes mail is queued. A change made with no
+   connection is refused, loudly, instead of being remembered for later: a
+   queue would replay an archive or a send after the mailbox had moved on.
+
+   One function, offlineWipe, ends all of it. Every way this device stops
+   having access ends there. */
+
+const OFFLINE_DB = "stratus-offline";
+const OFFLINE_FLAG = "dmzs-offline";
+/** 400 items is about 350 messages plus the folder lists. 30 MB keeps well inside what a phone browser grants an origin, and 2 MB refuses a message that is mostly pasted pictures. */
+const OFFLINE_LIMITS = { maxItems: 400, maxBytes: 30 * 1024 * 1024, maxEntry: 2 * 1024 * 1024 };
+/** Drafts keep their own local copy; saving one offline is not a change to refuse. */
+const OFFLINE_EXEMPT = /^\/api\/draft(?:\/|$)/;
+const OFFLINE_MISS = {
+  list: "This folder is not saved on this device",
+  thread: "This conversation is not saved on this device",
+  msg: "This message is not saved on this device",
+  live: "That needs a connection",
+};
+const OFFLINE_REFUSED = "This needs a connection, and nothing was changed";
+/** The background fill: how many messages a pass takes, when it starts, how often, and the pause between two. */
+const OFFLINE_FILL = { count: 30, delay: 1500, every: 120_000, gap: 250 };
+
+/**
+ * What a request is, as far as the offline copy is concerned, and the key it is
+ * kept under. A search, "starred" and "load older" are never kept: they are
+ * answers to a question, not a place in the mailbox.
+ */
+function offlineClass(path, method = "GET") {
+  const [p, qs = ""] = String(path).split("?");
+  if (String(method).toUpperCase() !== "GET") return { what: OFFLINE_EXEMPT.test(p) ? "other" : "change" };
+  if (p === "/api/accounts") return { what: "meta", key: "meta:accounts" };
+  if (p === "/api/folders") return { what: "meta", key: "meta:folders" };
+  const q = new URLSearchParams(qs);
+  if (p === "/api/messages") {
+    if (q.get("thread")) return { what: "thread", key: `thread:${q.get("thread")}` };
+    if (q.get("q") || q.get("starred") || q.get("before")) return { what: "live" };
+    return { what: "list", key: `list:${q.get("account") || ""}|${q.get("folder") || "inbox"}` };
+  }
+  const one = /^\/api\/messages\/([^/]+)$/.exec(p);
+  return one ? { what: "msg", key: `msg:${one[1]}`, peek: q.get("peek") === "1" } : { what: "other" };
+}
+
+/**
+ * What to do with a request. "network" is the fetch as it went, success or
+ * failure. "copy" answers from what is kept; "miss" is a read there is no copy
+ * of; "refuse" is a change that cannot be made. Only a fetch that failed for
+ * want of a connection, on a device that opted in, is ever anything else.
+ */
+function offlineChoice({ enabled, failed, what, stored }) {
+  if (!enabled || !failed) return "network";
+  if (what === "list" || what === "thread" || what === "msg") return stored ? "copy" : "miss";
+  // The accounts and the folder names are only what the list stands on; with no
+  // copy of them the page fails as it would have.
+  if (what === "meta") return stored ? "copy" : "network";
+  if (what === "live") return "miss";
+  return what === "change" ? "refuse" : "network";
+}
+
+/**
+ * The keys to delete so the copy fits its limits: anything too big to be worth
+ * keeping first, then the oldest saved until both the count and the bytes are
+ * inside. `entries` are { k, bytes, at }. One message over the whole budget is
+ * dropped by itself, rather than emptying the copy to make room it still would
+ * not have.
+ */
+function offlineEvict(entries, { maxItems, maxBytes, maxEntry }) {
+  const drop = entries.filter((e) => e.bytes > Math.min(maxEntry, maxBytes));
+  const keep = entries.filter((e) => !drop.includes(e)).sort((a, b) => a.at - b.at || (a.k < b.k ? -1 : 1));
+  let total = keep.reduce((n, e) => n + e.bytes, 0);
+  while (keep.length && (keep.length > maxItems || total > maxBytes)) {
+    const old = keep.shift();
+    total -= old.bytes;
+    drop.push(old);
+  }
+  return drop.map((e) => e.k);
+}
+
+/** Whether this device has opted in. Read once; the setting's own handlers and other tabs keep it current. */
+let offlineEnabled = (() => { try { return localStorage.getItem(OFFLINE_FLAG) === "1"; } catch { return false; } })();
+function setOfflineFlag(on) {
+  offlineEnabled = on;
+  try { if (on) localStorage.setItem(OFFLINE_FLAG, "1"); else localStorage.removeItem(OFFLINE_FLAG); } catch {}
+}
+
+/**
+ * The only code that opens the database. Two object stores: `items` holds each
+ * saved reply as the server sent it, `meta` holds what eviction needs to decide
+ * without reading any bodies. A write is one transaction that also evicts, so
+ * the copy is never over its limits between two writes. A failed write, a full
+ * disk included, drops the older half and tries once more; none of it ever
+ * throws into the code that is reading mail.
+ */
+const offlineStore = (() => {
+  let conn = null;
+  const open = () => {
+    // Off means there is no database to open, so nothing can bring one back.
+    if (!offlineEnabled) return Promise.reject(new Error("offline mail is off"));
+    return (conn ||= new Promise((res, rej) => {
+      const r = indexedDB.open(OFFLINE_DB, 1);
+      r.onupgradeneeded = () => { r.result.createObjectStore("items"); r.result.createObjectStore("meta"); };
+      r.onsuccess = () => {
+        const db = r.result;
+        // Another tab wiping the database must not wait on this one.
+        db.onversionchange = () => { db.close(); conn = null; };
+        res(db);
+      };
+      r.onerror = () => { conn = null; rej(r.error); };
+    }));
+  };
+  const done = (tx) => new Promise((res, rej) => { tx.oncomplete = () => res(); tx.onerror = tx.onabort = () => rej(tx.error); });
+  /** Every `meta` row as { k, kind, bytes, at }, handed to `then` inside the same transaction. */
+  const scan = (tx, then) => {
+    const out = [];
+    const cur = tx.objectStore("meta").openCursor();
+    cur.onsuccess = () => {
+      const c = cur.result;
+      if (c) { out.push({ k: c.key, ...c.value }); c.continue(); } else then(out);
+    };
+  };
+  async function write(key, kind, json, at) {
+    const tx = (await open()).transaction(["items", "meta"], "readwrite");
+    tx.objectStore("items").put({ at, json }, key);
+    tx.objectStore("meta").put({ kind, bytes: json.length, at }, key);
+    scan(tx, (all) => {
+      for (const k of offlineEvict(all, OFFLINE_LIMITS)) {
+        tx.objectStore("items").delete(k);
+        tx.objectStore("meta").delete(k);
+      }
+    });
+    await done(tx);
+  }
+  async function list() {
+    const tx = (await open()).transaction("meta");
+    let all = [];
+    scan(tx, (rows) => { all = rows; });
+    await done(tx);
+    return all;
+  }
+  /** Room made by force: the older half goes. */
+  async function shrink() {
+    const all = (await list()).sort((a, b) => a.at - b.at);
+    const tx = (await open()).transaction(["items", "meta"], "readwrite");
+    for (const e of all.slice(0, Math.ceil(all.length / 2))) {
+      tx.objectStore("items").delete(e.k);
+      tx.objectStore("meta").delete(e.k);
+    }
+    await done(tx);
+  }
+  return {
+    /** Keeps one reply (the JSON text the server sent) under `key`; `kind` is list, thread, msg or meta. */
+    async put(key, kind, json) {
+      const at = Date.now();
+      try { await write(key, kind, json, at); }
+      catch { try { await shrink(); await write(key, kind, json, at); } catch {} }
+    },
+    /** { at, json } or null. */
+    async get(key) {
+      const tx = (await open()).transaction("items");
+      const r = tx.objectStore("items").get(key);
+      await done(tx);
+      return r.result || null;
+    },
+    async keys() { return (await list()).map((e) => e.k); },
+    async size() {
+      const all = await list();
+      return {
+        messages: all.filter((e) => e.kind === "msg").length,
+        lists: all.filter((e) => e.kind === "list" || e.kind === "thread").length,
+        bytes: all.reduce((n, e) => n + e.bytes, 0),
+      };
+    },
+    /** The database is deleted, not emptied. Resolves once it is gone, or after a few seconds if another tab will not let go. */
+    async wipe() {
+      const was = conn;
+      conn = null;
+      try { (await was)?.close(); } catch {}
+      await new Promise((res) => {
+        const r = indexedDB.deleteDatabase(OFFLINE_DB);
+        r.onsuccess = r.onerror = () => res();
+        setTimeout(res, 4000);
+      });
+    },
+  };
+})();
+
+/**
+ * Every way this device stops having access ends here: signing out, a session
+ * the server no longer accepts, the switch turned off, the remove button. The
+ * switch goes off first, so nothing in flight can write again after the
+ * database is deleted. Never throws; there is nobody to tell.
+ */
+async function offlineWipe() {
+  setOfflineFlag(false);
+  offlineFillStop();
+  offlineNote("list", 0);
+  offlineNote("msg", 0);
+  try { await offlineStore.wipe(); } catch {}
+  offlinePaint();
+}
+// Another tab turned it off, or signed out of this browser's storage.
+addEventListener("storage", (e) => {
+  if (offlineEnabled && (e.key === OFFLINE_FLAG || e.key === null)) {
+    let on = false;
+    try { on = localStorage.getItem(OFFLINE_FLAG) === "1"; } catch {}
+    if (!on) offlineWipe();
+  }
+});
+
+/** Says, above the list or the open message, that what is shown is a saved copy and when it was saved. */
+function offlineNote(kind, at) {
+  const el = $(kind === "msg" ? "#offReadNote" : "#offListNote");
+  el.hidden = !at;
+  if (!at) return;
+  el.textContent = `Offline copy, saved ${fmtWhen(at)}. ` + (kind === "msg" ? "Attachments are not kept on this device." : "Changes need a connection.");
+  el.title = new Date(at).toLocaleString();
+}
+/** Said after whatever the caller says about the same failure, so the plain reason is the last thing on screen. */
+function offlineSay(text) {
+  setTimeout(() => toast(text), 0);
+}
+
+/** api(): the fetch failed. A saved copy, a refusal that reads like the server's, or null for "fail as before". */
+async function offlineFallback(path, opts, err) {
+  // A timeout or an abort is not a missing connection; only a failed fetch is.
+  if (!offlineEnabled || !(err instanceof TypeError)) return null;
+  const c = offlineClass(path, opts.method);
+  const rec = c.key ? await offlineStore.get(c.key).catch(() => null) : null;
+  const act = offlineChoice({ enabled: true, failed: true, what: c.what, stored: !!rec });
+  if (act === "copy") {
+    if (c.what === "msg") offlineNote("msg", rec.at);
+    else if (c.what !== "meta") offlineNote("list", rec.at);
+    return new Response(rec.json, { status: 200, headers: { "Content-Type": "application/json", "X-Offline-Copy": String(rec.at) } });
+  }
+  if (act === "refuse") {
+    offlineSay(OFFLINE_REFUSED);
+    return new Response(JSON.stringify({ error: OFFLINE_REFUSED }), { status: 503, headers: { "Content-Type": "application/json" } });
+  }
+  // A background read of a message nobody asked to open says nothing.
+  if (act === "miss" && !c.peek) offlineSay(OFFLINE_MISS[c.what]);
+  return null;
+}
+
+/** api(): a reply came back. The server wins, so what it said replaces the copy. */
+function offlineSeen(path, opts, res) {
+  if (!offlineEnabled || sessionGone || !res.ok) return;
+  const c = offlineClass(path, opts.method);
+  if (!c.key) return;
+  if (c.what === "list" || c.what === "thread") offlineNote("list", 0);
+  else if (c.what === "msg") offlineNote("msg", 0);
+  res.clone().text().then((json) => offlineStore.put(c.key, c.what, json)).catch(() => {});
+  if (c.what === "list") offlineFillSoon(false);
+}
+
+/* The background fill. One pass at a time, newest first, one request at a time,
+   and only while the page is in front, online and not busy with anything the
+   person asked for. Every message is asked for with peek=1, which the server
+   takes to mean "do not mark it read": filling the copy is not reading. It
+   goes around api() so the progress bar and the stale-page notice are not
+   moved by something nobody did. */
+let offlineFillRun = 0;
+let offlineFillCtl = null;
+let offlineFillTimer = 0;
+let offlineFillLast = 0;
+function offlineFillStop() {
+  offlineFillRun++;
+  clearTimeout(offlineFillTimer);
+  if (offlineFillCtl) offlineFillCtl.abort();
+  offlineFillCtl = null;
+}
+function offlineFillSoon(force) {
+  if (!offlineEnabled) return;
+  if (!force && Date.now() - offlineFillLast < OFFLINE_FILL.every) return;
+  clearTimeout(offlineFillTimer);
+  offlineFillTimer = setTimeout(offlineFillPass, OFFLINE_FILL.delay);
+}
+async function offlineFillPass() {
+  if (!offlineEnabled) return;
+  const run = ++offlineFillRun;
+  offlineFillLast = Date.now();
+  const ctl = (offlineFillCtl = new AbortController());
+  const live = () => run === offlineFillRun && offlineEnabled && !sessionGone;
+  const nap = (ms) => new Promise((r) => setTimeout(r, ms));
+  const quiet = () => inflight === 0 && !document.hidden && navigator.onLine;
+  /** The reply's text, or null when it was not a good one. Throws to end the pass. */
+  const ask = async (path) => {
+    for (let i = 0; i < 40 && live() && !quiet(); i++) await nap(500);
+    if (!live() || !quiet()) throw new Error("not a quiet moment");
+    await new Promise((r) => (window.requestIdleCallback ? requestIdleCallback(r, { timeout: 2000 }) : setTimeout(r, 50)));
+    const res = await fetch(path, { credentials: "same-origin", signal: ctl.signal, headers: { "X-Client": CLIENT } });
+    if (res.status === 401) { offlineWipe(); throw new Error("401"); }
+    const text = res.ok ? await res.text() : null;
+    if (!live()) throw new Error("stopped");
+    return text;
+  };
+  try {
+    // The inbox's first page is kept even when another folder is on screen.
+    const path = `/api/messages?folder=inbox&limit=${PAGE + 1}`;
+    const text = await ask(path);
+    if (!text) return;
+    await offlineStore.put(offlineClass(path).key, "list", text);
+    const have = new Set(await offlineStore.keys());
+    let n = 0;
+    for (const m of JSON.parse(text).messages || []) {
+      if (n >= OFFLINE_FILL.count) break;
+      // No body stored yet means asking iCloud for it. That is not for a cache to do.
+      if (!Number(m.has_body) || have.has(`msg:${m.id}`)) continue;
+      const body = await ask(`/api/messages/${encodeURIComponent(m.id)}?peek=1`);
+      if (body) { await offlineStore.put(`msg:${m.id}`, "msg", body); n++; }
+      await nap(OFFLINE_FILL.gap);
+    }
+  } catch {
+    /* stopped, or not a good moment: the next list load tries again */
+  } finally {
+    if (offlineFillCtl === ctl) offlineFillCtl = null;
+  }
+}
+
+/* Settings, "Offline". */
+function offlinePaint() {
+  $("#offSwitch").setAttribute("aria-checked", String(offlineEnabled));
+  const state = $("#offState");
+  if (!offlineEnabled) { state.textContent = "Nothing is stored on this device."; return; }
+  state.textContent = "Turned on. Nothing is stored yet.";
+  offlineStore.size().then((s) => {
+    if (!offlineEnabled || !(s.messages || s.lists)) return;
+    const n = (k, one) => `${k} ${one}${k === 1 ? "" : "s"}`;
+    state.textContent = `This device holds ${n(s.messages, "message")} and ${n(s.lists, "folder list")}, ${humanSize(s.bytes)}.`;
+  }).catch(() => {});
+}
+$("#offSwitch").addEventListener("click", async () => {
+  const note = $("#offMsg");
+  note.hidden = true;
+  if (offlineEnabled) {
+    await offlineWipe();
+    toast("Offline mail is off, and removed from this device");
+    return;
+  }
+  setOfflineFlag(true);
+  offlinePaint();
+  try {
+    if (navigator.storage && navigator.storage.persist && !(await navigator.storage.persist())) {
+      note.textContent = "This browser did not make the storage permanent, so it may clear the copy when space runs short. It works until it does.";
+      note.hidden = false;
+    }
+  } catch {}
+  // What is on screen is kept at once rather than at the next refresh.
+  refreshAll();
+  offlineFillSoon(true);
+});
+$("#offRemove").addEventListener("click", async () => {
+  await offlineWipe();
+  toast("Offline mail removed from this device, and turned off");
+});
+$("#acctBtn").addEventListener("click", offlinePaint);
+offlinePaint();
 
 /* ── time ── */
 function fmtWhen(ms) {
