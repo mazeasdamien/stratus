@@ -10996,7 +10996,7 @@ function inviteWhen(inv) {
     return last && !sameDay(last, s) ? `${day(s)} – ${day(last)}` : t("{day}, all day", { day: day(s) });
   }
   const hm = (d) => d.toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit", ...zone });
-  if (!e) return t("{day}, {time}", { day: day(s), time: hm(s) });
+  if (!e) return `${day(s)}, ${hm(s)}`;
   return sameDay(e, s)
     ? `${day(s)}, ${hm(s)} – ${hm(e)}`
     : `${day(s)} ${hm(s)} – ${day(e, { day: "numeric", month: "short" })} ${hm(e)}`;
@@ -11834,7 +11834,7 @@ $("#ppFile").addEventListener("change", async () => {
   // Windows-1252 would already have lost its accents.
   const res = await api("/api/contacts/import", { method: "POST", headers: { "Content-Type": "text/vcard" }, body: file }).catch(() => null);
   const d = res ? await res.json().catch(() => ({})) : {};
-  if (!res || !res.ok) { peopleResult(d.error ? t("{file}: {error}", { file: file.name, error: tw(d.error) }) : t("{file}: could not be imported.", { file: file.name }), true); return; }
+  if (!res || !res.ok) { peopleResult(d.error ? `${file.name}: ${tw(d.error)}` : t("{file}: could not be imported.", { file: file.name }), true); return; }
   contacts = [];
   await loadPeople(true);
   renderPeople();
