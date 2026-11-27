@@ -9,31 +9,57 @@
  * Pure string functions, no Workers API, tested by `node test.mjs`.
  */
 
+/**
+ * How much reading one whole calendar may cost before it is refused.
+ *
+ * A feed is any file someone on the web chose to serve, read on the same
+ * per-minute run as the mail sync. A file built to be slow (a third of a
+ * million EXDATE values on one event, a million one-letter lines) took that
+ * run past its CPU limit, every time it was due, and nothing was ever written
+ * to say why. Each line read costs one unit and each time read in a named
+ * zone costs `zoned`; a file that spends `work` ends in CalendarTooLarge. A
+ * calendar people actually keep spends a small fraction of it.
+ */
+export const PARSE = { work: 1_000_000, zoned: 20, values: 1000 };
+
+/** A calendar that would cost more than PARSE.work to read. */
+export class CalendarTooLarge extends Error {
+  constructor() {
+    super("This calendar is too large to read");
+  }
+}
+
+const spend = (budget, n) => {
+  if (!budget) return;
+  budget.left -= n;
+  if (budget.left < 0) throw new CalendarTooLarge();
+};
+
 /** Folded lines joined back up, then split into { name, params, value }. */
-function lines(text) {
-  return String(text || "")
-    .replace(/\r?\n[ \t]/g, "") // unfold
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .map((line) => {
-      // The value starts at the first colon outside a quoted parameter.
-      let i = 0;
-      let quoted = false;
-      for (; i < line.length; i++) {
-        const c = line[i];
-        if (c === '"') quoted = !quoted;
-        else if (c === ":" && !quoted) break;
-      }
-      const head = line.slice(0, i);
-      const value = line.slice(i + 1);
-      const [name, ...rest] = head.split(";");
-      const params = {};
-      for (const p of rest) {
-        const eq = p.indexOf("=");
-        if (eq > 0) params[p.slice(0, eq).toUpperCase()] = p.slice(eq + 1).replace(/^"|"$/g, "");
-      }
-      return { name: name.toUpperCase(), params, value, raw: line };
-    });
+function lines(text, budget = null) {
+  const out = [];
+  for (const line of String(text || "").replace(/\r?\n[ \t]/g, "").split(/\r?\n/)) {
+    if (!line) continue;
+    // The value starts at the first colon outside a quoted parameter.
+    let i = 0;
+    let quoted = false;
+    for (; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') quoted = !quoted;
+      else if (c === ":" && !quoted) break;
+    }
+    const head = line.slice(0, i);
+    const value = line.slice(i + 1);
+    const [name, ...rest] = head.split(";");
+    spend(budget, 1 + rest.length);
+    const params = {};
+    for (const p of rest) {
+      const eq = p.indexOf("=");
+      if (eq > 0) params[p.slice(0, eq).toUpperCase()] = p.slice(eq + 1).replace(/^"|"$/g, "");
+    }
+    out.push({ name: name.toUpperCase(), params, value, raw: line });
+  }
+  return out;
 }
 
 /** TEXT values: \n, \, and \; are escapes (RFC 5545 §3.3.11). */
@@ -131,18 +157,44 @@ export function resolveTz(tz) {
   return clean;
 }
 
+/**
+ * One formatter per zone name, null for a name Intl does not know. Building a
+ * DateTimeFormat costs far more than using one, and a calendar asks for the
+ * same few zones thousands of times. Emptied when full, so a file naming a
+ * new zone on every line cannot grow it without end.
+ */
+const formatters = new Map();
+const FORMATTERS_MAX = 200;
+
+function formatterFor(tz) {
+  if (formatters.has(tz)) return formatters.get(tz);
+  const resolved = resolveTz(tz);
+  let f = null;
+  if (resolved) {
+    try {
+      f = new Intl.DateTimeFormat("en-US", {
+        timeZone: resolved,
+        hourCycle: "h23",
+        year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", second: "2-digit",
+      });
+    } catch {
+      f = null;
+    }
+  }
+  if (formatters.size >= FORMATTERS_MAX) formatters.clear();
+  formatters.set(tz, f);
+  return f;
+}
+
 /** The offset (ms) of a named zone at a moment, from Intl — null if the name is not IANA. */
 export function zoneOffset(tz, utcMs) {
-  const resolved = resolveTz(tz);
-  if (!resolved) return null;
+  if (!tz) return null;
+  const f = formatterFor(tz);
+  if (!f) return null;
   try {
-    const f = new Intl.DateTimeFormat("en-US", {
-      timeZone: resolved,
-      hourCycle: "h23",
-      year: "numeric", month: "2-digit", day: "2-digit",
-      hour: "2-digit", minute: "2-digit", second: "2-digit",
-    });
-    const p = Object.fromEntries(f.formatToParts(new Date(utcMs)).map((x) => [x.type, x.value]));
+    const p = {};
+    for (const x of f.formatToParts(new Date(utcMs))) p[x.type] = x.value;
     const asUtc = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second);
     return asUtc - utcMs;
   } catch {
@@ -164,7 +216,7 @@ const offsetMs = (s) => {
  * the name, the VTIMEZONE block in the same file is used, calculating the last
  * Sunday of March and October transitions rather than a blanket month check.
  */
-function when(prop, zones) {
+function when(prop, zones, budget = null) {
   if (!prop) return null;
   const v = prop.value.trim();
   const m = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z)?)?$/.exec(v);
@@ -177,6 +229,7 @@ function when(prop, zones) {
   if (z) return { ms: wall, allDay: false };
   const tz = prop.params.TZID;
   if (!tz) return { ms: wall, allDay: false, floating: true };
+  spend(budget, PARSE.zoned);
   const off = zoneOffset(tz, wall);
   if (off !== null) {
     // Once more at the corrected instant, for the hour around a clock change.
@@ -397,12 +450,12 @@ function duration(v) {
  * rings after the start or is not one a reminder can say. An absolute trigger
  * is counted back from the start.
  */
-function alarmMinutes(alarm, startMs, zones) {
+function alarmMinutes(alarm, startMs, zones, budget) {
   const t = alarm.find((l) => l.name === "TRIGGER");
   if (!t) return null;
   let ms;
   if (t.params.VALUE === "DATE-TIME") {
-    const at = when(t, zones);
+    const at = when(t, zones, budget);
     ms = at ? at.ms - startMs : null;
   } else {
     ms = duration(t.value);
@@ -432,16 +485,25 @@ function zoneOf(prop, start) {
  * rule used everywhere else: an instant, except that an all-day date or an
  * hour with no zone is its wall time written as UTC (and `tzid` is "").
  * `rrule` is the rule's text, unchecked. An event with no start, a cancelled
- * one, or one past `max` is counted in `skipped` and left out.
+ * one, or one past `max` is counted in `skipped` and left out; one past `max`
+ * is counted without being read. At most PARSE.values EXDATE values are read
+ * for one event.
+ *
+ * Throws CalendarTooLarge when reading would cost more than PARSE.work.
  */
 export function parseCalendar(text, { max = 2000 } = {}) {
-  const all = lines(text);
+  const budget = { left: PARSE.work };
+  const all = lines(text, budget);
   const zones = zonesOf(all);
   const calendarName = unescapeText(all.find((l) => l.name === "X-WR-CALNAME")?.value || "").slice(0, 120);
   const events = [];
   let skipped = 0;
   for (let i = 0; i < all.length; i++) {
     if (!(all[i].name === "BEGIN" && all[i].value === "VEVENT")) continue;
+    if (events.length >= max) {
+      skipped++;
+      continue;
+    }
     const ev = [];
     const alarms = [];
     let alarm = null;
@@ -454,26 +516,36 @@ export function parseCalendar(text, { max = 2000 } = {}) {
     }
     const one = (n) => ev.find((l) => l.name === n);
     const dtstart = one("DTSTART");
-    const start = when(dtstart, zones);
-    if (!start || (one("STATUS")?.value || "").toUpperCase() === "CANCELLED" || events.length >= max) {
+    const start = when(dtstart, zones, budget);
+    if (!start || (one("STATUS")?.value || "").toUpperCase() === "CANCELLED") {
       skipped++;
       continue;
     }
-    let end = when(one("DTEND"), zones);
+    let end = when(one("DTEND"), zones, budget);
     if (!end) {
       const d = duration(one("DURATION")?.value);
       end = { ms: start.ms + (d !== null && d >= 0 ? d : start.allDay ? DAY : 0) };
     }
     // An all-day end is the day after the last one, so it is never at or before the start.
     const endMs = start.allDay ? Math.max(end.ms, start.ms + DAY) : Math.max(end.ms, start.ms);
-    const recurrence = when(one("RECURRENCE-ID"), zones);
-    const exdates = ev
-      .filter((l) => l.name === "EXDATE")
-      .flatMap((l) => l.value.split(",").map((v) => when({ value: v, params: l.params }, zones)))
-      .filter(Boolean)
-      .map((x) => x.ms);
+    const recurrence = when(one("RECURRENCE-ID"), zones, budget);
+    const exdates = [];
+    let read = 0;
+    for (const l of ev) {
+      if (l.name !== "EXDATE") continue;
+      for (const v of l.value.split(",", PARSE.values - read)) {
+        read++;
+        const x = when({ value: v, params: l.params }, zones, budget);
+        if (x) exdates.push(x.ms);
+      }
+      if (read >= PARSE.values) break;
+    }
     const rawUrl = one("URL")?.value || "";
-    const minutes = alarms.map((a) => alarmMinutes(a, start.ms, zones)).find((m) => m !== null);
+    let minutes = null;
+    for (const a of alarms) {
+      minutes = alarmMinutes(a, start.ms, zones, budget);
+      if (minutes !== null) break;
+    }
     events.push({
       uid: one("UID")?.value?.trim() || "",
       summary: unescapeText(one("SUMMARY")?.value).slice(0, 300),
@@ -487,7 +559,7 @@ export function parseCalendar(text, { max = 2000 } = {}) {
       rrule: (one("RRULE")?.value || "").trim(),
       exdates,
       recurrenceId: recurrence ? recurrence.ms : null,
-      reminderMin: minutes === undefined ? null : minutes,
+      reminderMin: minutes,
     });
   }
   return { calendarName, events, skipped };

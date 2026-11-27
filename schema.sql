@@ -278,6 +278,8 @@ CREATE TABLE IF NOT EXISTS calendars (
   fetched_at  INTEGER,                        -- ms of the last fetch, successful or not; NULL until the first
   last_error  TEXT NOT NULL DEFAULT '',       -- what the last fetch said went wrong, shown beside the calendar
   hash        TEXT NOT NULL DEFAULT '',       -- of what the last fetch parsed to, to leave an unchanged feed alone
+  refresh_started INTEGER,                    -- ms a fetch began and has not yet finished; NULL between fetches
+  stalled     INTEGER NOT NULL DEFAULT 0,     -- fetches in a row that began and never finished; each doubles the wait
   position    INTEGER NOT NULL DEFAULT 0,
   created_at  INTEGER NOT NULL
 );

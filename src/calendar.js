@@ -24,7 +24,7 @@
  */
 
 import { seal, open } from "./crypto.js";
-import { parseCalendar, writeCalendar, httpsUrl } from "./ics.js";
+import { CalendarTooLarge, parseCalendar, writeCalendar, httpsUrl } from "./ics.js";
 import { expand, formatRule, instantOf, occurrences, parseRule, wallOf } from "./rrule.js";
 import { clearReminder, setReminder } from "./reminders.js";
 import { json } from "./util.js";
@@ -306,8 +306,11 @@ function rowsFrom(calendarId, events, { uidFor, idFor, reminders, now }) {
  * read and no writes.
  */
 export async function refreshCalendar(env, cal, now = Date.now()) {
+  // Every way out below clears this mark. A run killed for its CPU or its
+  // time never reaches one, and refreshDue finds the mark still there.
+  await env.DB.prepare("UPDATE calendars SET refresh_started=? WHERE id=?").bind(now, cal.id).run();
   const settle = async (error) => {
-    await env.DB.prepare("UPDATE calendars SET fetched_at=?, last_error=? WHERE id=?").bind(now, error, cal.id).run();
+    await env.DB.prepare(`UPDATE calendars SET fetched_at=?, last_error=?, ${FINISHED} WHERE id=?`).bind(now, error, cal.id).run();
     return { ok: false, error };
   };
   try {
@@ -327,34 +330,53 @@ export async function refreshCalendar(env, cal, now = Date.now()) {
       JSON.stringify(rows.map((r) => COLUMNS.filter((c) => !/_at$/.test(c)).map((c) => r[c])).sort())
     );
     if (fingerprint === cal.hash) {
-      await env.DB.prepare("UPDATE calendars SET fetched_at=?, last_error=? WHERE id=?").bind(now, note, cal.id).run();
+      await env.DB.prepare(`UPDATE calendars SET fetched_at=?, last_error=?, ${FINISHED} WHERE id=?`).bind(now, note, cal.id).run();
       return { ok: true, changed: false, events: rows.length };
     }
     await env.DB.batch([
       env.DB.prepare("DELETE FROM cal_events WHERE calendar_id=?").bind(cal.id),
       ...insertEvents(env, rows),
-      env.DB.prepare("UPDATE calendars SET fetched_at=?, last_error=?, hash=? WHERE id=?").bind(now, note, fingerprint, cal.id),
+      env.DB.prepare(`UPDATE calendars SET fetched_at=?, last_error=?, hash=?, ${FINISHED} WHERE id=?`).bind(now, note, fingerprint, cal.id),
     ]);
     return { ok: true, changed: true, events: rows.length };
   } catch (e) {
-    if (!(e instanceof FeedError)) console.log(`calendar ${cal.id}: ${e && e.stack ? e.stack : e}`);
-    return settle(e instanceof FeedError ? e.message : "Could not read that calendar");
+    const told = e instanceof FeedError || e instanceof CalendarTooLarge;
+    if (!told) console.log(`calendar ${cal.id}: ${e && e.stack ? e.stack : e}`);
+    return settle(told ? e.message : "Could not read that calendar");
   }
 }
 
+/** What a refresh that ended, however it ended, writes beside its result. */
+const FINISHED = "refresh_started=NULL, stalled=0";
+
+/**
+ * When a subscription is next due: its interval, doubled for each refresh in
+ * a row that never finished, up to a week.
+ */
+const DUE = "(fetched_at IS NULL OR fetched_at + min(refresh_min*60000*(1 << min(stalled, 6)), 604800000) <= ?)";
+
+const STALLED = "The last refresh of this calendar never finished, so it is tried less often now. It may be too large or too slow to read.";
+
 /** Subscriptions whose time has come, a couple a minute so one slow feed cannot hog the heartbeat. */
 async function refreshDue(env, now = Date.now()) {
-  const { results } = await env.DB.prepare(
-    `SELECT * FROM calendars WHERE kind='subscription' AND (fetched_at IS NULL OR fetched_at + refresh_min*60000 <= ?)
-     ORDER BY fetched_at LIMIT 2`
-  )
+  const { results } = await env.DB.prepare(`SELECT * FROM calendars WHERE kind='subscription' AND ${DUE} ORDER BY fetched_at LIMIT 2`)
     .bind(now)
     .all();
   for (const cal of results ?? []) {
+    if (Number(cal.refresh_started) > 0) {
+      // The last refresh began and never finished: killed for its CPU or its
+      // time, and most likely by this feed. Fetching it again now would go the
+      // same way, so this turn only says so, and the next one waits longer.
+      await env.DB.prepare(
+        `UPDATE calendars SET fetched_at=?, refresh_started=NULL, stalled=stalled+1, last_error=?
+         WHERE id=? AND refresh_started IS NOT NULL AND ${DUE}`
+      )
+        .bind(now, STALLED, cal.id, now)
+        .run();
+      continue;
+    }
     // Claimed before it is fetched, so two overlapping runs do not fetch one feed twice.
-    const claimed = await env.DB.prepare(
-      "UPDATE calendars SET fetched_at=? WHERE id=? AND (fetched_at IS NULL OR fetched_at + refresh_min*60000 <= ?)"
-    )
+    const claimed = await env.DB.prepare(`UPDATE calendars SET fetched_at=? WHERE id=? AND refresh_started IS NULL AND ${DUE}`)
       .bind(now, cal.id, now)
       .run();
     if (claimed.meta?.changes) await refreshCalendar(env, cal, now);
@@ -824,7 +846,13 @@ async function deleteEvent(env, id, scope, occurrence) {
 
 async function importInto(env, cal, text) {
   if (!/BEGIN:VCALENDAR/i.test(text)) return bad("That file is not a calendar");
-  const parsed = parseCalendar(text, { max: LIM.importEvents });
+  let parsed;
+  try {
+    parsed = parseCalendar(text, { max: LIM.importEvents });
+  } catch (e) {
+    if (e instanceof CalendarTooLarge) return bad(e.message, 413);
+    throw e;
+  }
   const now = Date.now();
   // The rows already here, so an event imported again takes the place of the
   // one it was, rather than doubling it.
