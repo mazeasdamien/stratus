@@ -708,6 +708,11 @@ textarea.field{width:100%;padding:11px 12px;font-size:14.5px;line-height:1.45;mi
 .searchwrap input{flex:1;font-size:14px;min-width:0;height:34px}
 .searchwrap button{color:var(--t3);font-size:18px;line-height:1;padding:0 2px;display:none}
 .searchwrap.has button{display:block}
+/* The operator list, where the clear button will be once there is something to
+   clear: one or the other, never both. */
+.searchwrap #qHelp{display:block;font-size:12px;font-weight:600;width:20px;height:20px;padding:0;border-radius:50%;
+  border:1px solid var(--line-strong)}
+.searchwrap.has #qHelp{display:none}
 
 /* One button naming where you are, rather than a rail of pills that runs off
    the edge the moment you have more than five folders. */
@@ -1111,8 +1116,8 @@ body.selmode .rowwrap .row{touch-action:pan-y}
   display:flex;align-items:center;justify-content:center}
 .chip .x:hover{background:var(--red);color:var(--on-red)}
 /* 22-28px to look at, 44px to hit: the target grows, the drawing does not. */
-.chip .x,.att button,#qClear{position:relative}
-.chip .x::after,.att button::after,#qClear::after{content:"";position:absolute;inset:-11px}
+.chip .x,.att button,#qClear,#qHelp{position:relative}
+.chip .x::after,.att button::after,#qClear::after,#qHelp::after{content:"";position:absolute;inset:-11px}
 .chip.bad{border-color:var(--red);color:var(--red)}
 .field.afield{flex-wrap:wrap;min-height:44px;padding:6px 12px}
 .field.afield .chip{margin:2px 4px 2px 0}
@@ -1500,6 +1505,7 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
         <!-- A placeholder is a hint, not a name: it is gone once something is
              typed, and not every screen reader announces it at all. -->
         <input id="q" type="text" placeholder="Search all mail" aria-label="Search all mail" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <button id="qHelp" type="button" aria-label="Search operators" title="Search operators" aria-haspopup="dialog" aria-expanded="false">?</button>
         <button id="qClear" aria-label="Clear search" title="Clear search">&times;</button>
       </div>
       <div class="pills" id="accPills"></div>
@@ -1788,7 +1794,7 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
   <div class="sh-t">Keyboard shortcuts</div>
   <dl class="keys">
     <dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Next, previous message</dd>
-    <dt><kbd>/</kbd></dt><dd>Search</dd>
+    <dt><kbd>/</kbd></dt><dd>Search, with <kbd>from:</kbd> <kbd>has:attachment</kbd> <kbd>is:unread</kbd> and more &mdash; the <b>?</b> in the box lists them</dd>
     <dt><kbd>e</kbd></dt><dd>Archive</dd>
     <dt><kbd>#</kbd> <kbd>Delete</kbd></dt><dd>Delete</dd>
     <dt><kbd>s</kbd></dt><dd>Star</dd>
@@ -1804,6 +1810,24 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
     <dt><kbd>Ctrl</kbd> <kbd>Enter</kbd></dt><dd>Send (with five seconds to undo)</dd>
     <dt><kbd>Esc</kbd></dt><dd>Close, one layer at a time</dd>
     <dt><kbd>?</kbd></dt><dd>This list</dd>
+  </dl>
+</div>
+
+<div class="sheet" id="searchSheet" tabindex="-1">
+  <div class="grab"></div>
+  <div class="sh-t">Search operators</div>
+  <div class="sh-s">Mix them with words, as in <b>budget from:ada has:attachment after:2026-10-01</b>. Anything not recognised is searched as plain words.</div>
+  <dl class="keys">
+    <dt><kbd>from:</kbd> <kbd>to:</kbd> <kbd>cc:</kbd></dt><dd>Name or address contains it</dd>
+    <dt><kbd>subject:</kbd> <kbd>body:</kbd></dt><dd>Only in the subject, or only in the text</dd>
+    <dt><kbd>has:attachment</kbd></dt><dd>With a file attached</dd>
+    <dt><kbd>attachment:</kbd></dt><dd>A file whose name contains it</dd>
+    <dt><kbd>is:unread</kbd> <kbd>is:read</kbd></dt><dd>Read or not</dd>
+    <dt><kbd>is:flagged</kbd></dt><dd>Starred (<kbd>is:starred</kbd> is the same)</dd>
+    <dt><kbd>category:red</kbd></dt><dd>Orange, yellow, green or blue too</dd>
+    <dt><kbd>after:</kbd> <kbd>before:</kbd> <kbd>on:</kbd></dt><dd>A day such as 2026-10-01, in your time zone. <b>after:</b> counts that day, <b>before:</b> stops short of it</dd>
+    <dt><kbd>"two words"</kbd></dt><dd>That exact phrase; also works after any operator, as in <kbd>from:"ada lovelace"</kbd></dd>
+    <dt><kbd>-word</kbd></dt><dd>Leaves out mail containing the word</dd>
   </dl>
 </div>
 
@@ -2797,6 +2821,7 @@ $("#q").addEventListener("input", (e) => {
   // Debounced: typing a word should be one query, not six.
   searchTimer = setTimeout(loadList, 220);
 });
+$("#qHelp").addEventListener("click", () => openSheet("#searchSheet"));
 $("#qClear").addEventListener("click", () => {
   query = "";
   $("#q").value = "";
@@ -2840,7 +2865,11 @@ async function loadList(more = false, { keep = false } = {}) {
   // Starred spans every folder, like search does: a flag is not a place.
   const p = new URLSearchParams({ folder: query || starredOnly ? "all" : folder });
   if (starredOnly) p.set("starred", "1");
-  if (query) p.set("q", query);
+  if (query) {
+    p.set("q", query);
+    // after:, before: and on: mean the reader's days, not UTC's.
+    p.set("tz", String(new Date().getTimezoneOffset()));
+  }
   if (accountFilter) p.set("account", accountFilter);
   // One row past what is shown: whether it comes back is whether there is
   // more. A page that merely came back full said "Load older" over a list
@@ -5122,7 +5151,7 @@ const openSheet = (s) => {
   // The button that opened this is what a screen reader is sitting on, so say
   // so while it is up: otherwise "expanded" describes a button that looks
   // exactly like every other one.
-  const opener = { "#acctSheet": "#acctBtn", "#folderSheet": "#folderBtn", "#moreSheet": "#rMore", "#composeSheet": "#composeBtn" }[s];
+  const opener = { "#acctSheet": "#acctBtn", "#folderSheet": "#folderBtn", "#searchSheet": "#qHelp", "#moreSheet": "#rMore", "#composeSheet": "#composeBtn" }[s];
   if (opener && $(opener)) $(opener).setAttribute("aria-expanded", "true");
   trapFocus(el, el.querySelector("button, input, select, textarea, [tabindex]") || el);
   syncHistory();
