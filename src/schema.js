@@ -133,11 +133,35 @@ export const SCHEMA = [
   email      TEXT PRIMARY KEY,
   created_at INTEGER NOT NULL
 )`,
+  // No longer written: kept for a snapshot that holds rows from before the
+  // address book, and moved into `contacts` by the contacts_book migration.
   `CREATE TABLE IF NOT EXISTS contacts_added (
   email      TEXT PRIMARY KEY,
   name       TEXT NOT NULL DEFAULT '',
   created_at INTEGER NOT NULL
 )`,
+  // The address book. One row per person, in the shape of a vCard so a card
+  // can come in and go out without losing anything this app keeps. The lists
+  // are JSON, [{ type, value }]: they are read whole and never queried by
+  // field, and an address book is a few hundred rows, so matching an address
+  // is done in code (src/contacts.js).
+  `CREATE TABLE IF NOT EXISTS contacts (
+  id         TEXT PRIMARY KEY,
+  uid        TEXT NOT NULL,                 -- the vCard UID, what an import matches on first
+  name       TEXT NOT NULL DEFAULT '',      -- the display name (FN)
+  given      TEXT NOT NULL DEFAULT '',
+  family     TEXT NOT NULL DEFAULT '',
+  org        TEXT NOT NULL DEFAULT '',
+  title      TEXT NOT NULL DEFAULT '',
+  emails     TEXT NOT NULL DEFAULT '[]',
+  phones     TEXT NOT NULL DEFAULT '[]',
+  address    TEXT NOT NULL DEFAULT '',
+  birthday   TEXT NOT NULL DEFAULT '',      -- YYYY-MM-DD, or --MM-DD with no year
+  notes      TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_uid ON contacts(uid)`,
   // Senders whose mail is destroyed on sight.
   //
   // Not a folder and not a filter: a match is expunged at the provider during
@@ -340,6 +364,16 @@ export const MIGRATIONS = [
   // the timeline was seeded makes its next opening index the recent
   // invitations again, this time with the flag.
   ["events_floating", `DELETE FROM settings WHERE key='events_seeded'`],
+  // The addresses kept by hand before there was an address book become its
+  // first cards: one per address, named as it was named. contacts_added is
+  // left where it is and no longer written.
+  [
+    "contacts_book",
+    `INSERT OR IGNORE INTO contacts (id, uid, name, emails, created_at, updated_at)
+     SELECT lower(hex(randomblob(8))), lower(hex(randomblob(16))), name,
+            json_array(json_object('type', '', 'value', email)), created_at, created_at
+       FROM contacts_added`,
+  ],
 ];
 
 /** What schema.sql looks like on disk, comments and all. */

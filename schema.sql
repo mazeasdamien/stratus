@@ -118,6 +118,25 @@ CREATE TABLE IF NOT EXISTS contacts_added (
   created_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS contacts (
+  id         TEXT PRIMARY KEY,
+  uid        TEXT NOT NULL,                 -- the vCard UID, what an import matches on first
+  name       TEXT NOT NULL DEFAULT '',      -- the display name (FN)
+  given      TEXT NOT NULL DEFAULT '',
+  family     TEXT NOT NULL DEFAULT '',
+  org        TEXT NOT NULL DEFAULT '',
+  title      TEXT NOT NULL DEFAULT '',
+  emails     TEXT NOT NULL DEFAULT '[]',
+  phones     TEXT NOT NULL DEFAULT '[]',
+  address    TEXT NOT NULL DEFAULT '',
+  birthday   TEXT NOT NULL DEFAULT '',      -- YYYY-MM-DD, or --MM-DD with no year
+  notes      TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_uid ON contacts(uid);
+
 CREATE TABLE IF NOT EXISTS outbox (
   id          TEXT PRIMARY KEY,
   account_id  TEXT NOT NULL,

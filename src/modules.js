@@ -32,11 +32,13 @@ import { remindersModule } from "./reminders.js";
  * The array is mutable so a test can add a module and take it out again.
  */
 import { categoriesModule } from "./categories.js";
+import { contacts } from "./contacts.js";
 
 // One module to a line, so two branches that each add one do not collide.
 export const MODULES = [
   remindersModule,
   categoriesModule,
+  contacts,
 ];
 
 /** The first Response a module gives for this request, or null. */
