@@ -681,6 +681,8 @@ textarea.field{width:100%;padding:11px 12px;font-size:14.5px;line-height:1.45;mi
    not inherit its indent. */
 .editor .quote-head{color:var(--t2);font-size:13px;margin:0 0 4px}
 .editor blockquote{border-left:2px solid var(--line);margin:0;padding-left:12px;color:var(--t2)}
+/* A right-to-left original keeps its rule on the side it reads from. */
+.editor blockquote[dir=rtl]{border-left:0;padding-left:0;border-right:2px solid var(--line);padding-right:12px}
 .dstate{font-size:12px;color:var(--t3);align-self:center;padding:0 4px;white-space:nowrap}
 .dstate.warn{color:var(--red)}
 .formerr{display:none;font-size:13px;color:var(--red);margin-top:10px;line-height:1.45}
@@ -1855,7 +1857,7 @@ body.composing #peopleCard{display:none}
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="m14 6-6 6 6 6"/></svg>
     </button>
     <div class="mi-info">
-      <div class="rsubj" id="rSubj">—</div>
+      <div class="rsubj" id="rSubj" dir="auto">—</div>
       <div class="rmeta" id="rMeta">—</div>
       <div class="rcats" id="rCats" hidden></div>
       <!-- The only way to say "these buttons are about the conversation, not
@@ -3426,7 +3428,7 @@ function rowHtml(m, sub = false) {
         : ""
     }
     <div class="mi-info">
-      <div class="l1"><span class="from tr">${esc(m.from_name || m.from_email || "—")}</span>
+      <div class="l1"><span class="from tr" dir="auto">${esc(m.from_name || m.from_email || "—")}</span>
       ${
         n > 1
           ? `<button class="count${openThread === m.thread_key ? " on" : ""}" data-thread="${esc(m.thread_key)}"
@@ -3466,8 +3468,8 @@ function rowHtml(m, sub = false) {
           ? `<svg class="st" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><title>Starred</title><path d="m12 3.6 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.8l5.9-.9Z"/></svg>`
           : ""
       }${fmtWhen(m.date)}</span></div>
-      ${sub ? "" : `<div class="subj tr">${esc(m.subject || "(no subject)")}</div>`}
-      <div class="snip tr">${esc(m.snippet || "")}</div>
+      ${sub ? "" : `<div class="subj tr" dir="auto">${esc(m.subject || "(no subject)")}</div>`}
+      <div class="snip tr" dir="auto">${esc(m.snippet || "")}</div>
       ${cats.length ? `<div class="cats">${cats.slice(0, 3).map(catChip).join("")}${cats.length > 3 ? `<span class="more">+${cats.length - 3}</span>` : ""}</div>` : ""}
       ${fuRow(m, sub)}
     </div>
@@ -3836,6 +3838,53 @@ function isPlainText(html) {
   return !/<(?!a href="[^"<>]*" target="_blank" rel="noopener noreferrer">|\/a>)/.test(inner);
 }
 
+/* ── right-to-left mail ─────────────────────────────────────────────────
+   Hebrew and Arabic mail has to be laid out from the right. The browser does
+   it by itself for text it is told nothing about, but only per paragraph and
+   only where it is asked to (dir="auto"); a message drawn in a frame with no
+   direction at all reads from the left, with its punctuation on the wrong
+   side. Plain text takes the direction of its first letter that has one. HTML
+   mail keeps whatever the sender said: the server leaves dir and the
+   direction, unicode-bidi and text-align properties alone. */
+const RTL_SCRIPT = /^[\p{Script=Hebrew}\p{Script=Arabic}\p{Script=Syriac}\p{Script=Thaana}\p{Script=Nko}]$/u;
+
+/**
+ * "rtl" or "ltr" for a string, from its first strong character: a letter
+ * (digits, punctuation, quote marks and spaces have no direction of their own)
+ * or an explicit LRM / RLM. Nothing to go on reads left to right.
+ */
+function textDir(text) {
+  let seen = 0;
+  for (const ch of String(text || "")) {
+    if (++seen > 2000) break;
+    if (ch === "‏") return "rtl";
+    if (ch === "‎") return "ltr";
+    if (/\p{L}/u.test(ch)) return RTL_SCRIPT.test(ch) ? "rtl" : "ltr";
+  }
+  return "ltr";
+}
+
+/**
+ * The direction a message's text asks for, for a message the sender gave no
+ * direction to. The text of a plain-text body is read with its tags and
+ * entities taken out: `&gt;` on a quoted line is not a Latin word.
+ */
+function plainDir(html) {
+  return textDir(String(html || "").replace(/<[^>]*>/g, "").replace(/&#?\w+;/g, " "));
+}
+
+/**
+ * The direction a quoted original keeps in a reply: the one its first element
+ * names, else the one its text asks for when it was plain text, else left to
+ * right. Without it a Hebrew message quoted under an English reply sat at the
+ * left with its sentences turned inside out.
+ */
+function quoteDir(html) {
+  const named = /^\s*<[a-z][^>]*\sdir\s*=\s*["']?(rtl|ltr)\b/i.exec(String(html || ""));
+  if (named) return named[1].toLowerCase();
+  return isPlainText(html) ? plainDir(html) : "ltr";
+}
+
 function frameDoc(body, images) {
   // The iframe is the security boundary: no scripts, no same-origin. What
   // arrives here was already defused server-side; this wrapper just makes
@@ -3869,7 +3918,10 @@ function frameDoc(body, images) {
   const themed = root
     ? `html{color-scheme:${tok("color-scheme") || "light"}}body{color:${tok("--t1")};background:${tok("--bg")}}a{color:${tok("--acc")}}`
     : "";
-  return `<!doctype html><html><head><meta charset="utf-8">
+  // Plain text reads from the side its first letter says; HTML mail says so
+  // itself, and is left alone.
+  const dir = root ? ` dir="${plainDir(body)}"` : "";
+  return `<!doctype html><html${dir}><head><meta charset="utf-8">
 ${frameCsp(images)}
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <base target="_blank">
@@ -5619,7 +5671,11 @@ function quotedHistory(m, body) {
   // Cleaned on its own before it is wrapped, which also closes whatever it
   // left open: a stray </blockquote> in a message ended the quote early, and
   // the rest of that message then sat outside it as if it had been typed here.
-  const inner = cleanHtml((body && (body.shown || body.html)) || `<p>${esc(m.snippet || "")}</p>`);
+  const source = (body && (body.shown || body.html)) || `<p>${esc(m.snippet || "")}</p>`;
+  const inner = cleanHtml(source);
+  // Read off what was stored, not the cleaned copy: cleaning rewrites the
+  // plain-text wrapper's style, and that is how plain text is recognised.
+  const dir = quoteDir(source);
   // <div><br></div> rather than <p><br></p>: pressing Enter here makes a
   // div, so the gap above a quote is the same element as every other blank
   // line in the message — and not a paragraph, which Word gives a blank
@@ -5634,7 +5690,7 @@ function quotedHistory(m, body) {
   // inside the quote, in the quote's grey, and was sent that way.
   return (
     `<div><br></div><div><br></div><div class="quote-head">${head}</div>` +
-    `<blockquote>${inner}</blockquote><div><br></div>`
+    `<blockquote${dir === "rtl" ? ' dir="rtl"' : ""}>${inner}</blockquote><div><br></div>`
   );
 }
 
@@ -5734,6 +5790,9 @@ function mailHtml() {
   // Hex, not the palette variables: this is read somewhere that has never
   // heard of this app.
   style(".quote-head", "color:#5b5b60;font-size:13px;margin:0 0 4px");
+  // The right-to-left one first: what is already in the attribute wins over
+  // what style() puts in front of it.
+  style("blockquote[dir=rtl]", "padding-left:0;border-left:0;padding-right:12px;border-right:2px solid #d4d4d8");
   style("blockquote", "margin:0;padding-left:12px;border-left:2px solid #d4d4d8;color:#5b5b60");
   style("ul,ol", "padding-left:22px;margin:6px 0");
   // The empty line kept under the quote is somewhere to type, not something
@@ -5766,7 +5825,7 @@ function forwardedBody(m, html) {
     line("Cc:", m.cc_line) +
     // Cleaned on its own first, for the reason quotedHistory gives: a message
     // must not be able to close the quote it is forwarded in.
-    `</div><blockquote>${cleanHtml(html)}</blockquote><div><br></div>`
+    `</div><blockquote${quoteDir(html) === "rtl" ? ' dir="rtl"' : ""}>${cleanHtml(html)}</blockquote><div><br></div>`
   );
 }
 
