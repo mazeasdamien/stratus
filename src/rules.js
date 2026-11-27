@@ -70,7 +70,7 @@ export const FIELDS = {
     read: (m) => String(m.att_names || "").split("\n").filter(Boolean),
   },
   has_attachment: {
-    label: "Has an attachment",
+    label: "Has attachment",
     kind: "choice",
     ops: ["is"],
     values: [["yes", "Yes"], ["no", "No"]],

@@ -10,6 +10,7 @@ import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { demoContacts } from "./demo-contacts.mjs";
 import { CLIENT_VERSION } from "../src/version.js";
+import { catalog, cleanRule } from "../src/rules.js";
 
 const root = join(fileURLToPath(new URL("..", import.meta.url)), "public");
 const port = Number(process.argv[2] || 8765);
@@ -23,6 +24,8 @@ const folders = [
   { folder: "drafts", n: 2, unread: 0 },
   { folder: "spam", n: 5, unread: 1 },
   { folder: "trash", n: 1, unread: 0 },
+  { folder: "Newsletters", n: 14, unread: 2 },
+  { folder: "Work/Clients", n: 9, unread: 0 },
 ];
 const messages = [
   {
@@ -106,6 +109,26 @@ const bodies = {
 
 // Fired reminders for the header button and its sheet. Dismiss and snooze
 // take one off for the life of the process, as the real routes would.
+// Invented rules: one with a problem at iCloud, one switched off, one of each
+// kind of action, so the sheet has something to show.
+let rules = [
+  { id: 1, name: "Newsletters", enabled: true, match: "any", stop: true, n: 128, last_at: now - 3 * 3600000, last_error: "", unreadable: false,
+    conditions: [{ field: "from", op: "ends", value: "@cafe-news.fr" }, { field: "subject", op: "contains", value: "newsletter" }],
+    actions: [{ type: "move", value: "Newsletters" }, { type: "read", value: "" }] },
+  { id: 2, name: "Receipts", enabled: true, match: "all", stop: false, n: 12, last_at: now - 5 * 86400000, last_error: "",  unreadable: false,
+    conditions: [{ field: "from", op: "contains", value: "apple" }, { field: "has_attachment", op: "is", value: "yes" }],
+    actions: [{ type: "category", value: "4" }, { type: "star", value: "" }] },
+  { id: 3, name: "Studio Martin", enabled: true, match: "all", stop: false, n: 4, last_at: now - 86400000, unreadable: false,
+    last_error: "No mailbox matching \"Clients\". Server has: INBOX, Archive, Sent Messages",
+    conditions: [{ field: "from", op: "is", value: "lea@studio-martin.com" }],
+    actions: [{ type: "move", value: "Work/Clients" }, { type: "pin", value: "" }] },
+  { id: 4, name: "Build noise", enabled: false, match: "all", stop: false, n: 0, last_at: null, last_error: "", unreadable: false,
+    conditions: [{ field: "from", op: "is", value: "noreply@github.com" }, { field: "importance", op: "is_not", value: "high" }],
+    actions: [{ type: "trash", value: "" }] },
+];
+const ruleRows = () => rules.map((r) => ({ ...r }));
+const ruleCatalog = () => catalog();
+
 let reminders = [
   { id: "r1", kind: "event", ref: "e1", title: "Design review", body: "Room 4, bring the mockups", at: now - 4 * 60000, fired_at: now - 3 * 60000 },
   { id: "r2", kind: "task", ref: "t1", title: "Send the invoice to Atelier Roux", body: "", at: now - 25 * 60000, fired_at: now - 24 * 60000 },
@@ -262,6 +285,36 @@ createServer(async (req, res) => {
         if (b.color !== undefined) c.color = Number(b.color);
       }
       return json(res, { ok: true, categories: withCounts() });
+    }
+    // Rules, kept in memory. Validation and the catalog are the Worker's own.
+    if (p === "/api/rules" && req.method === "GET") return json(res, { rules: ruleRows(), catalog: ruleCatalog() });
+    if (p === "/api/rules" && req.method === "POST") {
+      const c = cleanRule(await readBody(req));
+      if (c.error) return json(res, { error: c.error }, 400);
+      rules.push({ id: Math.max(0, ...rules.map((r) => r.id)) + 1, enabled: true, n: 0, last_at: null, last_error: "", unreadable: false, ...c, stop: !!c.stop });
+      return json(res, { ok: true, rules: ruleRows(), catalog: ruleCatalog() }, 201);
+    }
+    if (p === "/api/rules/order") {
+      const b = await readBody(req);
+      rules.sort((a, c) => b.ids.indexOf(a.id) - b.ids.indexOf(c.id));
+      return json(res, { ok: true, rules: ruleRows(), catalog: ruleCatalog() });
+    }
+    if (p === "/api/rules/run") return json(res, { ok: true, scanned: 12, changed: 3, failed: 0, next: null });
+    const ruleOne = p.match(/^\/api\/rules\/(\d+)$/);
+    if (ruleOne) {
+      const id = Number(ruleOne[1]);
+      const b = await readBody(req);
+      if (req.method === "DELETE") rules = rules.filter((r) => r.id !== id);
+      else {
+        const r = rules.find((x) => x.id === id);
+        if (b.name === undefined) r.enabled = !!b.enabled;
+        else {
+          const c = cleanRule(b);
+          if (c.error) return json(res, { error: c.error }, 400);
+          Object.assign(r, c, { stop: !!c.stop, last_error: "" });
+        }
+      }
+      return json(res, { ok: true, rules: ruleRows(), catalog: ruleCatalog() });
     }
     const msgCats = p.match(/^\/api\/messages\/([^/]+)\/categories$/);
     if (msgCats) {
