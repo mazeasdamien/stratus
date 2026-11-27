@@ -9577,8 +9577,10 @@ const XF_NEW = "__new__";
 const xf = { running: false, kind: "", total: 0, done: 0, added: 0, dupes: 0, failed: 0, errors: [], cancel: false, fatal: "", line: "", summary: "", warn: false };
 
 const xfSleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const xfMB = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
-const xfPlural = (n, one, many) => `${n.toLocaleString(LOCALE)} ${n === 1 ? one : many}`;
+const xfMB = (n) =>
+  n >= 1048576
+    ? t("{size} MB", { size: (n / 1048576).toLocaleString(LOCALE, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })
+    : t("{size} KB", { size: Math.max(1, Math.round(n / 1024)).toLocaleString(LOCALE) });
 
 /** One place that draws the sheet's status block, the buttons it locks and the chip. */
 function xfPaint() {
@@ -9613,11 +9615,11 @@ function xfBegin(kind, total = 0) {
 }
 function xfFail(label, reason) {
   xf.failed++;
-  if (xf.errors.length < 5) xf.errors.push(`• ${label}: ${reason}`);
+  if (xf.errors.length < 5) xf.errors.push(t("• {label}: {reason}", { label, reason }));
 }
 function xfProblems() {
   const more = xf.failed - xf.errors.length;
-  return `${xf.errors.join("\n")}${more > 0 ? `\n…and ${more.toLocaleString(LOCALE)} more` : ""}`;
+  return `${xf.errors.join("\n")}${more > 0 ? `\n${t("{n, plural, one {…and # more} other {…and # more}}", { n: more })}` : ""}`;
 }
 function xfEnd(summary, warn = false) {
   xf.running = false;
@@ -9626,7 +9628,7 @@ function xfEnd(summary, warn = false) {
   xf.line = "";
   xfPaint();
   // Said aloud even when the sheet is shut, where the result would otherwise go unseen.
-  if (!$("#xferSheet").classList.contains("up")) toast(summary.split("\n")[0], () => openSheet("#xferSheet"), "Details");
+  if (!$("#xferSheet").classList.contains("up")) toast(summary.split("\n")[0], () => openSheet("#xferSheet"), t("Details"));
   else say(summary.split("\n")[0]);
 }
 
@@ -9643,7 +9645,7 @@ function xfFillFolders() {
 
   const into = $("#xfFolder");
   const chosen = into.value;
-  into.innerHTML = `${options}<option value="${XF_NEW}">New folder…</option>`;
+  into.innerHTML = `${options}<option value="${XF_NEW}">${t("New folder…")}</option>`;
   const imported = folders.find((f) => String(f.label || f.folder).toLowerCase() === "imported");
   into.value = folders.some((f) => f.folder === chosen) || chosen === XF_NEW ? chosen : imported ? imported.folder : XF_NEW;
   $("#xfNewWrap").hidden = into.value !== XF_NEW;
@@ -9666,13 +9668,17 @@ $("#xfFiles").addEventListener("change", () => {
   const files = [...$("#xfFiles").files];
   const size = files.reduce((n, f) => n + f.size, 0);
   $("#xfPicked").textContent = files.length
-    ? `${xfPlural(files.length, "file", "files")}, ${xfMB(size)}: ${files.slice(0, 3).map((f) => f.name).join(", ")}${files.length > 3 ? ", …" : ""}`
-    : "No file chosen.";
+    ? t("{n, plural, one {# file} other {# files}}, {size}: {names}", {
+        n: files.length,
+        size: xfMB(size),
+        names: files.slice(0, 3).map((f) => f.name).join(", ") + (files.length > 3 ? ", …" : ""),
+      })
+    : t("No file chosen.");
   xfPaint();
 });
 $("#xfCancel").addEventListener("click", () => {
   xf.cancel = true;
-  xf.line = "Stopping…";
+  xf.line = t("Stopping…");
   xfPaint();
 });
 
@@ -9709,23 +9715,23 @@ async function xfPost(url, body) {
       res = await api(url, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body });
       data = (await res.json().catch(() => null)) || {};
     } catch (e) {
-      if (String(e.message) === "401") throw Object.assign(new Error("You have been signed out"), { fatal: true });
-      data = { error: "the connection dropped" };
+      if (String(e.message) === "401") throw Object.assign(new Error(t("You have been signed out")), { fatal: true });
+      data = { error: t("the connection dropped") };
     }
     if (res && res.ok) return data;
-    if (res && res.status === 409) throw Object.assign(new Error(data.error || "This account needs reconnecting"), { fatal: true });
+    if (res && res.status === 409) throw Object.assign(new Error(tw(data.error) || t("This account needs reconnecting")), { fatal: true });
     if ((!res || res.status >= 500) && tries < 1 && !xf.cancel) {
       await xfSleep(1500);
       continue;
     }
-    throw new Error(data.error || `the server answered ${res ? res.status : "nothing"}`);
+    throw new Error(tw(data.error) || (res ? t("the server answered {status}", { status: res.status }) : t("the server did not answer")));
   }
 }
 
 async function xfSend(m, target, label) {
   try {
-    if (m.oversize) throw new Error(`larger than ${XF_MAX / 1048576} MB (${xfMB(m.size)})`);
-    if (!m.raw.length) throw new Error("the message is empty");
+    if (m.oversize) throw new Error(t("larger than {max} MB ({size})", { max: XF_MAX / 1048576, size: xfMB(m.size) }));
+    if (!m.raw.length) throw new Error(t("the message is empty"));
     const where = `folder=${encodeURIComponent(target)}`;
     const mid = xfMid(m.raw);
     // Asked first, with no body, so a file run a second time does not upload
@@ -9748,10 +9754,16 @@ async function xfSend(m, target, label) {
 }
 
 function xfLine() {
-  const bits = [`${xf.kind === "import" ? "Importing" : "Exporting"} ${xf.done.toLocaleString(LOCALE)}${xf.total ? ` of ${xf.total.toLocaleString(LOCALE)}` : ""}`];
-  if (xf.dupes) bits.push(`${xf.dupes.toLocaleString(LOCALE)} already there`);
-  if (xf.failed) bits.push(`${xf.failed.toLocaleString(LOCALE)} failed`);
-  xf.line = xf.cancel ? "Stopping…" : bits.join(" · ");
+  const done = xf.done.toLocaleString(LOCALE);
+  const total = xf.total.toLocaleString(LOCALE);
+  const bits = [
+    xf.kind === "import"
+      ? xf.total ? t("Importing {done} of {total}", { done, total }) : t("Importing {done}", { done })
+      : xf.total ? t("Exporting {done} of {total}", { done, total }) : t("Exporting {done}", { done }),
+  ];
+  if (xf.dupes) bits.push(t("{n, plural, one {# already there} other {# already there}}", { n: xf.dupes }));
+  if (xf.failed) bits.push(t("{n, plural, one {# failed} other {# failed}}", { n: xf.failed }));
+  xf.line = xf.cancel ? t("Stopping…") : bits.join(" · ");
   xfPaint();
 }
 
@@ -9765,7 +9777,7 @@ $("#xfStart").addEventListener("click", async () => {
     target = $("#xfNew").value.trim();
     shown = target;
     if (!target || target.length > 120 || /["\\\r\n]/.test(target)) {
-      toast("Give the new folder a name without quotes or backslashes");
+      toast(t("Give the new folder a name without quotes or backslashes"));
       $("#xfNew").focus();
       return;
     }
@@ -9774,7 +9786,7 @@ $("#xfStart").addEventListener("click", async () => {
     if (same) target = same.folder;
   }
   xfBegin("import");
-  xf.line = "Counting messages…";
+  xf.line = t("Counting messages…");
   xfPaint();
 
   try {
@@ -9786,12 +9798,12 @@ $("#xfStart").addEventListener("click", async () => {
         n++;
         xf.total++;
         if (n % 200 === 0) {
-          xf.line = `Counting messages… ${xf.total.toLocaleString(LOCALE)}`;
+          xf.line = t("Counting messages… {n}", { n: xf.total.toLocaleString(LOCALE) });
           xfPaint();
         }
       }
       if (xf.cancel) break;
-      if (!n) xfFail(f.name, "no messages found in it");
+      if (!n) xfFail(f.name, t("no messages found in it"));
     }
     xfLine();
 
@@ -9809,21 +9821,20 @@ $("#xfStart").addEventListener("click", async () => {
     }
     await Promise.all(pending);
   } catch (e) {
-    xf.fatal = xf.fatal || `could not read the file (${(e && e.message) || e})`;
+    xf.fatal = xf.fatal || t("could not read the file ({reason})", { reason: (e && e.message) || e });
   }
 
   const lines = [];
-  const into = `“${shown}”`;
-  const left = xf.total - xf.done;
-  if (xf.fatal) lines.push(`Stopped after ${xf.done.toLocaleString(LOCALE)} of ${xf.total.toLocaleString(LOCALE)}: ${xf.fatal}.`);
-  else if (xf.cancel) lines.push(`Cancelled with ${left.toLocaleString(LOCALE)} of ${xf.total.toLocaleString(LOCALE)} not yet sent.`);
-  lines.push(`Imported ${xfPlural(xf.added, "message", "messages")} into ${into}.`);
-  if (xf.dupes) lines.push(`${xfPlural(xf.dupes, "message was", "messages were")} already in your account and skipped.`);
-  if (xf.failed) lines.push(`${xfPlural(xf.failed, "message", "messages")} could not be imported:\n${xfProblems()}`);
-  if (xf.cancel || xf.fatal) lines.push("Choose the same files again to carry on: what is already in is skipped.");
+  const total = xf.total.toLocaleString(LOCALE);
+  if (xf.fatal) lines.push(t("Stopped after {done} of {total}: {reason}.", { done: xf.done.toLocaleString(LOCALE), total, reason: xf.fatal }));
+  else if (xf.cancel) lines.push(t("Cancelled with {left, plural, one {# of {total}} other {# of {total}}} not yet sent.", { left: xf.total - xf.done, total }));
+  lines.push(t("Imported {n, plural, one {# message} other {# messages}} into “{folder}”.", { n: xf.added, folder: shown }));
+  if (xf.dupes) lines.push(t("{n, plural, one {# message was already in your account and skipped.} other {# messages were already in your account and skipped.}}", { n: xf.dupes }));
+  if (xf.failed) lines.push(`${t("{n, plural, one {# message could not be imported:} other {# messages could not be imported:}}", { n: xf.failed })}\n${xfProblems()}`);
+  if (xf.cancel || xf.fatal) lines.push(t("Choose the same files again to carry on: what is already in is skipped."));
   xfEnd(lines.join("\n"), Boolean(xf.fatal));
   $("#xfFiles").value = "";
-  $("#xfPicked").textContent = "No file chosen.";
+  $("#xfPicked").textContent = t("No file chosen.");
   await refreshAll();
   xfFillFolders();
   if (folders.some((f) => f.folder === target)) $("#xfFolder").value = target;
@@ -9837,10 +9848,10 @@ async function xfSink(name) {
     try {
       const handle = await window.showSaveFilePicker({
         suggestedName: name,
-        types: [{ description: "Mailbox archive", accept: { "application/mbox": [".mbox"] } }],
+        types: [{ description: t("Mailbox archive"), accept: { "application/mbox": [".mbox"] } }],
       });
       const out = await handle.createWritable();
-      return { write: (b) => out.write(b), close: () => out.close(), abort: () => out.abort().catch(() => {}), where: "to the file you chose" };
+      return { write: (b) => out.write(b), close: () => out.close(), abort: () => out.abort().catch(() => {}), download: false };
     } catch (e) {
       if (e && e.name === "AbortError") return null;
       // Any other refusal (a frame, a policy): the download below still works.
@@ -9853,7 +9864,7 @@ async function xfSink(name) {
       size += b.length;
       if (size > XF_BLOB_CAP) {
         parts.length = 0;
-        throw new Error(`this is more than the ${XF_BLOB_CAP / 1048576} MB a browser without direct file access can save as one file. Use Chrome or Edge, which write straight to disk, or export part of it from the selection bar`);
+        throw new Error(t("this is more than the {max} MB a browser without direct file access can save as one file. Use Chrome or Edge, which write straight to disk, or export part of it from the selection bar", { max: XF_BLOB_CAP / 1048576 }));
       }
       parts.push(b);
     },
@@ -9867,7 +9878,7 @@ async function xfSink(name) {
       setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
     },
     abort() { parts.length = 0; },
-    where: "as a download",
+    download: true,
   };
 }
 
@@ -9878,10 +9889,10 @@ async function xfFetchOne(it) {
       const res = await api(`/api/messages/${it.id}/eml`);
       if (res.ok) return { it, bytes: new Uint8Array(await res.arrayBuffer()) };
       const d = await res.json().catch(() => ({}));
-      if (res.status < 500 || tries) return { it, error: d.error || `the server answered ${res.status}` };
+      if (res.status < 500 || tries) return { it, error: tw(d.error) || t("the server answered {status}", { status: res.status }) };
     } catch (e) {
-      if (String(e.message) === "401") return { it, error: "You have been signed out", fatal: true };
-      if (tries) return { it, error: "the connection dropped" };
+      if (String(e.message) === "401") return { it, error: t("You have been signed out"), fatal: true };
+      if (tries) return { it, error: t("the connection dropped") };
     }
     await xfSleep(1500);
   }
@@ -9892,14 +9903,14 @@ async function xfExportTo(name, total, items) {
   const sink = await xfSink(name);
   if (!sink) return;
   xfBegin("export", total);
-  xf.line = "Exporting…";
+  xf.line = t("Exporting…");
   xfPaint();
   let written = 0;
   const window3 = [];
   const settle = async () => {
     const r = await window3.shift();
     if (r.fatal) xf.fatal = r.error;
-    else if (r.error) xfFail(r.it.subject || `message ${r.it.id.slice(0, 6)}`, r.error);
+    else if (r.error) xfFail(r.it.subject || t("message {id}", { id: r.it.id.slice(0, 6) }), r.error);
     else {
       sink.write(mbox.writeEntry(r.bytes, { date: r.it.date || Date.now(), flags: { seen: !r.it.unread, flagged: !!r.it.starred, answered: false, draft: false } }));
       written++;
@@ -9923,13 +9934,21 @@ async function xfExportTo(name, total, items) {
     sink.abort();
   }
   const lines = [];
-  if (problem) lines.push(`Export stopped: ${problem}.`);
-  else if (xf.fatal) lines.push(`Export stopped: ${xf.fatal}.`);
+  if (problem || xf.fatal) lines.push(t("Export stopped: {reason}.", { reason: problem || xf.fatal }));
   else {
-    if (xf.cancel) lines.push("Cancelled. The file holds the messages written so far.");
-    lines.push(`Exported ${xfPlural(written, "message", "messages")}${xf.total && !xf.cancel ? ` of ${xf.total.toLocaleString(LOCALE)}` : ""} ${sink.where}: ${name}`);
+    if (xf.cancel) lines.push(t("Cancelled. The file holds the messages written so far."));
+    const values = { n: written, total: xf.total.toLocaleString(LOCALE), name };
+    if (xf.total && !xf.cancel) {
+      lines.push(sink.download
+        ? t("Exported {n, plural, one {# message} other {# messages}} of {total} as a download: {name}", values)
+        : t("Exported {n, plural, one {# message} other {# messages}} of {total} to the file you chose: {name}", values));
+    } else {
+      lines.push(sink.download
+        ? t("Exported {n, plural, one {# message} other {# messages}} as a download: {name}", values)
+        : t("Exported {n, plural, one {# message} other {# messages}} to the file you chose: {name}", values));
+    }
   }
-  if (xf.failed) lines.push(`${xfPlural(xf.failed, "message", "messages")} could not be read from iCloud and ${xf.failed === 1 ? "is" : "are"} not in the file:\n${xfProblems()}`);
+  if (xf.failed) lines.push(`${t("{n, plural, one {# message could not be read from iCloud and is not in the file:} other {# messages could not be read from iCloud and are not in the file:}}", { n: xf.failed })}\n${xfProblems()}`);
   xfEnd(lines.join("\n"), Boolean(problem || xf.fatal));
 }
 
@@ -9938,7 +9957,7 @@ async function* xfFolderItems(name) {
   for (;;) {
     const res = await api(`/api/transfer/ids?folder=${encodeURIComponent(name)}${after ? `&after=${after}` : ""}`);
     const d = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(d.error || `the server answered ${res.status}`);
+    if (!res.ok) throw new Error(tw(d.error) || t("the server answered {status}", { status: res.status }));
     if (d.total !== undefined) {
       xf.total = d.total;
       xfLine();
@@ -9974,7 +9993,7 @@ async function* xfPickedItems(rows) {
 }
 $("#bulkExport").addEventListener("click", () => {
   if (xf.running) {
-    toast("An import or export is already running");
+    toast(t("An import or export is already running"));
     return;
   }
   const rows = [...picked].map((id) => messages.find((m) => m.id === id) || { id });
@@ -10006,12 +10025,12 @@ function renderContacts() {
           (c) => `<div class="mi">
             <span class="grow"><div class="tr">${esc(c.name || c.email)}</div>
             ${c.name ? `<div class="sub tr">${esc(c.email)}</div>` : ""}</span>
-            <span class="side num">${c.n ? c.n : "added"}</span>
-            <button class="side" data-forget="${esc(c.email)}" style="color:var(--red)">Remove</button>
+            <span class="side num">${c.n ? c.n : t("added")}</span>
+            <button class="side" data-forget="${esc(c.email)}" style="color:var(--red)">${t("Remove")}</button>
           </div>`
         )
         .join("")
-    : `<div class="sh-s">${contacts.length ? "No match." : "Nothing yet — these appear once you have sent mail, or when you add a sender from a message."}</div>`;
+    : `<div class="sh-s">${contacts.length ? t("No match.") : t("Nothing yet — these appear once you have sent mail, or when you add a sender from a message.")}</div>`;
 }
 $("#ctSearch").addEventListener("input", renderContacts);
 $("#contactList").addEventListener("click", async (e) => {
@@ -10026,7 +10045,7 @@ $("#contactList").addEventListener("click", async (e) => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email }),
   }).catch(() => {});
-  toast(`Removed ${email}`);
+  toast(t("Removed {email}", { email }));
 });
 $("#composeBtn").addEventListener("click", () => {
   if (!accounts.length) { toast(noAccountWhy()); return; }
@@ -10059,7 +10078,7 @@ function outgoing() {
   const text = bodyPlainText();
   const to = addrGet("#cTo", "#cToChips");
   if (!text || !to) {
-    err.textContent = !to ? "Nobody to send it to" : "Nothing to send";
+    err.textContent = !to ? t("Nobody to send it to") : t("Nothing to send");
     err.classList.add("show");
     return null;
   }
@@ -10097,11 +10116,11 @@ async function postSend(body, at, which = sendIdentity()) {
   const d = res ? await res.json().catch(() => ({})) : {};
   const moved = draftSession !== session;
   if (!res || !res.ok) {
-    const why = d.error || (at ? "Could not schedule" : "Could not send");
+    const why = tw(d.error) || (at ? t("Could not schedule") : t("Could not send"));
     // The composer holds another message now, so this one exists nowhere on
     // screen: it is filed in Drafts from what was to be sent.
     if (moved) {
-      keepUnsent(body, which, `Not sent — ${why}`);
+      keepUnsent(body, which, t("Not sent — {reason}", { reason: why }));
       return null;
     }
     // The composer was closed while the message was on its way. It still
@@ -10111,7 +10130,7 @@ async function postSend(body, at, which = sendIdentity()) {
     if (!document.body.classList.contains("composing")) {
       document.body.classList.add("composing");
       openSheet("#composeSheet");
-      toast(`Not sent — ${why}`);
+      toast(t("Not sent — {reason}", { reason: why }));
     }
     const err = $("#cErr");
     err.textContent = why;
@@ -10136,7 +10155,7 @@ async function postSend(body, at, which = sendIdentity()) {
   // reason to survive — in this browser or in Drafts on every device.
   const dropped = await dropDraft();
   closeSheets();
-  if (!dropped) toast("Sent — but its draft could not be removed from Drafts");
+  if (!dropped) toast(t("Sent — but its draft could not be removed from Drafts"));
   return d;
 }
 
@@ -10175,7 +10194,7 @@ const sendIdentity = () => ({ session: draftSession, pid: draftPid, slot: draftS
 function keepUnsent(body, which, said) {
   const { attachments, ...fields } = body;
   saveDraftRemote({ ...fields, pid: which.pid, at: Date.now() }, attachments || [], NaN, which.slot).then((why) => {
-    toast(why ? `${said}. Kept in this browser only: ${why}` : `${said}. It is in Drafts.`);
+    toast(why ? t("{said}. Kept in this browser only: {reason}", { said, reason: tw(why) }) : t("{said}. It is in Drafts.", { said }));
     refreshAll();
   });
 }
@@ -10186,18 +10205,18 @@ function cancelPendingSend() {
   clearTimeout(pendingSend.timer);
   pendingSend = null;
   // A reaction has no composer to give it back to: it simply does not go.
-  if (which.reaction) return toast("Reaction not sent");
+  if (which.reaction) return toast(t("Reaction not sent"));
   $("#composeSheet").inert = false;
-  $("#cSend").textContent = "Send";
+  $("#cSend").textContent = t("Send");
   // Undone after the composer moved on to another message: there is no
   // composer to put it back in, so it goes to Drafts.
-  if (draftSession !== which.session) return keepUnsent(body, which, "Not sent");
+  if (draftSession !== which.session) return keepUnsent(body, which, t("Not sent"));
   // Undone after the composer was closed: it still holds the message.
   if (!document.body.classList.contains("composing")) {
     document.body.classList.add("composing");
     openSheet("#composeSheet");
   }
-  toast("Not sent — it is back in the composer");
+  toast(t("Not sent — it is back in the composer"));
 }
 addEventListener("beforeunload", (e) => {
   if (outgoingNow()) e.preventDefault();
@@ -10209,8 +10228,8 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden && pendingSend) pendingSend.fire();
 });
 $("#cSend").addEventListener("click", async () => {
-  if (outgoingNow()) return toast("The previous message is still going out — try again in a moment");
-  if (filesPending()) return toast("Attachments are still loading — try again in a moment");
+  if (outgoingNow()) return toast(t("The previous message is still going out — try again in a moment"));
+  if (filesPending()) return toast(t("Attachments are still loading — try again in a moment"));
   // Asked before anything starts: not under the undo hold, where a "Send
   // anyway" would have to be answered while the message is already leaving.
   if (asking) return;
@@ -10238,10 +10257,14 @@ function holdSend(body, which) {
     // The words exist in this browser until the server has answered.
     saveDraftLocal();
     $("#composeSheet").inert = true;
-    $("#cSend").textContent = "Sending…";
+    $("#cSend").textContent = t("Sending…");
   }
-  const who = body.to.split(",")[0].trim() + (body.to.includes(",") || body.cc || body.bcc ? " and others" : "");
-  toast(`${composer ? "Sending" : "Reacting"} to ${who}`, () => cancelPendingSend(), "Undo");
+  const who = body.to.split(",")[0].trim();
+  const others = body.to.includes(",") || body.cc || body.bcc;
+  const said = composer
+    ? others ? t("Sending to {who} and others", { who }) : t("Sending to {who}", { who })
+    : others ? t("Reacting to {who} and others", { who }) : t("Reacting to {who}", { who });
+  toast(said, () => cancelPendingSend(), t("Undo"));
   const fire = async () => {
     if (!pendingSend) return;
     clearTimeout(pendingSend.timer);
@@ -10255,15 +10278,17 @@ function holdSend(body, which) {
     }
     if (composer) {
       $("#composeSheet").inert = false;
-      $("#cSend").textContent = "Send";
+      $("#cSend").textContent = t("Send");
     }
     if (!d) return;
     toast(
       d.filed === false
         // It went, and it is in your Sent folder here. What failed is the copy
         // at Apple, so the reason travels with the message.
-        ? `Sent — Apple would not keep a copy: ${d.filedError || "unknown reason"}`
-        : (composer ? "Sent" + fuNote(d) : "Reaction sent")
+        ? t("Sent — Apple would not keep a copy: {reason}", { reason: tw(d.filedError) || t("unknown reason") })
+        : !composer ? t("Reaction sent")
+        : d.followup === false ? t("Sent, but the reminder could not be set")
+        : t("Sent")
     );
     // The copy is filed by now, so Sent and its counts are already stale.
     refreshAll();
@@ -10306,7 +10331,7 @@ async function renderSenderWarning(m) {
   const found = senderWarningsFor(m);
   senderWarned = found.length > 0;
   $("#rWarnText").innerHTML = found.map((w) => `<p>${esc(w.text)}</p>`).join("") +
-    (found.length ? `<p><b>Be careful with links and attachments in this message.</b></p>` : "");
+    (found.length ? `<p><b>${t("Be careful with links and attachments in this message.")}</b></p>` : "");
   $("#rWarn").hidden = !found.length;
   senderChecked = true;
   syncReactButton();
@@ -10350,7 +10375,7 @@ function moveToBcc(outside) {
   }
   addrSet("#cBcc", "#cBccChips", [...split("#cBcc", "#cBccChips"), ...moved].join(", "));
   $("#cBccWrap").hidden = false;
-  markToggle("#cBccToggle", "#cBccWrap", "Bcc");
+  markToggle("#cBccToggle", "#cBccWrap", t("Bcc"));
   // Nobody left to put in To: the message goes to you, and everyone else is blind.
   if (!addrGet("#cTo", "#cToChips")) addrSet("#cTo", "#cToChips", composeAddress());
   queueDraftSave();
@@ -10378,12 +10403,15 @@ async function confirmRecipients() {
   const own = accounts.flatMap(identitiesOf);
   const flagged = G.lookalikes(everyone, contacts.map((c) => c.email), own).filter((l) => !replyKnown.has(l.address));
   if (flagged.length) {
-    const lines = flagged.slice(0, 4).map((l) => `${l.address} is one character from ${l.resembles}.`);
-    if (flagged.length > 4) lines.push(`And ${flagged.length - 4} more.`);
+    const lines = flagged.slice(0, 4).map((l) => t("{address} is one character from {resembles}.", { address: l.address, resembles: l.resembles }));
+    if (flagged.length > 4) lines.push(t("{n, plural, one {And # more.} other {And # more.}}", { n: flagged.length - 4 }));
+    const one = flagged.length === 1;
     const go = await ask(
-      flagged.length === 1 ? "Is this the right address?" : "Are these the right addresses?",
-      lines.join(NL) + NL + NL + `You have not written to ${flagged.length === 1 ? "it" : "them"} before. A typo sends a message to a stranger.`,
-      { ok: "Send anyway", cancel: "Go back" }
+      one ? t("Is this the right address?") : t("Are these the right addresses?"),
+      lines.join(NL) + NL + NL + (one
+        ? t("You have not written to it before. A typo sends a message to a stranger.")
+        : t("You have not written to them before. A typo sends a message to a stranger.")),
+      { ok: t("Send anyway"), cancel: t("Go back") }
     );
     if (!go) return null;
   }
@@ -10391,9 +10419,9 @@ async function confirmRecipients() {
   const ex = G.exposure([...to, ...cc], own);
   if (ex) {
     const r = await askChoice(
-      "Show everyone each other's address?",
-      `${ex.outside.length} people at ${ex.domains.length} different domains are on To and Cc. Each of them will see everyone else's address. Bcc keeps them private.`,
-      { ok: "Send anyway", alt: "Move them to Bcc", cancel: "Go back" }
+      t("Show everyone each other's address?"),
+      t("{people} people at {domains} different domains are on To and Cc. Each of them will see everyone else's address. Bcc keeps them private.", { people: ex.outside.length, domains: ex.domains.length }),
+      { ok: t("Send anyway"), alt: t("Move them to Bcc"), cancel: t("Go back") }
     );
     if (r === null) return null;
     if (r === "alt") {
@@ -10413,18 +10441,18 @@ function laterChoices(now = new Date()) {
     return d;
   };
   const out = [];
-  if (now.getHours() < 17) out.push(["This evening", at(0, 18)]);
-  out.push(["Tomorrow morning", at(1, 8)]);
+  if (now.getHours() < 17) out.push([t("This evening"), at(0, 18)]);
+  out.push([t("Tomorrow morning"), at(1, 8)]);
   // Monday, unless tomorrow already is.
   const toMonday = (8 - now.getDay()) % 7 || 7;
-  if (toMonday > 1) out.push(["Monday morning", at(toMonday, 8)]);
+  if (toMonday > 1) out.push([t("Monday morning"), at(toMonday, 8)]);
   return out;
 }
 const whenText = (ms) =>
   new Date(ms).toLocaleString(LOCALE, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 $("#cLater").addEventListener("click", () => {
   if (outgoingNow()) return;
-  if (filesPending()) return toast("Attachments are still loading — try again in a moment");
+  if (filesPending()) return toast(t("Attachments are still loading — try again in a moment"));
   if (!outgoing()) return;
   $("#laterList").innerHTML = laterChoices()
     .map(([label, d]) => `<button class="mi" data-at="${d.getTime()}"><span class="grow">${esc(label)}</span><span class="side">${esc(whenText(d))}</span></button>`)
@@ -10435,14 +10463,14 @@ $("#cLater").addEventListener("click", () => {
   openSheet("#laterSheet");
 });
 async function scheduleAt(ms) {
-  if (!(ms > Date.now() + 60_000)) { toast("Pick a time at least a minute from now"); return; }
+  if (!(ms > Date.now() + 60_000)) { toast(t("Pick a time at least a minute from now")); return; }
   closeOverlays();
   // Asked now, when it is scheduled, and not again when it later goes.
   const body = await confirmRecipients();
   if (!body) return;
   const d = await postSend(body, ms);
   if (d) {
-    toast(`Scheduled — ${whenText(d.scheduled)}`);
+    toast(t("Scheduled — {when}", { when: whenText(d.scheduled) }));
     loadOutbox();
   }
 }
@@ -10459,7 +10487,9 @@ async function loadOutbox() {
   outbox = res && res.ok ? (await res.json().catch(() => ({}))).outbox || [] : outbox;
   const btn = $("#openOutbox");
   btn.hidden = !outbox.length;
-  btn.textContent = `Scheduled (${outbox.length})${outbox.some((o) => o.last_error) ? " — one needs a look" : ""}`;
+  btn.textContent = outbox.some((o) => o.last_error)
+    ? t("Scheduled ({n}) — one needs a look", { n: outbox.length })
+    : t("Scheduled ({n})", { n: outbox.length });
   if ($("#outboxSheet").classList.contains("up")) renderOutbox();
 }
 function renderOutbox() {
@@ -10467,17 +10497,17 @@ function renderOutbox() {
     ? outbox
         .map(
           (o) => `<div class="obox">
-        <div class="grow"><b>${esc(o.subject || "(no subject)")}</b>
-          <span>To ${esc(o.to_line)} · ${esc(whenText(o.at))}</span>
-          ${o.last_error ? `<span class="bad">Not sent yet: ${esc(o.last_error)}</span>` : ""}</div>
+        <div class="grow"><b>${esc(o.subject || t("(no subject)"))}</b>
+          <span>${t("To {to} · {when}", { to: esc(o.to_line), when: esc(whenText(o.at)) })}</span>
+          ${o.last_error ? `<span class="bad">${t("Not sent yet: {reason}", { reason: esc(tw(o.last_error)) })}</span>` : ""}</div>
         <div class="acts">
-          <button class="ghost" data-osend="${o.id}">Send now</button>
-          <button class="ghost" data-oedit="${o.id}">Edit</button>
-          <button class="ghost danger" data-ocancel="${o.id}">Cancel</button>
+          <button class="ghost" data-osend="${o.id}">${t("Send now")}</button>
+          <button class="ghost" data-oedit="${o.id}">${t("Edit")}</button>
+          <button class="ghost danger" data-ocancel="${o.id}">${t("Cancel")}</button>
         </div></div>`
         )
         .join("")
-    : `<div class="sh-s">Nothing waiting to go.</div>`;
+    : `<div class="sh-s">${t("Nothing waiting to go.")}</div>`;
 }
 $("#openOutbox").addEventListener("click", () => {
   closeSheets();
@@ -10489,24 +10519,26 @@ $("#outboxList").addEventListener("click", async (e) => {
   if (!b) return;
   const id = b.dataset.osend || b.dataset.oedit || b.dataset.ocancel;
   const act = b.dataset.osend ? "send" : "cancel";
-  if (b.dataset.ocancel && !(await ask("Cancel this message?", "It will not be sent, and is not kept anywhere.", { ok: "Cancel it", danger: true }))) return;
+  if (b.dataset.ocancel && !(await ask(t("Cancel this message?"), t("It will not be sent, and is not kept anywhere."), { ok: t("Cancel it"), danger: true }))) return;
   // Asked, like Cancel beside it. A message that has gone cannot be taken
   // back, and one tap on the wrong one of three small buttons sent it.
   if (b.dataset.osend) {
     const o = outbox.find((x) => String(x.id) === id) || {};
-    const to = o.to_line ? `To ${o.to_line}. ` : "";
-    const when = o.at ? ` instead of ${whenText(o.at)}` : "";
-    if (!(await ask("Send this message now?", `${to}It goes straight away${when}, and cannot be taken back.`, { ok: "Send now" }))) return;
+    const to = o.to_line ? t("To {to}.", { to: o.to_line }) + " " : "";
+    const goes = o.at
+      ? t("It goes straight away instead of {when}, and cannot be taken back.", { when: whenText(o.at) })
+      : t("It goes straight away, and cannot be taken back.");
+    if (!(await ask(t("Send this message now?"), to + goes, { ok: t("Send now") }))) return;
   }
   b.disabled = true;
   const res = await api(`/api/outbox/${id}/${act}`, { method: "POST" }).catch(() => null);
   const d = res ? await res.json().catch(() => ({})) : {};
-  if (!res || !res.ok) { toast(d.error || "That didn't work"); b.disabled = false; return; }
+  if (!res || !res.ok) { toast(tw(d.error) || t("That didn't work")); b.disabled = false; return; }
   if (b.dataset.oedit && d.message) {
     const m = d.message;
     closeSheets();
     openCompose({
-      title: "Scheduled message",
+      title: t("Scheduled message"),
       account: m.account_id,
       from: m.from,
       to: m.to,
@@ -10526,9 +10558,9 @@ $("#outboxList").addEventListener("click", async (e) => {
     // one. Opened like any other message it counted as unchanged, and closing
     // it kept nothing: the message was then in no outbox and no Drafts.
     queueDraftSave();
-    toast("Taken out of the schedule — send it or schedule it again");
+    toast(t("Taken out of the schedule — send it or schedule it again"));
   } else {
-    toast(b.dataset.osend ? "Sent" : "Cancelled");
+    toast(b.dataset.osend ? t("Sent") : t("Cancelled"));
   }
   loadOutbox();
   refreshAll();
