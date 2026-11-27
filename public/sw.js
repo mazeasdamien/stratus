@@ -107,7 +107,7 @@ self.addEventListener("fetch", (event) => {
 self.addEventListener("push", (event) => {
   event.waitUntil(
     (async () => {
-      let state = { unread: 0, total: 0, from: "", subject: "" };
+      let state = { unread: 0, total: 0, from: "", subject: "", reminders: [] };
       let failed = true;
       try {
         // Says which shell is asking, the same way the page does. Without it
@@ -146,15 +146,33 @@ self.addEventListener("push", (event) => {
         c.postMessage({ type: "mail", unread: state.unread });
       }
 
+      // One notification for each reminder that has just fired, each under its
+      // own tag so two do not replace each other, and so a second push inside
+      // the window refreshes the one on screen instead of stacking a copy.
+      // This is on top of the mail below, never instead of it.
+      const due = Array.isArray(state.reminders) ? state.reminders : [];
+      for (const r of due) {
+        await self.registration.showNotification(r.title || "Reminder", {
+          body: r.body || "",
+          icon: "/icon-192.png",
+          badge: "/icon-192.png",
+          tag: `dmzs-reminder-${r.id}`,
+          data: { reminders: true },
+        });
+      }
+
       // Every push has to end in a notification: Safari withdraws a
       // subscription that wakes the worker without showing one, and Chrome
       // puts up its own "updated in the background" instead. When the mail
       // has been read elsewhere in the meantime, one is shown and taken down
       // at once; when the state could not be read at all, the doorbell rings
-      // without the detail.
+      // without the detail. A push that was for a reminder has already ended
+      // in one, so it needs no flash saying nothing is new.
       if (!state.unread && !failed) {
-        await self.registration.showNotification("Up to date", { tag: "dmzs-mail-quiet", silent: true });
-        for (const n of await self.registration.getNotifications({ tag: "dmzs-mail-quiet" })) n.close();
+        if (!due.length) {
+          await self.registration.showNotification("Up to date", { tag: "dmzs-mail-quiet", silent: true });
+          for (const n of await self.registration.getNotifications({ tag: "dmzs-mail-quiet" })) n.close();
+        }
         return;
       }
 
@@ -190,14 +208,19 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
+  // A reminder's notification opens the list of reminders; mail's opens the app.
+  const reminders = !!event.notification.data?.reminders;
   event.waitUntil(
     (async () => {
       // Focus the window that already exists before opening another one.
       const open = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
       for (const c of open) {
-        if (c.url.includes(self.location.origin)) return c.focus();
+        if (c.url.includes(self.location.origin)) {
+          if (reminders) c.postMessage({ type: "reminders-open" });
+          return c.focus();
+        }
       }
-      return self.clients.openWindow("/");
+      return self.clients.openWindow(reminders ? "/?reminders" : "/");
     })()
   );
 });

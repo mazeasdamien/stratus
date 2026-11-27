@@ -71,6 +71,14 @@ const bodies = {
   },
 };
 
+// Fired reminders for the header button and its sheet. Dismiss and snooze
+// take one off for the life of the process, as the real routes would.
+let reminders = [
+  { id: "r1", kind: "event", ref: "e1", title: "Design review", body: "Room 4, bring the mockups", at: now - 4 * 60000, fired_at: now - 3 * 60000 },
+  { id: "r2", kind: "task", ref: "t1", title: "Send the invoice to Atelier Roux", body: "", at: now - 25 * 60000, fired_at: now - 24 * 60000 },
+  { id: "r3", kind: "followup", ref: "m3", title: "Follow up: maquette home", body: "Léa has not replied since Monday. The v2 was waiting on her notes.", at: now - 2 * 3600000, fired_at: now - 2 * 3600000 },
+];
+
 const MIME = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -90,6 +98,12 @@ createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${port}`);
   const p = url.pathname;
   if (p.startsWith("/api/")) {
+    if (p === "/api/reminders") return json(res, { reminders, count: reminders.length });
+    const rem = p.match(/^\/api\/reminders\/([^/]+)\/(?:dismiss|snooze)$/);
+    if (rem) {
+      reminders = reminders.filter((r) => r.id !== rem[1]);
+      return json(res, { ok: true });
+    }
     if (p === "/api/accounts") return json(res, { accounts });
     if (p === "/api/folders") return json(res, { folders });
     if (p === "/api/messages") return json(res, { messages });
