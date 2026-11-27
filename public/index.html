@@ -701,6 +701,45 @@ textarea.field{width:100%;padding:11px 12px;font-size:14.5px;line-height:1.45;mi
 .mi button.side{min-height:32px;padding:0 8px;margin:0 -5px;border-radius:var(--r-s)}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
 
+/* ── rules (the Rules sheet and its editor; script: "rules" banner) ── */
+.rl-row{display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.rl-row:last-child{border-bottom:0}
+.rl-row.off .rl-name,.rl-row.off .rl-sum{opacity:.55}
+.rl-body{flex:1;min-width:0}
+.rl-name{font-size:15px;font-weight:600;overflow-wrap:anywhere}
+.rl-sum{font-size:12.5px;color:var(--t2);margin-top:3px;line-height:1.45;overflow-wrap:anywhere}
+.rl-stat{font-size:12px;color:var(--t3);margin-top:3px}
+.rl-err{font-size:12.5px;color:var(--red);margin-top:4px;line-height:1.4;overflow-wrap:anywhere}
+.rl-tools{display:flex;flex-wrap:wrap;gap:2px 4px;margin:6px 0 0 -9px}
+.rl-tools button{min-height:32px;padding:0 9px;border-radius:var(--r-s);font-size:12.5px;color:var(--t2)}
+.rl-tools button:hover:not(:disabled){background:var(--press2);color:var(--t1)}
+.rl-tools button:disabled{opacity:.3}
+.rl-tools .del:hover:not(:disabled){color:var(--red)}
+.rl-sw{position:relative;width:44px;height:26px;border-radius:13px;background:var(--line-strong);flex:none;margin-top:1px;transition:background .15s}
+.rl-sw::before{content:"";position:absolute;inset:-9px -2px}
+.rl-sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;
+  box-shadow:0 1px 2px rgba(0,0,0,.35);transition:transform .15s}
+.rl-sw[aria-checked="true"]{background:var(--acc)}
+.rl-sw[aria-checked="true"]::after{transform:translateX(18px)}
+.rl-edit{flex:none;min-height:34px;padding:0 10px;border-radius:var(--r-s);color:var(--acc);font-size:13.5px;font-weight:600}
+.rl-run{display:flex;align-items:center;gap:10px;margin-top:12px}
+.rl-run .cta{margin:0;flex:none;width:auto;padding:0 20px}
+.rl-run .sh-s{margin:0;flex:1;min-width:0;font-size:12.5px}
+/* The editor. A condition or an action is a little block: its two menus
+   side by side, its value under them, and the way to drop it beside both. */
+.rl-lab{font-size:12px;font-weight:600;color:var(--t2);margin:14px 0 6px;letter-spacing:.01em}
+.rl-item{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 36px;column-gap:6px;align-items:start;
+  padding:8px 0;border-bottom:1px solid var(--line)}
+.rl-item .field{margin:0 0 6px;min-width:0}
+.rl-item .field.wide{grid-column:1 / 3}
+.rl-item .field select,.rl-item .field input{min-width:0;text-overflow:ellipsis}
+.rl-x{grid-column:3;grid-row:1 / span 2;width:36px;height:42px;border-radius:50%;color:var(--t2);font-size:20px;line-height:1}
+.rl-x:hover,.rl-x:focus-visible{background:color-mix(in srgb,var(--red) 14%,transparent);color:var(--red)}
+.rl-check{display:flex;align-items:center;gap:10px;min-height:44px;margin-top:10px;font-size:14.5px;cursor:pointer}
+.rl-check input{width:20px;height:20px;accent-color:var(--acc);flex:none}
+.rl-check .sub{display:block;font-size:12px;color:var(--t3)}
+#ruleSheet .cta{margin-top:14px}
+
 /* View switcher tabs: Mail vs Timeline */
 .viewtabs{display:flex;gap:4px;padding:3px;background:var(--elev);border:1px solid var(--line);border-radius:18px;margin:6px 0 8px}
 .vtab{flex:1;height:28px;padding:0 12px;border-radius:14px;color:var(--t2);font-size:12.5px;font-weight:600;gap:6px;transition:all .12s}
@@ -1878,6 +1917,7 @@ body.composing #peopleCard{display:none}
       <button class="rbtn ico menuonly" id="rSummarize" aria-label="Summarize the conversation"></button>
       <button class="rbtn ico menuonly" id="rSnooze" aria-label="Snooze until later (b)"></button>
       <button class="rbtn ico menuonly" id="rEml" aria-label="Download as .eml"></button>
+      <button class="rbtn ico menuonly" id="rRule" aria-label="Create rule from this message"></button>
       <button class="rbtn ico" id="rMore" aria-haspopup="dialog" aria-expanded="false" aria-label="More actions" title="More actions">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="5" cy="12" r="1.4" fill="currentColor"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/><circle cx="19" cy="12" r="1.4" fill="currentColor"/></svg>
         </button>
@@ -2022,6 +2062,7 @@ body.composing #peopleCard{display:none}
     <button class="cta" id="addIcloud" style="background:var(--elev2);color:var(--t1)">Connect iCloud</button>
     <button class="cta" id="openContacts" style="background:var(--elev2);color:var(--t1)">Contacts</button>
     <button class="cta" id="openBlocked" style="background:var(--elev2);color:var(--t1)">Blocked senders</button>
+    <button class="cta" id="openRules" style="background:var(--elev2);color:var(--t1)">Rules</button>
     <details class="repair">
       <summary>Repair old self-copies</summary>
       <div class="body">
@@ -2258,6 +2299,40 @@ body.composing #peopleCard{display:none}
   <div class="sh-s">Mail from these is expunged at iCloud on the sync that finds it, so it never reaches this app at all. The count is the only trace kept &mdash; without it, a rule that has quietly stopped matching looks exactly like one that is working.</div>
   <div id="blockedList"></div>
   <button class="ghost" id="blockedAdd">+ Block an address or domain</button>
+</div>
+
+<!-- Rules: the list, then the editor (script: "rules" banner). -->
+<div class="sheet lg" id="rulesSheet" aria-label="Rules">
+  <div class="grab"></div>
+  <div class="sh-t">Rules</div>
+  <div class="sh-s">Each new message in the inbox is checked against these in order. Moving, starring and marking read are done at iCloud, so every device agrees; categories and pins are kept here. Mail that was already here is left alone until you run the rules.</div>
+  <div id="rulesList"></div>
+  <button class="cta" id="ruleNew">New rule</button>
+  <div class="rl-run">
+    <button class="cta" id="rulesRun" style="background:var(--elev2);color:var(--t1)">Run rules now</button>
+    <div class="sh-s" id="rulesRunState" role="status" aria-live="polite">Applies the enabled rules to what is in the inbox.</div>
+  </div>
+</div>
+
+<div class="sheet lg" id="ruleSheet" role="dialog" aria-label="Rule">
+  <div class="grab"></div>
+  <div class="sh-t" id="ruleTitle">New rule</div>
+  <div class="field"><input id="ruleName" type="text" placeholder="Name" aria-label="Rule name" maxlength="80" autocomplete="off" spellcheck="false"></div>
+  <div class="sh-s" style="margin:4px 0 6px">Apply to messages that match</div>
+  <div class="chips" id="ruleMatch" role="group" aria-label="Match all or any of the conditions">
+    <button class="pill" type="button" data-match="all" aria-pressed="true">All of these</button>
+    <button class="pill" type="button" data-match="any" aria-pressed="false">Any of these</button>
+  </div>
+  <div class="rl-lab">Conditions</div>
+  <div id="ruleConds"></div>
+  <button class="ghost" type="button" id="ruleAddCond">+ Add a condition</button>
+  <div class="rl-lab">Then</div>
+  <div id="ruleActs"></div>
+  <button class="ghost" type="button" id="ruleAddAct">+ Add an action</button>
+  <label class="rl-check"><input type="checkbox" id="ruleStop"><span>Stop after this rule<span class="sub">Later rules are not tried on a message that matches this one.</span></span></label>
+  <div class="formerr" id="ruleErr" role="alert"></div>
+  <button class="cta" id="ruleSave">Save rule</button>
+  <button class="ghost" id="ruleCancel" style="width:100%;justify-content:center;min-height:38px;margin-top:6px">Cancel</button>
 </div>
 
 <div class="sheet" id="contactsSheet">
@@ -5058,6 +5133,341 @@ $("#blockedList").addEventListener("click", async (e) => {
   renderBlocked();
   // Said plainly: removing a rule brings back nothing it already destroyed.
   toast(`${pattern} unblocked — their next message arrives`);
+});
+
+/* ── rules ──
+   What happens to mail as it arrives: a rule looks at the sender, the
+   recipients, the subject, the text, the attachments and the importance, and
+   can move, categorise, star, mark read, pin or bin it. src/rules.js says what
+   a rule can match and do and src/sorting.js applies them. The editor below is
+   built from the fields and actions the server lists, so the two cannot
+   disagree about what exists. */
+let rules = [];
+let ruleCat = { fields: [], ops: {}, actions: [] };
+let ruleDraft = null;      // the rule in the editor, as the API takes it
+let ruleBack = "rules";    // where Cancel and Save return to: the list, or the reader
+
+async function ruleCall(method, path, body) {
+  const res = await api(path, { method, headers: JSON_POST, body: body ? JSON.stringify(body) : undefined }).catch(() => null);
+  const d = res ? await res.json().catch(() => ({})) : {};
+  return { ok: !!(res && res.ok), d };
+}
+async function loadRules() {
+  const r = await ruleCall("GET", "/api/rules");
+  if (!r.ok) return false;
+  rules = r.d.rules || [];
+  ruleCat = r.d.catalog || ruleCat;
+  return true;
+}
+
+const ruleField = (id) => ruleCat.fields.find((f) => f.id === id);
+const ruleAction = (id) => ruleCat.actions.find((a) => a.id === id);
+/** The word for a stored folder or category value; a category that has been deleted says so. */
+const ruleValueText = (a) =>
+  a.type === "move" ? folderLabel(a.value) : a.type === "category" ? (catById(Number(a.value)) || {}).name || "a deleted category" : "";
+const ruleCondText = (c) => {
+  const f = ruleField(c.field);
+  const v = f && f.values ? (f.values.find((x) => x[0] === c.value) || [0, c.value])[1] : `“${c.value}”`;
+  return `${f ? f.label : c.field} ${ruleCat.ops[c.op] || c.op} ${v}`;
+};
+const ruleActText = (a) => {
+  const d = ruleAction(a.type);
+  const v = ruleValueText(a);
+  return `${d ? d.label : a.type}${v ? ": " + v : ""}`;
+};
+const ruleSummary = (r) =>
+  `${r.conditions.map(ruleCondText).join(r.match === "any" ? " or " : " and ")} → ${r.actions.map(ruleActText).join(", ")}`;
+
+function renderRules() {
+  $("#rulesList").innerHTML = rules.length
+    ? rules
+        .map((r, i) => {
+          const when = r.last_at ? `, last ${new Date(r.last_at).toLocaleDateString()}` : "";
+          const stat = r.n ? `Acted on ${r.n} message${r.n > 1 ? "s" : ""}${when}` : "Has not acted yet";
+          const nm = esc(r.name);
+          return `<div class="rl-row${r.enabled ? "" : " off"}" data-id="${r.id}">
+            <button class="rl-sw" type="button" role="switch" aria-checked="${r.enabled}" aria-label="${nm} is ${r.enabled ? "on" : "off"}" data-act="toggle"></button>
+            <div class="rl-body">
+              <div class="rl-name">${nm}</div>
+              <div class="rl-sum">${r.unreadable ? "Written by another version of the app. This one cannot read it, so it never acts." : esc(ruleSummary(r))}</div>
+              <div class="rl-stat">${stat}</div>
+              ${r.last_error ? `<div class="rl-err">Last problem: ${esc(r.last_error)}</div>` : ""}
+              <div class="rl-tools">
+                <button type="button" data-act="up" aria-label="Move ${nm} up"${i === 0 ? " disabled" : ""}>Move up</button>
+                <button type="button" data-act="down" aria-label="Move ${nm} down"${i === rules.length - 1 ? " disabled" : ""}>Move down</button>
+                <button type="button" class="del" data-act="del" aria-label="Delete ${nm}">Delete</button>
+              </div>
+            </div>
+            ${r.unreadable ? "" : `<button class="rl-edit" type="button" data-act="edit" aria-label="Edit ${nm}">Edit</button>`}
+          </div>`;
+        })
+        .join("")
+    : `<div class="sh-s">No rules yet. Mail stays where it lands until you add one.</div>`;
+}
+
+async function openRules() {
+  closeSheets();
+  await loadRules();
+  renderRules();
+  $("#rulesRunState").textContent = "Applies the enabled rules to what is in the inbox.";
+  openSheet("#rulesSheet");
+}
+$("#openRules").addEventListener("click", openRules);
+$("#ruleNew").addEventListener("click", () => openRuleEditor(null));
+
+const ruleRow = (id) => [...document.querySelectorAll("#rulesList .rl-row")].find((r) => Number(r.dataset.id) === id);
+
+async function ruleMove(id, by) {
+  const ids = rules.map((r) => r.id);
+  const i = ids.indexOf(id);
+  const j = i + by;
+  if (i < 0 || j < 0 || j >= ids.length) return;
+  [ids[i], ids[j]] = [ids[j], ids[i]];
+  const r = await ruleCall("POST", "/api/rules/order", { ids });
+  if (!r.ok) return toast("Could not reorder the rules");
+  rules = r.d.rules || rules;
+  renderRules();
+  // The button just used moved with its rule; put the focus back on it, or on
+  // its neighbour when the rule has reached an end.
+  const row = ruleRow(id);
+  (row && (row.querySelector(`[data-act="${by < 0 ? "up" : "down"}"]:not(:disabled)`) || row.querySelector(`[data-act="${by < 0 ? "down" : "up"}"]:not(:disabled)`)) || $("#ruleNew")).focus();
+}
+
+$("#rulesList").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-act]");
+  const row = e.target.closest("[data-id]");
+  if (!b || !row) return;
+  const id = Number(row.dataset.id);
+  const r = rules.find((x) => x.id === id);
+  if (!r) return;
+  const act = b.dataset.act;
+  if (act === "toggle") {
+    const on = !r.enabled;
+    r.enabled = on;
+    renderRules();
+    const res = await ruleCall("PATCH", `/api/rules/${id}`, { enabled: on });
+    if (res.ok) rules = res.d.rules || rules;
+    else {
+      r.enabled = !on;
+      toast("Could not change this rule");
+    }
+    renderRules();
+    const sw = ruleRow(id) && ruleRow(id).querySelector('[data-act="toggle"]');
+    if (sw) sw.focus();
+  } else if (act === "up" || act === "down") {
+    ruleMove(id, act === "up" ? -1 : 1);
+  } else if (act === "edit") {
+    openRuleEditor(r);
+  } else if (act === "del") {
+    if (!(await ask(`Delete the rule ${r.name}?`, "Mail it already sorted stays where it is.", { ok: "Delete", danger: true }))) return;
+    const res = await ruleCall("DELETE", `/api/rules/${id}`);
+    if (!res.ok) return toast("Could not delete this rule");
+    rules = res.d.rules || [];
+    renderRules();
+  }
+});
+
+/** Runs the rules over the inbox a batch at a time, so a large one cannot run the Worker out of time. */
+$("#rulesRun").addEventListener("click", async () => {
+  const btn = $("#rulesRun");
+  const state = $("#rulesRunState");
+  if (!rules.some((r) => r.enabled)) {
+    state.textContent = "No rule is switched on.";
+    return;
+  }
+  btn.disabled = true;
+  let scanned = 0, changed = 0, failed = 0, cursor = null, why = "";
+  try {
+    for (;;) {
+      state.textContent = scanned ? `Checked ${scanned} messages, ${changed} changed…` : "Checking the inbox…";
+      const r = await ruleCall("POST", "/api/rules/run", cursor ? { cursor } : {});
+      if (!r.ok) {
+        why = r.d.error || "Could not run the rules";
+        break;
+      }
+      scanned += r.d.scanned;
+      changed += r.d.changed;
+      failed += r.d.failed;
+      if (!r.d.next) break;
+      cursor = r.d.next;
+    }
+  } finally {
+    btn.disabled = false;
+  }
+  state.textContent =
+    (why ? `${why}. ` : "") +
+    `Checked ${scanned} message${scanned === 1 ? "" : "s"}, ${changed} changed` +
+    (failed ? `, ${failed} could not be updated at iCloud (see the rules)` : "") +
+    ".";
+  await loadRules();
+  renderRules();
+  if (changed) refreshAll();
+});
+
+/* The editor. */
+const newRuleCond = () => {
+  const f = ruleCat.fields[0];
+  return { field: f.id, op: f.ops[0], value: f.values ? f.values[0][0] : "" };
+};
+const newRuleAct = () => ({ type: ruleCat.actions[0].id, value: "" });
+// Moving to these is what other actions are for, or what no one means.
+const RULE_NOT_FOLDERS = new Set(["inbox", "sent", "drafts", "trash"]);
+
+function openRuleEditor(rule, back = "rules") {
+  if (!ruleCat.fields.length) return toast("Could not open the rule editor");
+  ruleBack = back;
+  ruleDraft = rule
+    ? JSON.parse(JSON.stringify({ id: rule.id, name: rule.name, match: rule.match, conditions: rule.conditions, actions: rule.actions, stop: rule.stop }))
+    : { id: 0, name: "", match: "all", conditions: [newRuleCond()], actions: [newRuleAct()], stop: false };
+  if (!ruleDraft.conditions.length) ruleDraft.conditions.push(newRuleCond());
+  if (!ruleDraft.actions.length) ruleDraft.actions.push(newRuleAct());
+  closeSheets();
+  $("#ruleTitle").textContent = ruleDraft.id ? "Edit rule" : "New rule";
+  $("#ruleName").value = ruleDraft.name;
+  $("#ruleStop").checked = !!ruleDraft.stop;
+  $("#ruleErr").classList.remove("show");
+  paintRuleMatch();
+  paintRuleLists();
+  openSheet("#ruleSheet");
+}
+function paintRuleMatch() {
+  for (const p of document.querySelectorAll("#ruleMatch [data-match]")) {
+    const on = p.dataset.match === ruleDraft.match;
+    p.classList.toggle("on", on);
+    p.setAttribute("aria-pressed", String(on));
+  }
+}
+const ruleOptions = (list, chosen) =>
+  list.map(([v, label]) => `<option value="${esc(v)}"${String(v) === String(chosen) ? " selected" : ""}>${esc(label)}</option>`).join("");
+
+function paintRuleLists() {
+  const only = (n) => (n === 1 ? " disabled" : "");
+  $("#ruleConds").innerHTML = ruleDraft.conditions
+    .map((c, i) => {
+      const f = ruleField(c.field) || ruleCat.fields[0];
+      const label = `Condition ${i + 1}`;
+      const value = f.values
+        ? `<select data-k="value" aria-label="${label} value">${ruleOptions(f.values, c.value)}</select>`
+        : `<input data-k="value" type="text" value="${esc(c.value)}" placeholder="Text to look for" aria-label="${label} value" maxlength="200" autocomplete="off" spellcheck="false">`;
+      return `<div class="rl-item" data-i="${i}">
+        <div class="field"><select data-k="field" aria-label="${label} field">${ruleOptions(ruleCat.fields.map((x) => [x.id, x.label]), f.id)}</select></div>
+        <div class="field"><select data-k="op" aria-label="${label} operator">${ruleOptions(f.ops.map((o) => [o, ruleCat.ops[o] || o]), c.op)}</select></div>
+        <div class="field wide">${value}</div>
+        <button class="rl-x" type="button" data-rm aria-label="Remove ${label.toLowerCase()}"${only(ruleDraft.conditions.length)}>&times;</button>
+      </div>`;
+    })
+    .join("");
+  $("#ruleActs").innerHTML = ruleDraft.actions
+    .map((a, i) => {
+      const d = ruleAction(a.type) || ruleCat.actions[0];
+      const label = `Action ${i + 1}`;
+      let value = "";
+      if (d.value === "folder") {
+        const names = folders.map((f) => f.folder).filter((f) => !RULE_NOT_FOLDERS.has(f));
+        if (a.value && !names.includes(a.value)) names.push(a.value);
+        value = `<div class="field"><select data-k="value" aria-label="${label} folder">${ruleOptions([["", "Choose a folder…"], ...names.map((n) => [n, folderPath(n)])], a.value)}</select></div>`;
+      } else if (d.value === "category") {
+        const opts = categories.map((c) => [String(c.id), c.name]);
+        if (a.value && !opts.some((o) => o[0] === String(a.value))) opts.push([String(a.value), "A deleted category"]);
+        value = `<div class="field"><select data-k="value" aria-label="${label} category">${ruleOptions([["", categories.length ? "Choose a category…" : "No categories yet"], ...opts], a.value)}</select></div>`;
+      }
+      return `<div class="rl-item" data-i="${i}">
+        <div class="field"><select data-k="type" aria-label="${label} type">${ruleOptions(ruleCat.actions.map((x) => [x.id, x.label]), d.id)}</select></div>
+        ${value}
+        <button class="rl-x" type="button" data-rm aria-label="Remove ${label.toLowerCase()}"${only(ruleDraft.actions.length)}>&times;</button>
+      </div>`;
+    })
+    .join("");
+}
+
+/** The draft follows the form: a menu on change, a text box as you type. Only a change of shape repaints. */
+function ruleEdit(listKey, repaintOn) {
+  return (e) => {
+    const k = e.target.dataset && e.target.dataset.k;
+    const item = e.target.closest(".rl-item");
+    if (!k || !item) return;
+    if ((e.type === "input") !== (e.target.tagName === "INPUT")) return;
+    const row = ruleDraft[listKey][Number(item.dataset.i)];
+    row[k] = e.target.value;
+    if (k === repaintOn) {
+      if (listKey === "conditions") {
+        const f = ruleField(row.field);
+        row.op = f.ops[0];
+        row.value = f.values ? f.values[0][0] : "";
+      } else row.value = "";
+      paintRuleLists();
+      const again = $(`#${listKey === "conditions" ? "ruleConds" : "ruleActs"} [data-i="${item.dataset.i}"] [data-k="${k}"]`);
+      if (again) again.focus();
+    }
+  };
+}
+for (const [sel, key, shape] of [["#ruleConds", "conditions", "field"], ["#ruleActs", "actions", "type"]]) {
+  const onEdit = ruleEdit(key, shape);
+  $(sel).addEventListener("input", onEdit);
+  $(sel).addEventListener("change", onEdit);
+  $(sel).addEventListener("click", (e) => {
+    const rm = e.target.closest("[data-rm]");
+    if (!rm || ruleDraft[key].length < 2) return;
+    ruleDraft[key].splice(Number(rm.closest(".rl-item").dataset.i), 1);
+    paintRuleLists();
+    $(sel).querySelector("select").focus();
+  });
+}
+$("#ruleAddCond").addEventListener("click", () => {
+  ruleDraft.conditions.push(newRuleCond());
+  paintRuleLists();
+  const rows = $("#ruleConds").querySelectorAll(".rl-item");
+  rows[rows.length - 1].querySelector("select").focus();
+});
+$("#ruleAddAct").addEventListener("click", () => {
+  ruleDraft.actions.push(newRuleAct());
+  paintRuleLists();
+  const rows = $("#ruleActs").querySelectorAll(".rl-item");
+  rows[rows.length - 1].querySelector("select").focus();
+});
+$("#ruleMatch").addEventListener("click", (e) => {
+  const p = e.target.closest("[data-match]");
+  if (!p) return;
+  ruleDraft.match = p.dataset.match;
+  paintRuleMatch();
+});
+
+function ruleLeave() {
+  closeSheets();
+  if (ruleBack === "rules") {
+    renderRules();
+    openSheet("#rulesSheet");
+  }
+}
+$("#ruleCancel").addEventListener("click", ruleLeave);
+$("#ruleSave").addEventListener("click", async () => {
+  const d = ruleDraft;
+  const body = { name: $("#ruleName").value, match: d.match, conditions: d.conditions, actions: d.actions, stop: $("#ruleStop").checked };
+  const btn = $("#ruleSave");
+  btn.disabled = true;
+  const r = await ruleCall(d.id ? "PATCH" : "POST", d.id ? `/api/rules/${d.id}` : "/api/rules", body);
+  btn.disabled = false;
+  if (!r.ok) {
+    $("#ruleErr").textContent = r.d.error || "Could not save the rule";
+    $("#ruleErr").classList.add("show");
+    return;
+  }
+  rules = r.d.rules || rules;
+  toast("Rule saved");
+  ruleLeave();
+});
+
+/** From the reader's More sheet: a rule for mail from this sender, the rest left to fill in. */
+$("#rRule").addEventListener("click", async () => {
+  if (!current) return;
+  const email = String(current.message.from_email || "").toLowerCase();
+  if (!email) return toast("This message carries no sender address");
+  if (!ruleCat.fields.length) await loadRules();
+  if (!ruleCat.fields.length) return toast("Could not open the rule editor");
+  openRuleEditor(
+    { id: 0, name: `From ${email}`.slice(0, 80), match: "all", conditions: [{ field: "from", op: "is", value: email }], actions: [newRuleAct()], stop: false },
+    "reader"
+  );
 });
 
 /**
@@ -8791,6 +9201,7 @@ const OVERFLOW_IDS = [
   "#rImages", "#rUnsub", "#rNotSpam",
   "#rCategorize", "#rPin", "#rUnread", "#rMove", "#rPdf", "#rForward", "#rReplyAI", "#rReplyAll",
   "#rSummarize", "#rSnooze", "#rEml",
+  "#rRule",
 ];
 function renderMoreSheet() {
   $("#moreList").innerHTML = OVERFLOW_IDS.map((id) => {
