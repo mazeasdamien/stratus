@@ -18,6 +18,7 @@
  */
 
 import { parseAddressList } from "./mime.js";
+import { ui } from "./util.js";
 
 /** Lowercase, accents and combining marks removed, runs of space made one. */
 export const fold = (s) =>
@@ -30,12 +31,12 @@ export const fold = (s) =>
  * holds. "Does not" holds only when no candidate does.
  */
 export const OPS = {
-  contains: { label: "contains", test: (c, v) => c.some((x) => x.includes(v)) },
-  not_contains: { label: "does not contain", test: (c, v) => !c.some((x) => x.includes(v)) },
-  is: { label: "is", test: (c, v) => c.some((x) => x === v) },
-  is_not: { label: "is not", test: (c, v) => !c.some((x) => x === v) },
-  starts: { label: "starts with", test: (c, v) => c.some((x) => x.startsWith(v)) },
-  ends: { label: "ends with", test: (c, v) => c.some((x) => x.endsWith(v)) },
+  contains: { label: ui("contains"), test: (c, v) => c.some((x) => x.includes(v)) },
+  not_contains: { label: ui("does not contain"), test: (c, v) => !c.some((x) => x.includes(v)) },
+  is: { label: ui("is"), test: (c, v) => c.some((x) => x === v) },
+  is_not: { label: ui("is not"), test: (c, v) => !c.some((x) => x === v) },
+  starts: { label: ui("starts with"), test: (c, v) => c.some((x) => x.startsWith(v)) },
+  ends: { label: ui("ends with"), test: (c, v) => c.some((x) => x.endsWith(v)) },
 };
 
 const TEXT_OPS = ["contains", "not_contains", "is", "starts", "ends"];
@@ -54,33 +55,33 @@ const people = (line) => [...parseAddressList(line).flatMap((a) => [a.email, a.n
  */
 export const FIELDS = {
   from: {
-    label: "From",
+    label: ui("From"),
     kind: "text",
     ops: TEXT_OPS,
     read: (m) => [m.from_email, m.from_name, `${m.from_name || ""} <${m.from_email || ""}>`],
   },
-  to: { label: "To", kind: "text", ops: TEXT_OPS, read: (m) => people(m.to_line || "") },
-  cc: { label: "Cc", kind: "text", ops: TEXT_OPS, read: (m) => people(m.cc_line || "") },
-  subject: { label: "Subject", kind: "text", ops: TEXT_OPS, read: (m) => [m.subject] },
-  body: { label: "Text", kind: "text", ops: ["contains", "not_contains"], read: (m) => [m.body ?? m.snippet] },
+  to: { label: ui("To"), kind: "text", ops: TEXT_OPS, read: (m) => people(m.to_line || "") },
+  cc: { label: ui("Cc"), kind: "text", ops: TEXT_OPS, read: (m) => people(m.cc_line || "") },
+  subject: { label: ui("Subject"), kind: "text", ops: TEXT_OPS, read: (m) => [m.subject] },
+  body: { label: ui("Text"), kind: "text", ops: ["contains", "not_contains"], read: (m) => [m.body ?? m.snippet] },
   attachment: {
-    label: "Attachment name",
+    label: ui("Attachment name"),
     kind: "text",
     ops: TEXT_OPS,
     read: (m) => String(m.att_names || "").split("\n").filter(Boolean),
   },
   has_attachment: {
-    label: "Has attachment",
+    label: ui("Has attachment"),
     kind: "choice",
     ops: ["is"],
-    values: [["yes", "Yes"], ["no", "No"]],
+    values: [["yes", ui("Yes")], ["no", ui("No")]],
     read: (m) => [String(m.att_names || "").trim() ? "yes" : "no"],
   },
   importance: {
-    label: "Importance",
+    label: ui("Importance"),
     kind: "choice",
     ops: ["is", "is_not"],
-    values: [["high", "High"], ["normal", "Normal"], ["low", "Low"]],
+    values: [["high", ui("High")], ["normal", ui("Normal")], ["low", ui("Low")]],
     read: (m) => [Number(m.importance) === 1 ? "high" : Number(m.importance) === -1 ? "low" : "normal"],
   },
 };
@@ -97,17 +98,17 @@ const set = (v) => v !== undefined && v !== null;
  *          only from the fields the caller gave: an unknown state is not a no-op.
  */
 export const ACTIONS = {
-  move: { label: "Move to folder", value: "folder", via: "imap", noop: (m, v) => set(m.folder) && sameFolder(m, v) },
+  move: { label: ui("Move to folder"), value: "folder", via: "imap", noop: (m, v) => set(m.folder) && sameFolder(m, v) },
   category: {
-    label: "Add category",
+    label: ui("Add category"),
     value: "category",
     via: "local",
     noop: (m, v) => Array.isArray(m.cats) && m.cats.includes(Number(v)),
   },
-  star: { label: "Star", value: null, via: "imap", noop: (m) => set(m.starred) && Number(m.starred) === 1 },
-  read: { label: "Mark as read", value: null, via: "imap", noop: (m) => set(m.unread) && Number(m.unread) === 0 },
-  pin: { label: "Pin", value: null, via: "local", noop: (m) => set(m.pinned) && Number(m.pinned) === 1 },
-  trash: { label: "Move to Trash", value: null, via: "imap", noop: (m) => set(m.folder) && sameFolder(m, "trash") },
+  star: { label: ui("Star"), value: null, via: "imap", noop: (m) => set(m.starred) && Number(m.starred) === 1 },
+  read: { label: ui("Mark as read"), value: null, via: "imap", noop: (m) => set(m.unread) && Number(m.unread) === 0 },
+  pin: { label: ui("Pin"), value: null, via: "local", noop: (m) => set(m.pinned) && Number(m.pinned) === 1 },
+  trash: { label: ui("Move to Trash"), value: null, via: "imap", noop: (m) => set(m.folder) && sameFolder(m, "trash") },
 };
 
 /** What the client needs to build the editor: the two tables, without their code. */
@@ -240,27 +241,29 @@ export const needsBody = (rules) =>
  */
 export function cleanRule(b, categoryIds = null) {
   const name = String(b?.name ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
-  if (!name) return { error: "Give the rule a name" };
+  if (!name) return { error: ui("Give the rule a name") };
   const conds = Array.isArray(b.conditions) ? b.conditions : [];
-  if (!conds.length) return { error: "Add at least one condition" };
-  if (conds.length > 10) return { error: "A rule can have at most 10 conditions" };
+  if (!conds.length) return { error: ui("Add at least one condition") };
+  if (conds.length > 10) return { error: ui("A rule can have at most 10 conditions") };
   const acts = Array.isArray(b.actions) ? b.actions : [];
-  if (!acts.length) return { error: "Add at least one action" };
-  if (acts.length > 8) return { error: "A rule can have at most 8 actions" };
+  if (!acts.length) return { error: ui("Add at least one action") };
+  if (acts.length > 8) return { error: ui("A rule can have at most 8 actions") };
 
   const conditions = [];
   for (const c of conds) {
     const r = readCondition({ ...c, value: String(c?.value ?? "").slice(0, 200) });
-    if (!r) return { error: `Condition "${FIELDS[c?.field]?.label || c?.field}" is not complete` };
+    const field = FIELDS[c?.field]?.label || c?.field;
+    if (!r) return { error: ui(`Condition "${field}" is not complete`) };
     // The text as typed, not folded: the editor shows it back.
     conditions.push({ field: r.field, op: r.op, value: FIELDS[r.field].kind === "choice" ? r.value : String(c.value).trim().slice(0, 200) });
   }
   const actions = [];
   for (const a of acts) {
     const r = readAction({ ...a, value: String(a?.value ?? "").slice(0, 100) });
-    if (!r) return { error: `Action "${ACTIONS[a?.type]?.label || a?.type}" is not complete` };
+    const action = ACTIONS[a?.type]?.label || a?.type;
+    if (!r) return { error: ui(`Action "${action}" is not complete`) };
     if (r.type === "category") {
-      if (!/^\d+$/.test(r.value) || (categoryIds && !categoryIds.has(Number(r.value)))) return { error: "That category no longer exists" };
+      if (!/^\d+$/.test(r.value) || (categoryIds && !categoryIds.has(Number(r.value)))) return { error: ui("That category no longer exists") };
     }
     actions.push(r);
   }

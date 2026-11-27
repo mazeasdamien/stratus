@@ -19,6 +19,7 @@
 import { connect } from "cloudflare:sockets";
 import { MailAuthError, NoRouteError } from "./errors.js";
 import { bytesToLatin1 as latin1 } from "./rfc822.js";
+import { ui } from "./util.js";
 
 const CRLF = "\r\n";
 const GREETING_MS = 15_000;
@@ -60,7 +61,7 @@ class Imap {
   async _read() {
     let timer;
     const late = new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error("IMAP server stopped answering")), READ_MS);
+      timer = setTimeout(() => reject(new Error(ui("IMAP server stopped answering"))), READ_MS);
     });
     try {
       return await Promise.race([this.reader.read(), late]);
@@ -78,7 +79,7 @@ class Imap {
 
   async _fill() {
     const { value, done } = await this._read();
-    if (done || !value) throw new Error("IMAP connection closed by server");
+    if (done || !value) throw new Error(ui("IMAP connection closed by server"));
     const live = this.end - this.start;
     if (this.end + value.length > this.store.length) {
       const target = live + value.length > this.store.length / 2
@@ -119,7 +120,7 @@ class Imap {
 
   /** Exactly n bytes, for a literal. */
   async readBytes(n) {
-    if (n > MAX_LITERAL) throw new Error(`IMAP literal too large (${n} bytes)`);
+    if (n > MAX_LITERAL) throw new Error(ui(`IMAP literal too large (${n} bytes)`));
     while (this.end - this.start < n) await this._fill();
     this.scanned = 0;
     return this._take(n);
@@ -185,7 +186,7 @@ class Imap {
     // imported message is 8-bit, and encoding its latin1 form would double
     // every byte above 127.
     const bytes = typeof payload === "string" ? this.encoder.encode(payload) : payload;
-    if (bytes.length > MAX_APPEND) throw new Error(`IMAP literal too large (${bytes.length} bytes)`);
+    if (bytes.length > MAX_APPEND) throw new Error(ui(`IMAP literal too large (${bytes.length} bytes)`));
     const verb = cmd.split(" ")[0];
     const tag = "d" + String(++this.seq).padStart(4, "0");
     await this.write(`${tag} ${cmd} {${bytes.length}}${CRLF}`);
@@ -254,7 +255,7 @@ export async function imapOpen({ host = "imap.mail.me.com", port = 993, user, pa
     im = new Imap(socket);
     greeting = await Promise.race([
       im.readResponse(),
-      new Promise((_, rej) => setTimeout(() => rej(new Error("IMAP greeting timed out")), GREETING_MS)),
+      new Promise((_, rej) => setTimeout(() => rej(new Error(ui("IMAP greeting timed out"))), GREETING_MS)),
     ]);
   } catch (e) {
     // Nothing has been said to the server yet, so the request that wanted

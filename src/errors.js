@@ -14,8 +14,10 @@
  * already in flight. That survived a round trip through `String(e.message)`
  * about as well as you would expect.
  */
+import { ui } from "./util.js";
+
 export class MailAuthError extends Error {
-  constructor(message = "Apple rejected that address or app password") {
+  constructor(message = ui("Apple rejected that address or app password")) {
     super(message);
     this.name = "MailAuthError";
   }
@@ -37,7 +39,7 @@ export const isAuthFailure = (e) =>
  * region (src/elsewhere.js).
  */
 export class NoRouteError extends Error {
-  constructor(message = "Could not reach the mail server from here") {
+  constructor(message = ui("Could not reach the mail server from here")) {
     super(message);
     this.name = "NoRouteError";
   }

@@ -32,7 +32,7 @@ import { decodeMailboxName, encodeMailboxName, htmlToText } from "./mime.js";
 import { bytesToLatin1 } from "./rfc822.js";
 import { imapError, indexMessage, storeRows } from "./store.js";
 import { noteMailbox, rowFromRaw } from "./sync.js";
-import { bodyKey, hashHex, json } from "./util.js";
+import { bodyKey, hashHex, json, ui } from "./util.js";
 
 /**
  * The largest message taken. Under the 32 MB the IMAP client will send, and
@@ -103,8 +103,8 @@ const isKnown = async (env, acct, mid) =>
 
 async function importMessage(request, env, url) {
   const folder = String(url.searchParams.get("folder") || "").trim();
-  if (!folder) return refuse("Say which folder the message goes into", "no-folder");
-  if (folder.length > 120 || /["\\\r\n\0]/.test(folder)) return refuse("That folder name cannot be used", "bad-folder");
+  if (!folder) return refuse(ui("Say which folder the message goes into"), "no-folder");
+  if (folder.length > 120 || /["\\\r\n\0]/.test(folder)) return refuse(ui("That folder name cannot be used"), "bad-folder");
 
   const asked = String(url.searchParams.get("probe") || "").trim();
   if (asked) {
@@ -113,17 +113,18 @@ async function importMessage(request, env, url) {
   }
 
   const declared = Number(request.headers.get("Content-Length"));
+  const limit = MAX_IMPORT_BYTES / 1048576;
   if (declared > MAX_IMPORT_BYTES) {
-    return refuse(`Larger than the ${MAX_IMPORT_BYTES / 1048576} MB the import accepts`, "too-large", 413);
+    return refuse(ui(`Larger than the ${limit} MB the import accepts`), "too-large", 413);
   }
   let bytes = new Uint8Array(await request.arrayBuffer());
-  if (!bytes.length || !bytes.some((b) => b > 32)) return refuse("The message is empty", "empty");
+  if (!bytes.length || !bytes.some((b) => b > 32)) return refuse(ui("The message is empty"), "empty");
   if (bytes.length > MAX_IMPORT_BYTES) {
-    return refuse(`Larger than the ${MAX_IMPORT_BYTES / 1048576} MB the import accepts`, "too-large", 413);
+    return refuse(ui(`Larger than the ${limit} MB the import accepts`), "too-large", 413);
   }
 
   const acct = await theAccount(env);
-  if (!acct) return refuse("No connected account", "no-account");
+  if (!acct) return refuse(ui("No connected account"), "no-account");
 
   // Something that reads as a message: a header block with a name: value line
   // in it. A photo or a text file chosen by mistake is refused here, not
@@ -131,7 +132,7 @@ async function importMessage(request, env, url) {
   bytes = crlf(bytes);
   let { head, bodyAt } = headBlock(bytes);
   if (!/^[!-9;-~]+:/m.test(head) || !/^(?:from|to|subject|date|message-id|received|mime-version|content-type):/im.test(head)) {
-    return refuse("This does not look like an email message", "not-a-message");
+    return refuse(ui("This does not look like an email message"), "not-a-message");
   }
   let mid = (/^message-id:[ \t]*(\S[^\r\n]*)/im.exec(head)?.[1] || "").trim();
   if (!mid) {
@@ -153,7 +154,7 @@ async function importMessage(request, env, url) {
   let created = false;
   try {
     const pass = await icloudPassword(env, acct);
-    if (!pass) return refuse("This account has no stored credential", "no-credential");
+    if (!pass) return refuse(ui("This account has no stored credential"), "no-credential");
     const im = await imapOpen({ user: acct.email, pass });
     try {
       let boxes = await imapList(im);
@@ -165,7 +166,10 @@ async function importMessage(request, env, url) {
         await imapCreate(im, wire);
         boxes = await imapList(im);
         box = resolveMailbox(boxes, wire) || resolveMailbox(boxes, folder);
-        if (!box) throw new Error(`The server accepted "${folder}" but does not list it. It has: ${mailboxList(boxes)}`);
+        if (!box) {
+          const folders = mailboxList(boxes);
+          throw new Error(ui(`The server accepted "${folder}" but does not list it. It has: ${folders}`));
+        }
         created = true;
       }
       await imapSelect(im, box.name);
@@ -221,7 +225,7 @@ async function importMessage(request, env, url) {
 /** A page of the ids in a folder, oldest first, or the messages of one conversation in it. */
 async function listIds(env, url) {
   const folder = String(url.searchParams.get("folder") || "").trim();
-  if (!folder) return json({ error: "Say which folder" }, 400);
+  if (!folder) return json({ error: ui("Say which folder") }, 400);
   const thread = url.searchParams.get("thread");
   if (thread) {
     const rows = await env.DB.prepare(
@@ -257,7 +261,8 @@ export const transfer = {
       } catch (e) {
         // NoRouteError is not a failure of this message: imapError hands it up.
         if (e instanceof NoRouteError) throw e;
-        return refuse(`Could not import this message: ${String((e && e.message) || e).slice(0, 200)}`, "failed", 500);
+        const why = String((e && e.message) || e).slice(0, 200);
+        return refuse(ui(`Could not import this message: ${why}`), "failed", 500);
       }
     }
     if (path === "/api/transfer/ids" && request.method === "GET") return listIds(env, new URL(request.url));

@@ -20,6 +20,7 @@
  */
 
 import { moduleTables } from "./modules.js";
+import { ui } from "./util.js";
 
 const TABLES = [
   "accounts", "messages", "settings", "blocked_senders", "outbox", "snoozed",
@@ -245,10 +246,10 @@ export async function restoreBackup(env) {
     // harder to reason about than an error.
     const held = new Set(snap.files.map((o) => o.key));
     const missing = parts.find((p) => !held.has(p.key));
-    if (missing) throw new Error(`The snapshot is incomplete: ${missing.key} is missing`);
+    if (missing) throw new Error(ui(`The snapshot is incomplete: ${missing.key} is missing`));
     for (const p of parts) {
       const part = await env.MAIL.get(p.key);
-      if (!part) throw new Error(`The snapshot is incomplete: ${p.key} is missing`);
+      if (!part) throw new Error(ui(`The snapshot is incomplete: ${p.key} is missing`));
       restored[p.table] += await restoreRows(env, p.table, JSON.parse(await part.text()));
     }
   }

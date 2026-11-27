@@ -11,7 +11,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "node scripts/check-client.mjs && node scripts/gen-schema.mjs --check && node test.mjs && npm run test:sync && wrangler deploy",
+    "deploy": "node scripts/check-client.mjs && node scripts/check-i18n.mjs && node scripts/gen-schema.mjs --check && node test.mjs && npm run test:sync && wrangler deploy",
     "db:schema": "node scripts/gen-schema.mjs && wrangler d1 execute DB --remote --file=./schema.sql",
     "db:schema:local": "node scripts/gen-schema.mjs && wrangler d1 execute DB --local --file=./schema.sql",
     "secrets": "node scripts/secrets.mjs",
@@ -20,7 +20,7 @@
     "test": "node test.mjs",
     "test:sync": "node --no-warnings scripts/sync-harness/run.mjs",
     "test:ui": "node --no-warnings scripts/ui-harness/run.mjs",
-    "check": "node scripts/check-client.mjs && node scripts/gen-schema.mjs --check && node test.mjs && npm run test:sync"
+    "check": "node scripts/check-client.mjs && node scripts/check-i18n.mjs && node scripts/gen-schema.mjs --check && node test.mjs && npm run test:sync"
   },
   "cloudflare": {
     "bindings": {

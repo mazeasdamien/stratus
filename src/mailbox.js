@@ -5,6 +5,7 @@
 import { open } from "./crypto.js";
 import { imapList, imapOpen, imapSearch, imapSelect } from "./imap.js";
 import { decodeMailboxName } from "./mime.js";
+import { ui } from "./util.js";
 
 /* ────────────────────────────────────────────────────────────────
    iCloud over IMAP, spoken by the Worker itself.
@@ -107,7 +108,7 @@ export async function theAccount(env) {
 /** Opens a connection, runs one operation, always hangs up. */
 export async function withImap(env, account, fn) {
   const pass = await icloudPassword(env, account);
-  if (!pass) throw new Error("This account has no stored credential");
+  if (!pass) throw new Error(ui("This account has no stored credential"));
   const im = await imapOpen({ user: account.email, pass });
   try {
     return await fn(im);
@@ -148,7 +149,7 @@ export async function renameCursor(env, account, from, to, app = to) {
 export async function icloudAct(env, account, mid, hintFolder, fn, { onlyHint = false } = {}) {
   const pass = await icloudPassword(env, account);
   if (!pass) return false;
-  if (!mid) throw new Error("no Message-ID for this message");
+  if (!mid) throw new Error(ui("no Message-ID for this message"));
 
   const im = await imapOpen({ user: account.email, pass });
   try {
@@ -167,7 +168,7 @@ export async function icloudAct(env, account, mid, hintFolder, fn, { onlyHint = 
         return true;
       }
     }
-    throw new Error("message not found in any mailbox");
+    throw new Error(ui("message not found in any mailbox"));
   } finally {
     await im.logout();
   }
@@ -190,7 +191,7 @@ export async function icloudAct(env, account, mid, hintFolder, fn, { onlyHint = 
  */
 export async function threadAct(env, account, rows, fn) {
   const pass = await icloudPassword(env, account);
-  if (!pass) throw new Error("This account has no stored credential");
+  if (!pass) throw new Error(ui("This account has no stored credential"));
 
   const byFolder = new Map();
   for (const r of rows) {

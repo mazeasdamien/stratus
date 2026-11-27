@@ -493,7 +493,7 @@ export const MIGRATIONS = [
   // the day this ships. Its text is escaped and its line breaks made <br>.
   // Nothing happens where there was no signature, nor where a "Default" with
   // that same text is already there, so running it again makes no second one.
-  ["signatures_default", [
+  ["signatures_default", [ // i18n-ok: SQL, not text
     `INSERT INTO signatures (id, name, html, position, created_at, updated_at)
      SELECT lower(hex(randomblob(8))), 'Default', s.html,
             0, CAST(strftime('%s','now') AS INTEGER)*1000, CAST(strftime('%s','now') AS INTEGER)*1000

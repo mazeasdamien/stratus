@@ -7,6 +7,7 @@
  * nothing here runs on its own.
  */
 import Anthropic from "@anthropic-ai/sdk";
+import { ui } from "./util.js";
 
 /**
  * What the assistant writes with until Settings or CLAUDE_MODEL says otherwise.
@@ -40,7 +41,7 @@ function client(key) {
 /** Anthropic's own words for what went wrong, rather than the SDK's wrapping of them. */
 function reason(err) {
   // Before APIError, which it extends: no response means no message to quote.
-  if (err instanceof Anthropic.APIConnectionError) return "could not reach Anthropic";
+  if (err instanceof Anthropic.APIConnectionError) return ui("could not reach Anthropic");
   if (err instanceof Anthropic.APIError) return err.error?.error?.message || `HTTP ${err.status}`;
   return String(err?.message || err);
 }
@@ -103,12 +104,12 @@ export async function rewrite(key, model, { system, text, effort }) {
   }
   // Checked before the text is read: a refusal can arrive with part of an
   // answer in it, and half a reply is worse than none.
-  if (msg.stop_reason === "refusal") return { error: "Claude declined to write this one" };
-  if (msg.stop_reason === "max_tokens") return { error: "That ran out of room before it finished" };
+  if (msg.stop_reason === "refusal") return { error: ui("Claude declined to write this one") };
+  if (msg.stop_reason === "max_tokens") return { error: ui("That ran out of room before it finished") };
   const out = msg.content
     .filter((b) => b.type === "text")
     .map((b) => b.text)
     .join("")
     .trim();
-  return out ? { text: out } : { error: "The model returned nothing usable" };
+  return out ? { text: out } : { error: ui("The model returned nothing usable") };
 }

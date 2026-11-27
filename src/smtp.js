@@ -16,6 +16,7 @@ import { connect } from "cloudflare:sockets";
 import { b64encode } from "./mime.js";
 import { MailAuthError } from "./errors.js";
 import { bytesToLatin1 as latin1 } from "./rfc822.js";
+import { ui } from "./util.js";
 
 const CRLF = "\r\n";
 const REPLY_MS = 20_000;
@@ -30,14 +31,14 @@ class Smtp {
   }
 
   async _fill() {
-    if (this.dead) throw new Error("SMTP connection already closed");
+    if (this.dead) throw new Error(ui("SMTP connection already closed"));
     // The deadline in readReply is only checked between lines, so a server
     // that goes quiet mid-line held the read forever. Past REPLY_MS the
     // connection is abandoned outright — closed, not left with a read
     // outstanding to be cancelled later.
     let timer;
     const late = new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error("SMTP reply timed out")), REPLY_MS);
+      timer = setTimeout(() => reject(new Error(ui("SMTP reply timed out"))), REPLY_MS);
     });
     let got;
     try {
@@ -54,7 +55,7 @@ class Smtp {
       clearTimeout(timer);
     }
     const { value, done } = got;
-    if (done || !value) throw new Error("SMTP connection closed by server");
+    if (done || !value) throw new Error(ui("SMTP connection closed by server"));
     const next = new Uint8Array(this.buf.length + value.length);
     next.set(this.buf, 0);
     next.set(value, this.buf.length);
@@ -88,7 +89,7 @@ class Smtp {
       // A racing timeout would leave an orphaned read holding the stream, and
       // that orphan is what later rejects as "Stream was cancelled". Checking
       // a deadline between lines keeps exactly one read outstanding.
-      if (Date.now() > deadline) throw new Error("SMTP reply timed out");
+      if (Date.now() > deadline) throw new Error(ui("SMTP reply timed out"));
       const line = await this.readLine();
       lines.push(line);
       if (/^\d{3} /.test(line)) break;
@@ -230,7 +231,7 @@ export async function smtpCheck(opts) {
  */
 export async function smtpSend({ host, port, user, pass, from, to, raw }) {
   const recipients = (Array.isArray(to) ? to : [to]).filter(Boolean);
-  if (!recipients.length) throw new Error("SMTP: no recipient");
+  if (!recipients.length) throw new Error(ui("SMTP: no recipient"));
 
   const s = await smtpConnect({ host, port, user, pass });
   try {

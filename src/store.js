@@ -4,7 +4,7 @@
 
 import { NoRouteError, isAuthFailure } from "./errors.js";
 import { accountById } from "./filing.js";
-import { bodyKey, hashHex, json } from "./util.js";
+import { bodyKey, hashHex, json, ui } from "./util.js";
 
 /** Marks an account as needing the user, when its credential dies. */
 export async function flagAccount(env, account, e) {
@@ -26,7 +26,7 @@ export function imapError(e, acct, env) {
   if (e instanceof NoRouteError) throw e;
   if (isAuthFailure(e)) {
     if (acct && env) flagAccount(env, acct, e).catch(() => {});
-    return json({ error: "This account needs reconnecting" }, 409);
+    return json({ error: ui("This account needs reconnecting") }, 409);
   }
   return json({ error: String((e && e.message) || e) }, 502);
 }
@@ -39,7 +39,7 @@ export function imapError(e, acct, env) {
  */
 export async function withAccount(env, id, fn) {
   const acct = await accountById(env, id);
-  if (!acct) return json({ error: "Unknown account" }, 404);
+  if (!acct) return json({ error: ui("Unknown account") }, 404);
   try {
     return await fn(acct);
   } catch (e) {

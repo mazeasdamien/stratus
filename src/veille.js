@@ -11,6 +11,8 @@
  *   POST /api/veille/feedback                    →  /reader/api/feedback
  */
 
+import { ui } from "./util.js";
+
 const PAGE = /^\/veille(\/|\/e\/[0-9a-f]{32}\/?|\/couts\/?)?$/;
 
 export const isVeillePage = (path) => PAGE.test(path);
@@ -26,8 +28,9 @@ function unavailable(why, status = 503) {
 export async function proxyVeille(request, env, path) {
   const api = path.startsWith("/api/");
   if (!env.DIGEST || !env.DIGEST_READER_TOKEN) {
+    // i18n-ok: the Veille pages are the owner's own and written in French
     const why = "La liaison avec dmzs-digest n'est pas configurée : lance <code>python agent/setup.py --reader</code> dans dmzs-digest, puis redéploie l'appli mail.";
-    return api ? Response.json({ error: "Veille not configured" }, { status: 503 }) : unavailable(why);
+    return api ? Response.json({ error: ui("Veille not configured") }, { status: 503 }) : unavailable(why);
   }
   const target = new URL("https://dmzs-digest/reader" + (api ? "/api/" + path.slice("/api/veille/".length) : path.slice("/veille".length)));
   const init = {
@@ -40,10 +43,10 @@ export async function proxyVeille(request, env, path) {
     res = await env.DIGEST.fetch(new Request(target, init));
   } catch (err) {
     console.error(JSON.stringify({ message: "veille_proxy_failed", error: String(err?.message || err) }));
-    return api ? Response.json({ error: "Veille unreachable" }, { status: 502 }) : unavailable("Le service de la veille ne répond pas. Réessaie dans un moment.", 502);
+    return api ? Response.json({ error: ui("Veille unreachable") }, { status: 502 }) : unavailable("Le service de la veille ne répond pas. Réessaie dans un moment.", 502);
   }
   if (res.status === 401) {
-    return api ? Response.json({ error: "Veille token mismatch" }, { status: 502 })
+    return api ? Response.json({ error: ui("Veille token mismatch") }, { status: 502 }) // i18n-ok: French already, as above
       : unavailable("Le jeton partagé ne correspond plus : relance <code>python agent/setup.py --reader</code> dans dmzs-digest.", 502);
   }
   // Only the headers that describe the page travel back.

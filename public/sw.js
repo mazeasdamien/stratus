@@ -11,9 +11,20 @@
  * server says the device is signed out (see the push handler).
  */
 
+// The interface's words: this worker writes the notifications, in the language
+// the page last chose (see i18n.js, which hands it over through a cache).
+// Every language file in its table is loaded here and precached below. A
+// dictionary that fails to load costs the translation, never the worker.
+try {
+  importScripts("/i18n.js");
+  for (const l of self.StratusI18n.LANGUAGES) if (l.file) importScripts(l.file);
+} catch {}
+const I18N = self.StratusI18n || { LANGUAGES: [], t: (s, v) => Object.entries(v || {}).reduce((out, [k, x]) => out.split(`{${k}}`).join(x), s), tw: (s) => s, adopt: async () => {} };
+const { t, tw } = I18N;
+
 // Bump on every shell change. The activate handler deletes any cache whose
 // name is not this one, so an old index.html cannot outlive a deploy.
-const SHELL = "dmzs-mail-shell-v89";
+const SHELL = "dmzs-mail-shell-v90";
 
 const SHELL_FILES = [
   "/",
@@ -29,6 +40,8 @@ const SHELL_FILES = [
   "/sendguard.js",
   "/senderguard.js",
   "/reaction.js",
+  "/i18n.js",
+  ...I18N.LANGUAGES.filter((l) => l.file).map((l) => l.file),
 ];
 
 // No catch on addAll. Every file here sits behind the session, so an update
@@ -49,7 +62,8 @@ self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== SHELL).map((k) => caches.delete(k))))
+      // The page's language choice sits in its own cache, which a new shell must not take with it.
+      .then((keys) => Promise.all(keys.filter((k) => k !== SHELL && k !== I18N.HANDOFF_CACHE).map((k) => caches.delete(k))))
       // The navigation request starts while this worker is still waking up,
       // instead of after.
       .then(() => self.registration.navigationPreload?.enable())
@@ -119,6 +133,7 @@ self.addEventListener("fetch", (event) => {
 self.addEventListener("push", (event) => {
   event.waitUntil(
     (async () => {
+      await I18N.adopt();
       let state = { unread: 0, total: 0, from: "", subject: "", reminders: [] };
       let failed = true;
       try {
@@ -168,8 +183,8 @@ self.addEventListener("push", (event) => {
       // This is on top of the mail below, never instead of it.
       const due = Array.isArray(state.reminders) ? state.reminders : [];
       for (const r of due) {
-        await self.registration.showNotification(r.title || "Reminder", {
-          body: r.body || "",
+        await self.registration.showNotification(tw(r.title) || t("Reminder"), {
+          body: tw(r.body) || "",
           icon: "/icon-192.png",
           badge: "/icon-192.png",
           tag: `dmzs-reminder-${r.id}`,
@@ -186,14 +201,14 @@ self.addEventListener("push", (event) => {
       // in one, so it needs no flash saying nothing is new.
       if (!state.unread && !failed) {
         if (!due.length) {
-          await self.registration.showNotification("Up to date", { tag: "dmzs-mail-quiet", silent: true });
+          await self.registration.showNotification(t("Up to date"), { tag: "dmzs-mail-quiet", silent: true });
           for (const n of await self.registration.getNotifications({ tag: "dmzs-mail-quiet" })) n.close();
         }
         return;
       }
 
-      const title = state.from || "New mail";
-      const line = state.subject || (state.unread ? `${state.unread} unread` : "Open to see what arrived");
+      const title = state.from || t("New mail");
+      const line = state.subject || (state.unread ? t("{n, plural, other {# unread}}", { n: state.unread }) : t("Open to see what arrived"));
 
       // The same doorbell, rung twice.
       //

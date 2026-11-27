@@ -44,7 +44,7 @@ import { aliasesOf, accountById } from "./filing.js";
 import { imapFlag } from "./imap.js";
 import { icloudAct } from "./mailbox.js";
 import { clearReminder, setReminder } from "./reminders.js";
-import { FLAG_FLAGGED, json } from "./util.js";
+import { FLAG_FLAGGED, json, ui } from "./util.js";
 
 export const KIND = "followup"; // the reminders table's kind for these
 const KINDS = ["flag", "noreply"];
@@ -101,14 +101,14 @@ export const deps = {
   /** Stars or unstars a message at iCloud and here, as the flag route does. */
   async star(env, id, on) {
     const msg = await env.DB.prepare("SELECT * FROM messages WHERE id=?").bind(id).first();
-    if (!msg) throw new Error("Unknown message");
+    if (!msg) throw new Error(ui("Unknown message"));
     if (!!Number(msg.starred) === on) return;
     const acct = await accountById(env, msg.account_id);
-    if (!acct) throw new Error("Unknown account");
+    if (!acct) throw new Error(ui("Unknown account"));
     const done = await icloudAct(env, acct, msg.mid || msg.pid, msg.folder, (im, _b, _h, uid) =>
       imapFlag(im, uid, FLAG_FLAGGED, on)
     );
-    if (!done) throw new Error("This account has no stored credential");
+    if (!done) throw new Error(ui("This account has no stored credential"));
     await env.DB.prepare("UPDATE messages SET starred=? WHERE id=?").bind(on ? 1 : 0, id).run();
   },
 };
@@ -137,8 +137,18 @@ async function answered(env, f, sent) {
   return (results ?? []).some((r) => !mine.has(String(r.from_email || "").trim().toLowerCase()));
 }
 
-/** What the reminder says, once there is something to say. */
-const subjectOf = (s) => String(s || "").trim() || "(no subject)";
+/**
+ * What the reminder says, once there is something to say. A missing subject
+ * has its own whole wording, so the device translates the title in one piece.
+ */
+const noReplyTitle = (s) => {
+  const subject = String(s || "").trim();
+  return subject ? ui(`No reply yet: ${subject}`) : ui("No reply yet: (no subject)");
+};
+const followUpTitle = (s) => {
+  const subject = String(s || "").trim();
+  return subject ? ui(`Follow up: ${subject}`) : ui("Follow up: (no subject)");
+};
 
 /**
  * One pass: ends what is over, fires what is due. `now` and `deps` are
@@ -185,8 +195,8 @@ export async function sweep(env, now = Date.now()) {
         await setReminder(env, {
           kind: KIND,
           ref: f.message_id,
-          title: `No reply yet: ${subjectOf(f.subject)}`,
-          body: f.to_line ? `Nobody has replied to your message to ${f.to_line}` : "Nobody has replied to your message",
+          title: noReplyTitle(f.subject),
+          body: f.to_line ? ui(`Nobody has replied to your message to ${f.to_line}`) : ui("Nobody has replied to your message"),
           at: now,
         });
         try {
@@ -229,11 +239,12 @@ export async function setFollowup(env, msg, kind, due, now = Date.now()) {
     .bind(msg.id, msg.account_id, msg.thread_key || "", kind, Math.round(due), now)
     .run();
   if (kind === "flag") {
+    const sender = msg.from_name || msg.from_email;
     await setReminder(env, {
       kind: KIND,
       ref: msg.id,
-      title: `Follow up: ${subjectOf(msg.subject)}`,
-      body: msg.from_name || msg.from_email ? `From ${msg.from_name || msg.from_email}` : "",
+      title: followUpTitle(msg.subject),
+      body: sender ? ui(`From ${sender}`) : "",
       at: due,
     });
   } else {
@@ -273,14 +284,14 @@ async function api(request, env, path) {
     const b = await request.json().catch(() => ({}));
     const kind = String(b.kind || "");
     const due = Number(b.due);
-    if (!KINDS.includes(kind)) return json({ error: "Unknown kind of follow-up" }, 400);
-    if (!Number.isFinite(due) || due <= Date.now() + 30_000) return json({ error: "Pick a time in the future" }, 400);
+    if (!KINDS.includes(kind)) return json({ error: ui("Unknown kind of follow-up") }, 400);
+    if (!Number.isFinite(due) || due <= Date.now() + 30_000) return json({ error: ui("Pick a time in the future") }, 400);
     const msg = await env.DB.prepare("SELECT * FROM messages WHERE id=?").bind(String(b.message_id || "")).first();
-    if (!msg) return json({ error: "Unknown message" }, 404);
+    if (!msg) return json({ error: ui("Unknown message") }, 404);
     if (kind === "noreply") {
       const mine = await myAddresses(env, await accountById(env, msg.account_id));
       if (!mine.has(String(msg.from_email || "").toLowerCase()) && msg.folder !== "sent") {
-        return json({ error: "Only a message you sent can wait for a reply" }, 400);
+        return json({ error: ui("Only a message you sent can wait for a reply") }, 400);
       }
     }
     try {

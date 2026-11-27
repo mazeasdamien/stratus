@@ -19,7 +19,7 @@
  * categories existed.
  */
 
-import { json } from "./util.js";
+import { json, ui } from "./util.js";
 
 export const PALETTE_SIZE = 10;
 const NAME_MAX = 40;
@@ -130,16 +130,16 @@ export async function categoriesApi(request, env, path) {
   if (path === "/api/categories" && m === "POST") {
     const b = await request.json().catch(() => ({}));
     const name = cleanName(b.name);
-    if (!name) return json({ error: "Give the category a name" }, 400);
+    if (!name) return json({ error: ui("Give the category a name") }, 400);
     const color = b.color === undefined ? await freeColor(env) : cleanColor(b.color);
-    if (color === null) return json({ error: "Pick one of the colours" }, 400);
+    if (color === null) return json({ error: ui("Pick one of the colours") }, 400);
     const at = (await env.DB.prepare("SELECT COALESCE(MAX(position), -1) + 1 AS p FROM categories").first()).p;
     // The unique name decides a clash, not a read beforehand: two requests
     // together cannot both get in.
     const r = await env.DB.prepare("INSERT OR IGNORE INTO categories (name, color, position, created_at) VALUES (?,?,?,?)")
       .bind(name, color, at, Date.now())
       .run();
-    if (!(r.meta?.changes > 0)) return json({ error: `There is already a category called ${name}` }, 409);
+    if (!(r.meta?.changes > 0)) return json({ error: ui(`There is already a category called ${name}`) }, 409);
     return json({ ok: true, categories: await list(env) }, 201);
   }
 
@@ -148,15 +148,15 @@ export async function categoriesApi(request, env, path) {
     const id = Number(one[1]);
     const b = await request.json().catch(() => ({}));
     const cur = await env.DB.prepare("SELECT id, name, color FROM categories WHERE id=?").bind(id).first();
-    if (!cur) return json({ error: "Unknown category" }, 404);
+    if (!cur) return json({ error: ui("Unknown category") }, 404);
     const name = b.name === undefined ? cur.name : cleanName(b.name);
-    if (!name) return json({ error: "Give the category a name" }, 400);
+    if (!name) return json({ error: ui("Give the category a name") }, 400);
     const color = b.color === undefined ? cur.color : cleanColor(b.color);
-    if (color === null) return json({ error: "Pick one of the colours" }, 400);
+    if (color === null) return json({ error: ui("Pick one of the colours") }, 400);
     try {
       await env.DB.prepare("UPDATE categories SET name=?, color=? WHERE id=?").bind(name, color, id).run();
     } catch (e) {
-      if (/UNIQUE/i.test(String(e?.message || e))) return json({ error: `There is already a category called ${name}` }, 409);
+      if (/UNIQUE/i.test(String(e?.message || e))) return json({ error: ui(`There is already a category called ${name}`) }, 409);
       throw e;
     }
     return json({ ok: true, categories: await list(env) });
@@ -174,7 +174,7 @@ export async function categoriesApi(request, env, path) {
   if (msgCats && m === "POST") {
     const b = await request.json().catch(() => ({}));
     const msg = await env.DB.prepare("SELECT id, account_id, thread_key, pinned FROM messages WHERE id=?").bind(msgCats[1]).first();
-    if (!msg) return json({ error: "Unknown message" }, 404);
+    if (!msg) return json({ error: ui("Unknown message") }, 404);
     const { sql, binds } = scope(msg, !!b.thread);
     const stmts = [];
     for (const c of ids(b.add)) {
@@ -199,7 +199,7 @@ export async function categoriesApi(request, env, path) {
   if (pin && m === "POST") {
     const b = await request.json().catch(() => ({}));
     const msg = await env.DB.prepare("SELECT id, account_id, thread_key FROM messages WHERE id=?").bind(pin[1]).first();
-    if (!msg) return json({ error: "Unknown message" }, 404);
+    if (!msg) return json({ error: ui("Unknown message") }, 404);
     const pinned = b.pinned ? 1 : 0;
     // The conversation, always: a list row is a conversation, and pinning one
     // message of it would unpin itself when the next reply arrived.

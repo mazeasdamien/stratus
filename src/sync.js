@@ -14,7 +14,7 @@ import { attNames, flagAccount, forgetMessages, indexMessage, storeRows } from "
 import { importanceFromHeaders } from "./importance.js";
 import { indexEvent } from "./ics.js";
 import { arrivals, sortArrivals } from "./sorting.js";
-import { bodyKey, defuse, hashHex, json } from "./util.js";
+import { bodyKey, defuse, hashHex, json, ui } from "./util.js";
 
 /**
  * A plain-text body as the reader's HTML, in the shape defuse() returns.
@@ -1009,7 +1009,7 @@ export async function syncAccount(env, account, tally) {
     return { n: 0, busy: false, error: "" };
   } catch (e) {
     await flagAccount(env, account, e);
-    return { n: 0, busy: false, error: isAuthFailure(e) ? "This account needs reconnecting" : String(e.message || e).slice(0, 200) };
+    return { n: 0, busy: false, error: isAuthFailure(e) ? ui("This account needs reconnecting") : String(e.message || e).slice(0, 200) };
   } finally {
     await env.DB.prepare("DELETE FROM settings WHERE key=? AND value=?").bind(key, String(now)).run().catch(() => {});
   }

@@ -10,7 +10,7 @@ import { formatFrom, htmlToText, parseAddressList } from "./mime.js";
 import { folderNameFor, icloudAct, mailboxList, resolveMailbox } from "./mailbox.js";
 import { indexMessage, storeRows, unfollow, uncategorize, unindex } from "./store.js";
 import { rowFromRaw } from "./sync.js";
-import { FLAG_SEEN, bodyKey, hashHex, json } from "./util.js";
+import { FLAG_SEEN, bodyKey, hashHex, json, ui } from "./util.js";
 
 /* ────────────────────────────────────────────────────────────────
    Filing: one destination name, one provider.
@@ -24,10 +24,13 @@ export async function moveAtProvider(env, acct, msg, target) {
     // Match the destination by the app's own folder name first, then by the
     // raw IMAP name, so both "spam" and "Junk" reach the same mailbox.
     const dest = resolveMailbox(boxes, target);
-    if (!dest) throw new Error(`No mailbox matching "${target}". Server has: ${mailboxList(boxes)}`);
+    if (!dest) {
+      const folders = mailboxList(boxes);
+      throw new Error(ui(`No mailbox matching "${target}". Server has: ${folders}`));
+    }
     await imapMove(im, uid, dest.name);
   });
-  if (!done) throw new Error("This account has no stored credential");
+  if (!done) throw new Error(ui("This account has no stored credential"));
 }
 
 /**
@@ -74,7 +77,10 @@ export async function fileSentCopy(env, account, pass, raw, bccLine = "", onFile
   try {
     const boxes = await imapList(im);
     const box = boxes.find((mb) => folderNameFor(mb) === "sent");
-    if (!box) throw new Error(`no Sent mailbox — server has: ${mailboxList(boxes)}`);
+    if (!box) {
+      const folders = mailboxList(boxes);
+      throw new Error(ui(`no Sent mailbox — server has: ${folders}`));
+    }
     // Already read: it is your own message, and an unread badge on Sent is
     // nobody's idea of new mail.
     await imapAppend(im, box.name, raw, FLAG_SEEN);
@@ -131,7 +137,10 @@ export async function fileDraftCopy(env, account, pass, raw, replaces) {
   try {
     const boxes = await imapList(im);
     const box = boxes.find((mb) => folderNameFor(mb) === "drafts");
-    if (!box) throw new Error(`no Drafts mailbox — server has: ${mailboxList(boxes)}`);
+    if (!box) {
+      const folders = mailboxList(boxes);
+      throw new Error(ui(`no Drafts mailbox — server has: ${folders}`));
+    }
     await imapSelect(im, box.name);
 
     // The old copy goes before the new one lands, so a failure halfway leaves
