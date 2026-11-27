@@ -37,10 +37,14 @@ const person = (...columns) => (v) => ({
   values: columns.map(() => contains(v)),
 });
 
-/** One column of the full-text index. */
-const column = (name) => (v, { prefix }) => {
+/**
+ * One column of the full-text index. `starts` matches the start of the last
+ * word wherever the token sits in the line, for values that are rarely typed
+ * whole: a name, a piece of an address.
+ */
+const column = (name, { starts = false } = {}) => (v, { prefix }) => {
   const ws = words(v);
-  return ws.length ? { match: `${name} : ${phrase(ws, prefix)}` } : null;
+  return ws.length ? { match: `${name} : ${phrase(ws, starts || prefix)}` } : null;
 };
 
 const flag = (where) => ({ where });
@@ -83,7 +87,11 @@ const onDate = (make) => (v, { tz }) => {
  * `where` + `values` for SQL over `m`, or `match` for the full-text index.
  */
 export const OPERATORS = {
-  from: person("m.from_name", "m.from_email"),
+  // Through the index, which holds every sender's name and address. A LIKE
+  // over the two columns read the whole mailbox for each letter typed after
+  // "from:", and D1 bills every row read. Recipients are not in the index, so
+  // to: and cc: still pay that.
+  from: column("sender", { starts: true }),
   to: person("m.to_line"),
   cc: person("m.cc_line"),
   subject: column("subject"),
@@ -134,7 +142,9 @@ export function parseSearch(term, { tzOffsetMin } = {}) {
     // of the line is finished.
     const prefix = i === tokens.length - 1 && quoted === undefined;
     const op = key && !minus && Object.hasOwn(OPERATORS, key.toLowerCase()) ? OPERATORS[key.toLowerCase()] : null;
-    const hit = op ? op((quoted ?? bare).trim(), { tz, prefix }) : null;
+    // An empty value (to:"") would match everything; it is not an operator.
+    const value = (quoted ?? bare).trim();
+    const hit = op && value ? op(value, { tz, prefix }) : null;
     if (hit?.where) {
       where.push(hit.where);
       values.push(...(hit.values ?? []));

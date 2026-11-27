@@ -1537,7 +1537,10 @@ console.log("\n── recherche : opérateurs ───────────�
   eq(search("from:ada"), ["m1", "m3"], "from: par le nom ou l'adresse");
   eq(search("from:math.org"), ["m1", "m3"], "from: par un morceau d'adresse");
   eq(search('from:"ada lovelace"'), ["m1", "m3"], "une valeur entre guillemets");
-  eq(search('from:"lovelace ada"'), [], "avec l'espace de la valeur");
+  eq(search('from:"lovelace bob"'), [], "les mots de la valeur se suivent chez l'expéditeur");
+  eq(search("from:ad budget"), ["m1", "m3"], "from: vaut début de mot, même au milieu de la ligne");
+  eq(search("from:lovel"), ["m1", "m3"], "le début d'un nom suffit");
+  eq(search('to:""'), [], "une valeur vide n'est pas un opérateur");
   eq(search("FROM:Bob"), ["m2"], "clé et valeur insensibles à la casse");
   eq(search("to:ada"), ["m2"], "to:");
   eq(search("cc:bob"), ["m1"], "cc:");

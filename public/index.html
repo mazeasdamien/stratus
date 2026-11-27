@@ -1818,7 +1818,8 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
   <div class="sh-t">Search operators</div>
   <div class="sh-s">Mix them with words, as in <b>budget from:ada has:attachment after:2026-10-01</b>. Anything not recognised is searched as plain words.</div>
   <dl class="keys">
-    <dt><kbd>from:</kbd> <kbd>to:</kbd> <kbd>cc:</kbd></dt><dd>Name or address contains it</dd>
+    <dt><kbd>from:</kbd></dt><dd>A word of the sender's name or address starts with it</dd>
+    <dt><kbd>to:</kbd> <kbd>cc:</kbd></dt><dd>Name or address contains it</dd>
     <dt><kbd>subject:</kbd> <kbd>body:</kbd></dt><dd>Only in the subject, or only in the text</dd>
     <dt><kbd>has:attachment</kbd></dt><dd>With a file attached</dd>
     <dt><kbd>attachment:</kbd></dt><dd>A file whose name contains it</dd>
@@ -2260,7 +2261,7 @@ function busy(delta) {
  * Which build this page is. Matches SHELL in sw.js and CLIENT_SHELL in the
  * Worker; every API call says it, and every reply says what it should be.
  */
-const CLIENT = "v76";
+const CLIENT = "v77";
 
 /**
  * How long a request may go unanswered before it is given up on.
