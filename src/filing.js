@@ -8,7 +8,7 @@ import { open } from "./crypto.js";
 import { imapAppend, imapList, imapMove, imapOpen, imapPurge, imapSearch, imapSelect } from "./imap.js";
 import { formatFrom, htmlToText, parseAddressList } from "./mime.js";
 import { folderNameFor, icloudAct, mailboxList, resolveMailbox } from "./mailbox.js";
-import { indexMessage, storeRows, uncategorize, unindex } from "./store.js";
+import { indexMessage, storeRows, unfollow, uncategorize, unindex } from "./store.js";
 import { rowFromRaw } from "./sync.js";
 import { FLAG_SEEN, bodyKey, hashHex, json } from "./util.js";
 
@@ -42,7 +42,7 @@ export async function moveAtProvider(env, acct, msg, target) {
  * and a row here so it appears in Sent the moment the composer closes rather
  * than whenever the next sync happens to reach that mailbox.
  */
-export async function fileSentCopy(env, account, pass, raw, bccLine = "") {
+export async function fileSentCopy(env, account, pass, raw, bccLine = "", onFiled = null) {
   // The local row first, and unconditionally. A message you have sent should
   // appear in Sent whatever the server then makes of the copy — tying the two
   // together meant one IMAP hiccup left you with no record of having written
@@ -65,6 +65,9 @@ export async function fileSentCopy(env, account, pass, raw, bccLine = "") {
     .bind(account.id, row.pid)
     .run();
   await indexMessage(env, id, row, htmlToText(doc.html || ""));
+  // Known to the caller as soon as the local row exists, even if Apple then
+  // refuses the copy below: a follow-up attaches to this row, not to Apple's.
+  onFiled?.(id);
 
   // Then Apple's copy, so every other device sees it too.
   const im = await imapOpen({ user: account.email, pass });
@@ -94,6 +97,7 @@ export async function forgetLocal(env, accountId, pid) {
     env.DB.prepare("DELETE FROM messages WHERE id=?").bind(id),
     ...(await unindex(env, [id])),
     ...uncategorize(env, [id]),
+    ...unfollow(env, [id]),
   ]);
 }
 

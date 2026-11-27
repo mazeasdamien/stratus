@@ -286,6 +286,19 @@ export const SCHEMA = [
   updated_at  INTEGER NOT NULL
 )`,
   `CREATE INDEX IF NOT EXISTS idx_tasks_open ON tasks(due) WHERE done_at IS NULL`,
+  // Follow-ups: a message to come back to, or one you sent that wants an
+  // answer. One row per message, only while it is open: a follow-up that is
+  // cancelled by a reply or cleared by you is deleted, not kept with a flag.
+  // See src/followup.js.
+  `CREATE TABLE IF NOT EXISTS followups (
+  message_id  TEXT PRIMARY KEY,
+  account_id  TEXT NOT NULL,
+  thread_key  TEXT NOT NULL DEFAULT '',
+  kind        TEXT NOT NULL,                 -- flag: remind me at due | noreply: remind me at due if nobody has replied
+  due         INTEGER NOT NULL,              -- ms
+  state       TEXT NOT NULL DEFAULT 'waiting', -- waiting | reminded
+  created_at  INTEGER NOT NULL
+)`,
 ];
 
 /**

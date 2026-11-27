@@ -24,7 +24,8 @@ import { folderNameFor, icloudAct, icloudPassword, mailboxList, renameCursor, re
 import { deliver, outboxLease, parkIfUncertain } from "./outgoing.js";
 import { parseSearch } from "./query.js";
 import { attachCategories, conversationState } from "./categories.js";
-import { flagAccount, forgetMessages, imapError, unindex, uncategorize } from "./store.js";
+import { flagAccount, forgetMessages, imapError, unfollow, unindex, uncategorize } from "./store.js";
+import { onUnstar } from "./followup.js";
 import { countDestroyed, forgetBlockedLocally, mailboxNames, noteMailbox, purgeBlockedAtProvider, syncAccount } from "./sync.js";
 import { ATTACHMENT_HEADERS, FLAG_FLAGGED, FLAG_SEEN, bodyKey, hashHex, json } from "./util.js";
 
@@ -1265,6 +1266,7 @@ export async function handleApi(request, env, path, ctx, session) {
       env.DB.prepare("DELETE FROM events WHERE id=?").bind(msg.id),
       ...(await unindex(env, [msg.id])),
       ...uncategorize(env, [msg.id]),
+      ...unfollow(env, [msg.id]),
     ]);
     return json({ ok: true, alreadyGone: gone });
   }
@@ -1312,6 +1314,7 @@ export async function handleApi(request, env, path, ctx, session) {
         await env.DB.prepare("UPDATE messages SET starred=? WHERE id=?")
           .bind(b.starred ? 1 : 0, msg.id)
           .run();
+        if (!b.starred) await onUnstar(env, msg.id);
       }
       if (typeof b.unread === "boolean") {
         await icloudAct(env, acct, msg.mid || msg.pid, msg.folder, (im, _b, _h, uid) =>

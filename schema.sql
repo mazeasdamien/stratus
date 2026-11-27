@@ -243,6 +243,16 @@ CREATE TABLE IF NOT EXISTS tasks (
 
 CREATE INDEX IF NOT EXISTS idx_tasks_open ON tasks(due) WHERE done_at IS NULL;
 
+CREATE TABLE IF NOT EXISTS followups (
+  message_id  TEXT PRIMARY KEY,
+  account_id  TEXT NOT NULL,
+  thread_key  TEXT NOT NULL DEFAULT '',
+  kind        TEXT NOT NULL,                 -- flag: remind me at due | noreply: remind me at due if nobody has replied
+  due         INTEGER NOT NULL,              -- ms
+  state       TEXT NOT NULL DEFAULT 'waiting', -- waiting | reminded
+  created_at  INTEGER NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_messages_uid     ON messages(account_id, mailbox, uid);
 
 CREATE INDEX IF NOT EXISTS idx_messages_att_todo ON messages(account_id) WHERE att_names IS NULL;

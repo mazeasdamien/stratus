@@ -9,6 +9,7 @@ import { smtpSend } from "./smtp.js";
 import { isRelayed, relayMessage, relaySend } from "./relay.js";
 import { accountById, fileSentCopy, senderFor } from "./filing.js";
 import { icloudAct, icloudPassword, resolveMailbox } from "./mailbox.js";
+import { followupForSent } from "./followup.js";
 import { imapError } from "./store.js";
 import { json } from "./util.js";
 
@@ -87,6 +88,11 @@ export async function deliver(env, b, { dryRun = false } = {}) {
     // put it somewhere nothing displays, which is how "it did not appear in
     // Sent" stayed a mystery instead of being a message on screen.
     let filedError = "";
+    // The Sent row, as soon as it exists: where a "remind me if nobody
+    // replies" is attached. Only a message that has really gone gets here, so
+    // one that was undone, refused or left uncertain never has one.
+    let sentId = "";
+    let followup;
 
     try {
       const pass = await icloudPassword(env, acct);
@@ -152,7 +158,7 @@ export async function deliver(env, b, { dryRun = false } = {}) {
         // The message has gone. Everything past this point is bookkeeping, and
         // none of it is allowed to turn a successful send into an error.
         try {
-          await fileSentCopy(env, acct, pass, raw, bcc.map((a) => a.email).join(", "));
+          await fileSentCopy(env, acct, pass, raw, bcc.map((a) => a.email).join(", "), (id) => (sentId = id));
           filed = true;
         } catch (e) {
           filedError = String(e.message || e).slice(0, 200);
@@ -161,6 +167,7 @@ export async function deliver(env, b, { dryRun = false } = {}) {
             .run()
             .catch(() => {});
         }
+        if (b.followup_days || b.followup_at) followup = !!sentId && (await followupForSent(env, sentId, b));
       } else {
         return json({ error: "This account has no stored credential" }, 400);
       }
@@ -172,7 +179,7 @@ export async function deliver(env, b, { dryRun = false } = {}) {
       if (e && e.afterData) return json({ error: UNCERTAIN, uncertain: true }, 504);
       return imapError(e, acct, env);
     }
-    return json({ ok: true, filed, filedError }, 202);
+    return json({ ok: true, filed, filedError, ...(followup === undefined ? {} : { followup }) }, 202);
   }
 }
 

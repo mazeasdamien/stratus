@@ -54,6 +54,8 @@ const IS = {
   read: flag("m.unread=0"),
   flagged: flag("m.starred=1"),
   starred: flag("m.starred=1"),
+  // An open follow-up on this very message (src/followup.js).
+  followup: flag("m.id IN (SELECT message_id FROM followups)"),
   // A conversation is pinned when any of its messages is (src/categories.js).
   pinned: flag("(m.pinned=1 OR (m.thread_key<>'' AND m.thread_key IN (SELECT thread_key FROM messages WHERE pinned=1 AND thread_key<>'')))"),
   important: flag("m.importance=1"),

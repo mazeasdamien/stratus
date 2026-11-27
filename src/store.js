@@ -187,6 +187,23 @@ export function uncategorize(env, ids) {
 }
 
 /**
+ * Statements that end the follow-ups of these messages, and the reminders they
+ * set (src/followup.js, whose reminders are of kind "followup").
+ */
+export function unfollow(env, ids) {
+  const out = [];
+  for (let i = 0; i < ids.length; i += 90) {
+    const chunk = ids.slice(i, i + 90);
+    const marks = chunk.map(() => "?").join(",");
+    out.push(
+      env.DB.prepare(`DELETE FROM reminders WHERE kind='followup' AND ref IN (${marks})`).bind(...chunk),
+      env.DB.prepare(`DELETE FROM followups WHERE message_id IN (${marks})`).bind(...chunk)
+    );
+  }
+  return out;
+}
+
+/**
  * The attachment file names of a message, one per line, as messages.att_names
  * keeps them.
  *
@@ -224,6 +241,6 @@ export async function forgetMessages(env, ids) {
   }
   // Chunked: D1 caps the number of bound parameters per statement, and a
   // mailbox being emptied can carry thousands of ids.
-  const stmts = [...(await unindex(env, ids)), ...uncategorize(env, ids)];
+  const stmts = [...(await unindex(env, ids)), ...uncategorize(env, ids), ...unfollow(env, ids)];
   for (let i = 0; i < stmts.length; i += 100) await env.DB.batch(stmts.slice(i, i + 100));
 }
