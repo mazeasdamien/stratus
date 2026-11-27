@@ -201,7 +201,7 @@ const hasWords = (s) => /\p{L}{2}/u.test(s);
  * placeholder a template left where an expression was.
  */
 function markup(src, lineOf = () => 0, mark = "\u0001") {
-  const re = /<!--[\s\S]*?-->|<(\/?)([a-zA-Z][\w-]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>|([^<]+)/g;
+  const re = /<!--[\s\S]*?-->|<![^>]*>|<(\/?)([a-zA-Z][\w-]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>|([^<]+)/g;
   const out = [];
   const stack = [];
   let m;
@@ -369,7 +369,8 @@ function scanScript(file, text, base = 0, lineOf, region = null) {
     if (tk.v === "t" || tk.v === "ui") {
       const { args, close } = callArgs(toks, i + 1);
       for (let k = i + 2; k < close; k++) inT[k] = true;
-      const first = args[0] && toks.slice(args[0][0], args[0][1]);
+      // A template's own ${…} tokens follow it; they are part of the one literal.
+      const first = args[0] && toks.slice(args[0][0], args[0][1]).filter((x, k, all) => k === 0 || all[0].type !== "tpl" || x.start >= all[0].end);
       const lit =
         first && first.length === 1 && first[0].type === "str" ? { text: first[0].v } :
         first && first.length === 1 && first[0].type === "tpl" ? { text: placeholdered(first[0], tk.v === "ui"), tpl: first[0] } : null;
@@ -446,6 +447,9 @@ function scanScript(file, text, base = 0, lineOf, region = null) {
     const before = toks[i - 1], after = toks[i + 1];
     if (before && before.v === ".") continue;
     let from = -1, to = -1;
+    // `var t = StratusI18n.t` (or any `X.t`) is the translator itself, as in the Worker's own pages.
+    const alias = after && after.v === "=" && toks[i + 2] && toks[i + 2].type === "ident" && toks[i + 3] && toks[i + 3].v === "." && toks[i + 4] && toks[i + 4].v === "t" && toks[i + 5] && [",", ";"].includes(toks[i + 5].v);
+    if (alias) continue;
     if (before && before.type === "ident" && /^(const|let|var)$/.test(before.v)) {
       // to the end of the block that holds it
       let depth = 0;
