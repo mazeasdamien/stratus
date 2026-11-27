@@ -10522,7 +10522,7 @@ async function toggleThread(key) {
   }
   const res = await api(`/api/messages?thread=${encodeURIComponent(key)}`).catch(() => null);
   if (seq !== threadSeq) return;
-  if (!res || !res.ok) return toast("Could not open this conversation");
+  if (!res || !res.ok) return toast(t("Could not open this conversation"));
   const rows = (await res.json().catch(() => ({}))).messages || [];
   if (seq !== threadSeq) return;
   threadRows = rows;
@@ -10546,11 +10546,11 @@ async function dropDraftRow(id, n = 1, key = "") {
   // newest of eleven and leave ten is not an offer.
   const many = n > 1 && !!key;
   const yes = await ask(
-    many ? `Delete these ${n} drafts?` : "Delete this draft?",
+    many ? t("Delete these {n} drafts?", { n }) : t("Delete this draft?"),
     many
-      ? "Every copy in this conversation goes, here and at iCloud. This cannot be undone, and nothing is sent."
-      : "It is removed here and at iCloud. This cannot be undone.",
-    { ok: "Delete", danger: true }
+      ? t("Every copy in this conversation goes, here and at iCloud. This cannot be undone, and nothing is sent.")
+      : t("It is removed here and at iCloud. This cannot be undone."),
+    { ok: t("Delete"), danger: true }
   );
   if (!yes) return;
   // One login for the whole pile rather than one per copy.
@@ -10562,7 +10562,7 @@ async function dropDraftRow(id, n = 1, key = "") {
       }).catch(() => null)
     : await api(`/api/messages/${id}/purge`, { method: "POST" }).catch(() => null);
   const d = res ? await res.json().catch(() => ({})) : {};
-  if (!res || !res.ok) return toast(d.error || "Could not delete this draft");
+  if (!res || !res.ok) return toast(tw(d.error) || t("Could not delete this draft"));
 
   // The composer may be holding the very draft that no longer exists, and
   // closing it runs the save — which would write it straight back, under a new
@@ -10573,7 +10573,7 @@ async function dropDraftRow(id, n = 1, key = "") {
     draftSession++;
     if (document.body.classList.contains("composing")) closeSheets();
   }
-  toast(many ? `${n} drafts deleted` : "Draft deleted");
+  toast(many ? t("{n} drafts deleted", { n }) : t("Draft deleted"));
   if (many) { openThread = ""; threadRows = []; }
   refreshAll();
   refreshCounts();
@@ -10583,13 +10583,13 @@ async function dropDraftRow(id, n = 1, key = "") {
 async function resumeDraft(id) {
   closeSheets();
   const res = await api(`/api/messages/${id}`).catch(() => null);
-  if (!res || !res.ok) return toast("Could not open this draft");
+  if (!res || !res.ok) return toast(t("Could not open this draft"));
   const d = await res.json();
   /** Files on the draft at Apple that this composer will not be holding. */
   const carried = (d.body.attachments || []).length;
 
   openCompose({
-    title: "Draft",
+    title: t("Draft"),
     account: d.message.account_id,
     from: d.message.from_email,
     to: d.message.to_line || "",
@@ -10611,14 +10611,14 @@ async function resumeDraft(id) {
   if (d.message.bcc_line) {
     addrSet("#cBcc", "#cBccChips", d.message.bcc_line);
     $("#cBccWrap").hidden = false;
-    markToggle("#cBccToggle", "#cBccWrap", "Bcc");
+    markToggle("#cBccToggle", "#cBccWrap", t("Bcc"));
   }
 
   // Said rather than hidden: the files are still on the draft at Apple, but
   // they are not in this composer, and sending from here would quietly leave
   // them behind.
   const n = carried;
-  if (n) toast(`${n} attachment${n > 1 ? "s" : ""} not carried over — attach again before sending. The original draft keeps ${n > 1 ? "them" : "it"}.`);
+  if (n) toast(t("{n, plural, one {# attachment not carried over — attach again before sending. The original draft keeps it.} other {# attachments not carried over — attach again before sending. The original draft keeps them.}}", { n }));
 }
 
 async function refreshAll(spin = false) {
@@ -10678,9 +10678,9 @@ async function syncNow() {
     await refreshAll();
     const got = answers.reduce((n, d) => n + (d.fetched || 0), 0);
     const failed = answers.find((d) => !d.ok);
-    if (failed) toast(failed.error || "Could not reach iCloud");
-    else if (!got && answers.some((d) => d.busy)) toast("Already syncing — new mail will appear in a moment");
-    else toast(got ? `${got} new message${got > 1 ? "s" : ""}` : "Up to date");
+    if (failed) toast(tw(failed.error) || t("Could not reach iCloud"));
+    else if (!got && answers.some((d) => d.busy)) toast(t("Already syncing — new mail will appear in a moment"));
+    else toast(got ? t("{n, plural, one {# new message} other {# new messages}}", { n: got }) : t("Up to date"));
   } finally {
     btn.classList.remove("busy");
   }
@@ -10937,9 +10937,9 @@ $("#idSave").addEventListener("click", async (e) => {
   }).catch(() => null);
   btn.disabled = false;
   const d = res ? await res.json().catch(() => ({})) : {};
-  if (!res || !res.ok) { toast(d.error || "Could not save"); return; }
+  if (!res || !res.ok) { toast(tw(d.error) || t("Could not save")); return; }
   $("#idAliases").value = (d.aliases || []).join(", ");
-  toast(d.aliases?.length ? `Saved — ${d.aliases.length} other address${d.aliases.length > 1 ? "es" : ""}` : "Saved");
+  toast(d.aliases?.length ? t("{n, plural, one {Saved — # other address} other {Saved — # other addresses}}", { n: d.aliases.length }) : t("Saved"));
   loadAccounts();
 });
 $("#openKeys").addEventListener("click", () => {
@@ -10993,14 +10993,21 @@ function inviteWhen(inv) {
   if (inv.start.allDay) {
     // An all-day DTEND is exclusive: a one-day event ends the next midnight.
     const last = e ? new Date(e.getTime() - 86400_000) : null;
-    return last && !sameDay(last, s) ? `${day(s)} – ${day(last)}` : `${day(s)}, all day`;
+    return last && !sameDay(last, s) ? `${day(s)} – ${day(last)}` : t("{day}, all day", { day: day(s) });
   }
-  const t = (d) => d.toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit", ...zone });
-  if (!e) return `${day(s)}, ${t(s)}`;
+  const hm = (d) => d.toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit", ...zone });
+  if (!e) return t("{day}, {time}", { day: day(s), time: hm(s) });
   return sameDay(e, s)
-    ? `${day(s)}, ${t(s)} – ${t(e)}`
-    : `${day(s)} ${t(s)} – ${day(e, { day: "numeric", month: "short" })} ${t(e)}`;
+    ? `${day(s)}, ${hm(s)} – ${hm(e)}`
+    : `${day(s)} ${hm(s)} – ${day(e, { day: "numeric", month: "short" })} ${hm(e)}`;
 }
+/** What an attendee's answer reads as, by its PARTSTAT. */
+const INVITE_REPLIED = {
+  ACCEPTED: (name) => t("{name} accepted", { name }),
+  TENTATIVE: (name) => t("{name} might come", { name }),
+  DECLINED: (name) => t("{name} declined", { name }),
+  other: (name) => t("{name} answered", { name }),
+};
 function renderInvite(cur) {
   const box = $("#rInvite");
   const inv = cur && cur.invite;
@@ -11012,28 +11019,28 @@ function renderInvite(cur) {
   if (inv.method === "REQUEST") {
     const shown = rsvpShown(m.id, cur.rsvp);
     actions = ["accepted", "tentative", "declined"]
-      .map((s) => `<button class="ghost" data-rsvp="${s}" aria-pressed="${shown === s}">${{ accepted: "Accept", tentative: "Maybe", declined: "Decline" }[s]}</button>`)
+      .map((s) => `<button class="ghost" data-rsvp="${s}" aria-pressed="${shown === s}">${{ accepted: t("Accept"), tentative: t("Maybe"), declined: t("Decline") }[s]}</button>`)
       .join("");
   }
-  actions += `<button class="ghost" data-cal-add>Add to calendar</button>`;
+  actions += `<button class="ghost" data-cal-add>${t("Add to calendar")}</button>`;
   if (ics >= 0) {
-    actions += `<a class="ghost" href="/api/messages/${encodeURIComponent(m.id)}/attachment/${ics}" download="invite.ics">Download .ics</a>`;
+    actions += `<a class="ghost" href="/api/messages/${encodeURIComponent(m.id)}/attachment/${ics}" download="invite.ics">${t("Download .ics")}</a>`;
   }
   const join = meetingLink(inv.url);
   if (join) {
-    actions += `<a class="ghost" href="${esc(join.href)}" target="_blank" rel="noopener noreferrer">Join meeting · ${esc(join.host)}</a>`;
+    actions += `<a class="ghost" href="${esc(join.href)}" target="_blank" rel="noopener noreferrer">${t("Join meeting · {host}", { host: esc(join.host) })}</a>`;
   }
   // Answers to your own invitations arrive as METHOD:REPLY: say who said what.
   const replied =
     inv.method === "REPLY" && inv.attendees.length
-      ? `${inv.attendees[0].name || inv.attendees[0].email} ${({ ACCEPTED: "accepted", TENTATIVE: "might come", DECLINED: "declined" })[inv.attendees[0].partstat] || "answered"}`
+      ? (INVITE_REPLIED[inv.attendees[0].partstat] || INVITE_REPLIED.other)(inv.attendees[0].name || inv.attendees[0].email)
       : "";
   box.classList.toggle("cancelled", inv.method === "CANCEL" || inv.status === "CANCELLED");
   box.innerHTML =
-    `<div class="it">${inv.method === "CANCEL" ? "Cancelled: " : ""}${esc(inv.summary || m.subject || "Invitation")}</div>` +
+    `<div class="it">${inv.method === "CANCEL" ? t("Cancelled: {title}", { title: esc(inv.summary || m.subject || t("Invitation")) }) : esc(inv.summary || m.subject || t("Invitation"))}</div>` +
     `<div class="iw">${esc(inviteWhen(inv))}</div>` +
     (inv.location ? `<div class="im">${esc(inv.location)}</div>` : "") +
-    (who ? `<div class="im">Organised by ${esc(who)}</div>` : "") +
+    (who ? `<div class="im">${t("Organised by {name}", { name: esc(who) })}</div>` : "") +
     (replied ? `<div class="im">${esc(replied)}</div>` : "") +
     (actions ? `<div class="ia">${actions}</div>` : "");
   box.hidden = false;
@@ -11053,11 +11060,11 @@ function renderInvite(cur) {
  * and then Decline sends Decline, once.
  */
 const pendingRsvp = new Map(); // message id → { status, timer }
-const RSVP_DOING = { accepted: "Accepting", tentative: "Answering maybe", declined: "Declining" };
+const RSVP_DOING = { accepted: t("Accepting"), tentative: t("Answering maybe"), declined: t("Declining") };
 const RSVP_DONE = {
-  accepted: "Accepted — the organiser has been told",
-  tentative: "Answered maybe",
-  declined: "Declined — the organiser has been told",
+  accepted: t("Accepted — the organiser has been told"),
+  tentative: t("Answered maybe"),
+  declined: t("Declined — the organiser has been told"),
 };
 /** The answer to light up: the one about to go, or else the one that went. */
 const rsvpShown = (id, stored) => (pendingRsvp.has(id) ? pendingRsvp.get(id).status : stored || "");
@@ -11080,7 +11087,7 @@ function answerInvite(id, status) {
     clearTimeout(mine.timer);
     pendingRsvp.delete(id);
     paintRsvp(id);
-    toast("Not sent — the organiser has not been told");
+    toast(t("Not sent — the organiser has not been told"));
   });
 }
 async function sendRsvp(id, status) {
@@ -11099,7 +11106,7 @@ async function sendRsvp(id, status) {
   // Repainted either way: on a failure the button goes back to what was
   // last really sent.
   paintRsvp(id);
-  toast(res && res.ok ? RSVP_DONE[status] : d.error || "Could not send the answer");
+  toast(res && res.ok ? RSVP_DONE[status] : tw(d.error) || t("Could not send the answer"));
 }
 addEventListener("beforeunload", (e) => {
   if (pendingRsvp.size) e.preventDefault();
@@ -11188,7 +11195,7 @@ function switchTab(id) {
 
 registerView({
   id: "mail",
-  label: "Mail",
+  label: t("Mail"),
   icon: '<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
   pane: "#list",
   search: true,
@@ -11196,7 +11203,7 @@ registerView({
 });
 registerView({
   id: "timeline",
-  label: "Calendar",
+  label: t("Calendar"),
   icon: '<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
   pane: "#timelineView",
   dot: true,
@@ -11223,7 +11230,7 @@ $("#viewTabs").addEventListener("keydown", (e) => {
 });
 
 async function loadTimeline() {
-  if (currentTab === "timeline") $("#hmeta").textContent = "Loading meetings…";
+  if (currentTab === "timeline") $("#hmeta").textContent = t("Loading meetings…");
   const res = await api("/api/timeline").catch(() => null);
   const d = res && res.ok ? await res.json().catch(() => null) : null;
   // No answer is not an answer of "none". It used to empty the list, so a
@@ -11250,16 +11257,16 @@ function eventDayLabel(start) {
     ? new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()).getTime()
     : new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   const diff = Math.round((targetDay - today) / 86400_000);
-  if (diff === 0) return "Today";
-  if (diff === 1) return "Tomorrow";
-  if (diff === -1) return "Yesterday";
+  if (diff === 0) return t("Today");
+  if (diff === 1) return t("Tomorrow");
+  if (diff === -1) return t("Yesterday");
   return d.toLocaleDateString(LOCALE, { weekday: "long", day: "numeric", month: "long", ...whenZone(start) });
 }
 
 /** Draws the calendar, which now holds what this tab used to list; the dot is still the timeline's. */
 function renderTimeline() {
   if (!$("#timelineView")) return;
-  $("#timelineDot").hidden = !timelineEvents.some((e) => eventDayLabel(e.start) === "Today");
+  $("#timelineDot").hidden = !timelineEvents.some((e) => eventDayLabel(e.start) === t("Today"));
   calRender();
 }
 
@@ -11269,14 +11276,14 @@ $("#rSummarize").addEventListener("click", async () => {
   if (!current) return;
   const id = current.message.id;
   summaryFor = id;
-  $("#rSummaryText").textContent = "Reading the conversation…";
+  $("#rSummaryText").textContent = t("Reading the conversation…");
   $("#rSummary").hidden = false;
   const res = await api(`/api/messages/${id}/summary`, { method: "POST" }).catch(() => null);
   const d = res ? await res.json().catch(() => ({})) : {};
   if (!current || current.message.id !== id) return; // moved on while it was thinking
   if (!res || !res.ok) {
     $("#rSummary").hidden = true;
-    toast(d.error || "Could not summarize");
+    toast(tw(d.error) || t("Could not summarize"));
     return;
   }
   // Text, never markup: this came from a model reading a stranger's mail.
