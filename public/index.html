@@ -2583,12 +2583,12 @@ body.selmode .xf-chip{bottom:calc(var(--sab) + 92px)}
   <div class="sh-t">Keyboard shortcuts</div>
   <dl class="keys">
     <dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Next, previous message</dd>
-    <dt><kbd>/</kbd></dt><dd>Search, with <kbd>from:</kbd> <kbd>has:attachment</kbd> <kbd>is:unread</kbd> and more &mdash; the <b>?</b> in the box lists them</dd>
+    <dt><kbd>/</kbd></dt><dd data-i18n>Search, with <kbd>from:</kbd> <kbd>has:attachment</kbd> <kbd>is:unread</kbd> and more &mdash; the <b>?</b> in the box lists them</dd>
     <dt><kbd>e</kbd></dt><dd>Archive</dd>
-    <dt><kbd>#</kbd> <kbd>Delete</kbd></dt><dd>Delete</dd>
+    <dt><kbd>#</kbd> <kbd translate="no">Delete</kbd></dt><dd>Delete</dd>
     <dt><kbd>s</kbd></dt><dd>Star</dd>
     <dt><kbd>1</kbd>–<kbd>5</kbd> <kbd>0</kbd></dt><dd>Toggle the first five categories on the open message (Red, Orange, Yellow, Green, Blue to begin with); 0 clears them</dd>
-    <dt><kbd>P</kbd></dt><dd>Pin or unpin the conversation to the top of its list (<kbd>Shift</kbd> <kbd>p</kbd>)</dd>
+    <dt><kbd>P</kbd></dt><dd data-i18n>Pin or unpin the conversation to the top of its list (<kbd>Shift</kbd> <kbd>p</kbd>)</dd>
     <dt><kbd>u</kbd></dt><dd>Mark unread</dd>
     <dt><kbd>x</kbd></dt><dd>Select the message, to act on several at once</dd>
     <dt><kbd>v</kbd></dt><dd>Move to a folder</dd>
@@ -2618,7 +2618,7 @@ body.selmode .xf-chip{bottom:calc(var(--sab) + 92px)}
 <div class="sheet" id="searchSheet" tabindex="-1">
   <div class="grab"></div>
   <div class="sh-t">Search operators</div>
-  <div class="sh-s">Mix them with words, as in <b>budget from:ada has:attachment after:2026-10-01</b>. Anything not recognised is searched as plain words.</div>
+  <div class="sh-s" data-i18n>Mix them with words, as in <b>budget from:ada has:attachment after:2026-10-01</b>. Anything not recognised is searched as plain words.</div>
   <dl class="keys">
     <dt><kbd>from:</kbd></dt><dd>A word of the sender's name or address starts with it</dd>
     <dt><kbd>to:</kbd> <kbd>cc:</kbd></dt><dd>Name or address contains it</dd>
@@ -2626,12 +2626,12 @@ body.selmode .xf-chip{bottom:calc(var(--sab) + 92px)}
     <dt><kbd>has:attachment</kbd></dt><dd>With a file attached</dd>
     <dt><kbd>attachment:</kbd></dt><dd>A file whose name contains it</dd>
     <dt><kbd>is:unread</kbd> <kbd>is:read</kbd></dt><dd>Read or not</dd>
-    <dt><kbd>is:flagged</kbd></dt><dd>Starred (<kbd>is:starred</kbd> is the same)</dd>
+    <dt><kbd>is:flagged</kbd></dt><dd data-i18n>Starred (<kbd>is:starred</kbd> is the same)</dd>
     <dt><kbd>category:</kbd></dt><dd>Has the category of that name, as in <kbd>category:red</kbd> or <kbd>category:"Project X"</kbd></dd>
     <dt><kbd>is:followup</kbd></dt><dd>Has an open follow-up: flagged to come back to, or waiting for a reply</dd>
     <dt><kbd>is:pinned</kbd></dt><dd>In a pinned conversation</dd>
-    <dt><kbd>is:important</kbd> <kbd>importance:</kbd></dt><dd>Marked high importance; <kbd>importance:high</kbd>, <kbd>normal</kbd> or <kbd>low</kbd> picks one</dd>
-    <dt><kbd>after:</kbd> <kbd>before:</kbd> <kbd>on:</kbd></dt><dd>A day such as 2026-10-01, in your time zone. <b>after:</b> counts that day, <b>before:</b> stops short of it</dd>
+    <dt><kbd>is:important</kbd> <kbd>importance:</kbd></dt><dd data-i18n>Marked high importance; <kbd>importance:high</kbd>, <kbd>normal</kbd> or <kbd>low</kbd> picks one</dd>
+    <dt><kbd>after:</kbd> <kbd>before:</kbd> <kbd>on:</kbd></dt><dd data-i18n>A day such as 2026-10-01, in your time zone. <b>after:</b> counts that day, <b>before:</b> stops short of it</dd>
     <dt><kbd>"two words"</kbd></dt><dd>That exact phrase; also works after any operator, as in <kbd>from:"ada lovelace"</kbd></dd>
     <dt><kbd>-word</kbd></dt><dd>Leaves out mail containing the word</dd>
   </dl>
@@ -2640,7 +2640,7 @@ body.selmode .xf-chip{bottom:calc(var(--sab) + 92px)}
 <div class="sheet" id="icloudSheet">
   <div class="grab"></div>
   <div class="sh-t">Connect iCloud</div>
-  <div class="sh-s">Needs an <b>app-specific password</b> from <a href="https://account.apple.com/account/manage" target="_blank" rel="noopener" style="color:var(--acc)">account.apple.com</a> &rarr; Sign-In and Security &rarr; App-Specific Passwords. Not your Apple ID password &mdash; that will not work and should not be typed here.</div>
+  <div class="sh-s" data-i18n>Needs an <b>app-specific password</b> from <a href="https://account.apple.com/account/manage" target="_blank" rel="noopener" style="color:var(--acc)">account.apple.com</a> &rarr; Sign-In and Security &rarr; App-Specific Passwords. Not your Apple ID password &mdash; that will not work and should not be typed here.</div>
   <div class="field"><input id="icEmail" type="text" inputmode="email" placeholder="you@icloud.com" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="iCloud address"></div>
   <div class="field"><input id="icPass" type="password" placeholder="xxxx-xxxx-xxxx-xxxx" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="App-specific password">
     <button class="ghost" id="icShow" type="button" aria-pressed="false" style="flex:none;min-height:30px">Show</button></div>
@@ -2654,7 +2654,7 @@ body.selmode .xf-chip{bottom:calc(var(--sab) + 92px)}
 <div class="sheet" id="pdfSheet">
   <div class="grab"></div>
   <div class="sh-t">Save as PDF</div>
-  <div class="sh-s">Opens your browser's print dialog &mdash; pick <b>Save as PDF</b> as the destination, and the subject is already the filename. A conversation is laid out oldest first, each message under its own From, To and date.</div>
+  <div class="sh-s" data-i18n>Opens your browser's print dialog &mdash; pick <b>Save as PDF</b> as the destination, and the subject is already the filename. A conversation is laid out oldest first, each message under its own From, To and date.</div>
   <button class="cta" id="pdfOne">This message</button>
   <button class="cta" id="pdfAll" style="background:var(--elev2);color:var(--t1)">The whole conversation</button>
 </div>
@@ -2746,7 +2746,7 @@ body.selmode .xf-chip{bottom:calc(var(--sab) + 92px)}
 <div class="sheet" id="xferSheet" role="dialog" aria-label="Import and export">
   <div class="grab"></div>
   <div class="sh-t">Import and export</div>
-  <div class="sh-s">Bring old mail in from <b>.eml</b> and <b>.mbox</b> files, or take a folder out as one <b>.mbox</b>. Imported mail is written to your mailbox at iCloud, so it shows on every device.</div>
+  <div class="sh-s" data-i18n>Bring old mail in from <b>.eml</b> and <b>.mbox</b> files, or take a folder out as one <b>.mbox</b>. Imported mail is written to your mailbox at iCloud, so it shows on every device.</div>
 
   <div class="pe-h">Import mail</div>
   <button class="cta" id="xfChoose" style="background:var(--elev2);color:var(--t1);margin-top:0">Choose files&hellip;</button>
@@ -2894,7 +2894,7 @@ body.selmode .xf-chip{bottom:calc(var(--sab) + 92px)}
 <div id="sessionOver" role="alertdialog" aria-modal="true" aria-labelledby="sessionOverTitle" hidden>
   <div class="mcard">
     <div class="mtitle" id="sessionOverTitle">Session expired</div>
-    <div class="mdetail">Open your activation link again, or <a id="sessionOverLink" href="/auth">enter the key here</a>.</div>
+    <div class="mdetail" data-i18n>Open your activation link again, or <a id="sessionOverLink" href="/auth">enter the key here</a>.</div>
     <div class="mdetail" id="sessionOverKept" hidden>What you were writing is kept in this browser, and is offered again once you are back.</div>
     <div class="mactions"><button class="rbtn" id="sessionOverBack">Back to the page</button></div>
   </div>
