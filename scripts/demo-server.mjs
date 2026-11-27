@@ -97,6 +97,68 @@ let reminders = [
   { id: "r3", kind: "followup", ref: "m3", title: "Follow up: maquette home", body: "Léa has not replied since Monday. The v2 was waiting on her notes.", at: now - 2 * 3600000, fired_at: now - 2 * 3600000 },
 ];
 
+// Invented tasks for the Tasks view, one or more in every group. The fake
+// routes below keep them for the life of the process and group them with the
+// real groupTasks, so the demo shows what the Worker would.
+const HOUR = 3600000;
+const dayUtc = (n) => { const d = new Date(now + n * 86400000); return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()); };
+const at = (n, h, m = 0) => { const d = new Date(now); d.setDate(d.getDate() + n); d.setHours(h, m, 0, 0); return d.getTime(); };
+const T = (id, title, o = {}) => ({
+  id, title, notes: "", due: null, due_all_day: 0, reminder: null, important: 0, done_at: null,
+  message_id: null, position: Number(id.slice(1)), created_at: now - Number(id.slice(1)) * 1000, updated_at: now, ...o,
+});
+let tasks = [
+  T("t1", "Renew the car insurance", { due: dayUtc(-2), due_all_day: 1, important: 1 }),
+  T("t2", "Send the invoice to Atelier Roux", { due: at(-1, 17), reminder: now + 2 * HOUR }),
+  T("t3", "Reply to Camille about the photos", { due: at(0, 18), message_id: "m1" }),
+  T("t4", "Book the dentist", { due: dayUtc(0), due_all_day: 1, notes: "Ask for an evening slot." }),
+  T("t5", "Prepare the design review notes", { due: at(1, 9, 30), reminder: at(1, 9), important: 1 }),
+  T("t6", "Order printer paper", { due: dayUtc(6), due_all_day: 1 }),
+  T("t7", "Call the plumber"),
+  T("t8", "Read the maquette feedback", { notes: "Léa's v2 notes are in the shared album." }),
+  T("t9", "Pay the water bill", { done_at: now - 3 * HOUR }),
+  T("t10", "Cancel the old gym membership", { done_at: now - 26 * HOUR }),
+];
+const taskOut = (t) => {
+  const m = t.message_id && messages.find((x) => x.id === t.message_id);
+  return {
+    id: t.id, title: t.title, notes: t.notes, due: t.due, allDay: !!t.due_all_day, reminder: t.reminder,
+    important: !!t.important, doneAt: t.done_at, message: m ? { id: m.id, subject: m.subject } : null,
+    createdAt: t.created_at, updatedAt: t.updated_at,
+  };
+};
+async function demoTasks(req, res, p, url) {
+  const { groupTasks } = await import("../src/tasks.js");
+  const body = req.method === "POST" ? JSON.parse((await new Promise((r) => { let s = ""; req.on("data", (c) => (s += c)); req.on("end", () => r(s || "{}")); }))) : {};
+  if (p === "/api/tasks" && req.method === "GET") {
+    const g = groupTasks(tasks.map((t) => ({ ...t, message: undefined })), Date.now(), url.searchParams.get("tz"));
+    return json(res, { due: g.due, doneCount: g.doneCount, groups: g.groups.map((x) => ({ ...x, tasks: x.tasks.map(taskOut) })) });
+  }
+  if (p === "/api/tasks" && req.method === "POST") {
+    const t = T(`t${Date.now() % 1e9}`, String(body.title || "").trim(), {
+      message_id: body.messageId || null, due: body.due ?? null, due_all_day: body.allDay ? 1 : 0,
+      reminder: body.reminder ?? null, important: body.important ? 1 : 0, notes: body.notes || "", position: tasks.length + 20,
+    });
+    tasks.push(t);
+    return json(res, { task: taskOut(t) }, 201);
+  }
+  if (p === "/api/tasks/clear-completed") {
+    tasks = tasks.filter((t) => t.done_at == null);
+    return json(res, { ok: true });
+  }
+  const m = p.match(/^\/api\/tasks\/([^/]+?)(?:\/(complete|reopen))?$/);
+  const t = m && tasks.find((x) => x.id === m[1]);
+  if (!t) return json(res, { error: "No such task" }, 404);
+  if (m[2]) t.done_at = m[2] === "complete" ? Date.now() : null;
+  else if (req.method === "DELETE") tasks = tasks.filter((x) => x !== t);
+  else if (req.method === "POST") {
+    for (const [k, v] of Object.entries({ title: "title", notes: "notes", due: "due", reminder: "reminder" })) if (k in body) t[v] = body[k];
+    if ("allDay" in body) t.due_all_day = body.allDay ? 1 : 0;
+    if ("important" in body) t.important = body.important ? 1 : 0;
+  }
+  return json(res, req.method === "DELETE" ? { ok: true } : { task: taskOut(t) });
+}
+
 const MIME = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -123,6 +185,7 @@ createServer(async (req, res) => {
       return json(res, { ok: true });
     }
     if (await demoContacts(req, res, p)) return;
+    if (p.startsWith("/api/tasks")) return demoTasks(req, res, p, url);
     if (p === "/api/accounts") return json(res, { accounts });
     if (p === "/api/folders") return json(res, { folders });
     if (p === "/api/messages") {
