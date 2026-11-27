@@ -133,6 +133,10 @@ async function route(request, env, ctx) {
     });
   }
 
+  // The interface's words, for the pages that have no session yet. They are
+  // the English-to-French table and nothing else; there is no mail in them.
+  if (request.method === "GET" && /^\/i18n(-[a-z]{2,3})?\.js$/.test(path)) return env.ASSETS.fetch(request);
+
   const session = await requestSession(request, env);
   // JSON for the API, which is read by code; the page for anything a person
   // navigated to.

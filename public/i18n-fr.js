@@ -1,0 +1,53 @@
+/**
+ * Français. The keys are the English the code writes (see i18n.js); this is
+ * only what each one reads as here. scripts/check-i18n.mjs fails when a string
+ * the page can show has no entry, when an entry has no string left, and when a
+ * placeholder or a plural of the English is missing from the French.
+ *
+ * Vouvoiement, sentence case, « guillemets » and a narrow no-break space
+ * (U+202F) before ; : ! ? and inside them. The vocabulary is Apple Mail's.
+ */
+StratusI18n.define("fr", {
+  locale: "fr-FR",
+  strings: {
+    /* ── shared ── */
+
+    "Inbox": "Boîte de réception",
+
+    /* ── markup ── */
+
+    /* ── end markup ── */
+
+    /* ── page 1 ── */
+
+    /* ── end page 1 ── */
+
+    /* ── page 2 ── */
+
+    /* ── end page 2 ── */
+
+    /* ── page 3 ── */
+
+    /* ── end page 3 ── */
+
+    /* ── page 4 ── */
+
+    /* ── end page 4 ── */
+
+    /* ── page 5 ── */
+
+    /* ── end page 5 ── */
+
+    /* ── page 6 ── */
+
+    /* ── end page 6 ── */
+
+    /* ── page 7 ── */
+
+    /* ── end page 7 ── */
+
+    /* ── worker ── */
+
+    /* ── end worker ── */
+  },
+});

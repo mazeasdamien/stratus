@@ -89,3 +89,14 @@ export const ATTACHMENT_HEADERS = (type) => ({
   "X-Content-Type-Options": "nosniff",
   ...(/^application\/pdf\b/i.test(String(type || "")) ? {} : { "Content-Security-Policy": "sandbox" }),
 });
+
+/**
+ * Marks English the person will read. It returns the text untouched: the
+ * Worker has no language of its own, and the device matches the sentence
+ * against its dictionary (tw() in public/i18n.js). What the mark is for is
+ * scripts/check-i18n.mjs, which lists every ui() text so the dictionary can be
+ * held to having an entry for each, and refuses an `error:` that is not
+ * marked. A sentence with a changing part is a template, ui(`Deleted ${n}`),
+ * and the dictionary entry names the part: "Deleted {n}".
+ */
+export const ui = (text) => text;

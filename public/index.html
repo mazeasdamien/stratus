@@ -11,6 +11,9 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<!-- First, and not deferred: it picks the language, sets <html lang> and writes
+     in the dictionary's own script before anything below asks for a string. -->
+<script src="/i18n.js"></script>
 <title>Stratus</title>
 <style>
 /* Same design language as dmzs-music: one dark palette, one accent. */
@@ -2437,7 +2440,10 @@ body.selmode .xf-chip{bottom:calc(var(--sab) + 92px)}
   </section>
 
   <section class="setsec" data-set="appear" role="tabpanel" aria-label="Appearance" hidden>
-    <div class="sh-s">Theme</div>
+    <div class="sh-s">Language</div>
+    <div class="chips" id="langPick" role="group" aria-label="Language"></div>
+    <div class="sh-s" style="margin:2px 0 0;font-size:12px">System follows your browser. The page reloads to apply the choice. Kept on this device only.</div>
+    <div class="sh-s" style="margin-top:14px">Theme</div>
     <div class="chips" id="themePick" role="group" aria-label="Theme">
       <button class="pill" data-theme="light" aria-pressed="false">Light</button>
       <button class="pill" data-theme="dark" aria-pressed="false">Dark</button>
@@ -3027,6 +3033,14 @@ body.selmode .xf-chip{bottom:calc(var(--sab) + 92px)}
 <script>
 "use strict";
 
+// The language is fixed for the life of the page: choosing another reloads it
+// (see the language chips), so a string is translated once, where it is
+// written, and a date is formatted with one locale throughout.
+const { t, tw } = StratusI18n;
+const LOCALE = StratusI18n.locale;
+StratusI18n.apply(document);
+StratusI18n.handOff();
+
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const hue = (s) => { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
@@ -3148,9 +3162,11 @@ function closeModal(value) {
   if (done) done(value);
 }
 
-function openModal({ title, detail = "", input = false, value = "", placeholder = "", ok = "OK", danger = false, alt = "", cancel = "Cancel" }) {
+function openModal({ title, detail = "", input = false, value = "", placeholder = "", ok = t("OK"), danger = false, alt = "", cancel = t("Cancel") }) {
   // A second dialog would orphan the first one's promise, so resolve it first.
   if (modalDone) closeModal(null);
+  // A dialog about something the Worker refused carries its words as they came.
+  [title, detail, placeholder, ok, alt, cancel] = [title, detail, placeholder, ok, alt, cancel].map(tw);
   $("#modalTitle").textContent = title;
   $("#modalDetail").textContent = detail;
   // A third answer, for the question that has two ways to go on (askChoice).
@@ -3232,7 +3248,10 @@ function liftToast(el) {
   el.style.bottom = top < innerHeight ? `${Math.round(innerHeight - top + 10)}px` : "";
 }
 
-function toast(msg, undo, label = "Undo") {
+function toast(msg, undo, label = t("Undo")) {
+  // Text the Worker wrote arrives here as English; anything already written in
+  // the language passes through unchanged.
+  msg = tw(msg);
   const el = $("#toast");
   // Built as a text node, never innerHTML: these strings carry folder names and
   // sometimes subjects, and a subject is attacker-controlled.
@@ -3254,7 +3273,7 @@ function toast(msg, undo, label = "Undo") {
   el.classList.add("up");
   clearTimeout(toastTimer);
   // Long enough to actually reach for, without loitering.
-  lastUndo = undo && label === "Undo" ? undo : null;
+  lastUndo = undo && label === t("Undo") ? undo : null;
   toastTimer = setTimeout(() => {
     el.classList.remove("up");
     lastUndo = null;
@@ -3631,7 +3650,7 @@ function offlineNote(kind, at) {
   el.hidden = !at;
   if (!at) return;
   el.textContent = `Offline copy, saved ${fmtWhen(at)}. ` + (kind === "msg" ? "Attachments are not kept on this device." : "Changes need a connection.");
-  el.title = new Date(at).toLocaleString();
+  el.title = new Date(at).toLocaleString(LOCALE);
 }
 /** Said after whatever the caller says about the same failure, so the plain reason is the last thing on screen. */
 function offlineSay(text) {
@@ -3779,10 +3798,10 @@ function fmtWhen(ms) {
   const d = new Date(ms);
   const now = new Date();
   if (d.toDateString() === now.toDateString())
-    return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    return d.toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" });
   if (d.getFullYear() === now.getFullYear())
-    return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
-  return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "2-digit" });
+    return d.toLocaleDateString(LOCALE, { day: "numeric", month: "short" });
+  return d.toLocaleDateString(LOCALE, { day: "numeric", month: "short", year: "2-digit" });
 }
 
 /**
@@ -3798,7 +3817,7 @@ function fmtFull(ms) {
   if (!ms || isNaN(d)) return "";
   const opts = { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" };
   if (d.getFullYear() !== new Date().getFullYear()) opts.year = "numeric";
-  return d.toLocaleString(undefined, opts);
+  return d.toLocaleString(LOCALE, opts);
 }
 
 /* ── accounts ── */
@@ -5116,7 +5135,7 @@ async function openMsg(id, threadRow = null) {
   $("#rMeta").innerHTML =
     `<div class="rm1">` +
     (mine ? `<span class="who">${who}</span>` : `<button class="who" data-sender="1" title="About this sender">${who}</button>`) +
-    `</div><span class="rwhen" title="${esc(new Date(m.date).toLocaleString(undefined, { dateStyle: "full", timeStyle: "long" }))}">${esc(fmtFull(m.date))} ·</span>` +
+    `</div><span class="rwhen" title="${esc(new Date(m.date).toLocaleString(LOCALE, { dateStyle: "full", timeStyle: "long" }))}">${esc(fmtFull(m.date))} ·</span>` +
     `<div class="rto" role="button" tabindex="0" aria-expanded="false" title="${rcpt}">${rcpt}</div>`;
   // Two different failures, said in our own voice rather than spliced into the
   // body where they would read as something the sender wrote. Neither is a
@@ -6091,7 +6110,7 @@ function renderBlocked() {
           (b) => `<div class="mi">
             <span class="grow"><div class="tr">${esc(b.pattern)}</div>
             <div class="sub">${
-              b.n ? `${b.n} deleted${b.last_at ? `, last ${esc(new Date(b.last_at).toLocaleDateString())}` : ""}` : "nothing yet"
+              b.n ? `${b.n} deleted${b.last_at ? `, last ${esc(new Date(b.last_at).toLocaleDateString(LOCALE))}` : ""}` : "nothing yet"
             }</div></span>
             <button class="side" data-unblock="${esc(b.pattern)}" style="color:var(--acc)">Remove</button>
           </div>`
@@ -6163,7 +6182,7 @@ function renderRules() {
   $("#rulesList").innerHTML = rules.length
     ? rules
         .map((r, i) => {
-          const when = r.last_at ? `, last ${new Date(r.last_at).toLocaleDateString()}` : "";
+          const when = r.last_at ? `, last ${new Date(r.last_at).toLocaleDateString(LOCALE)}` : "";
           const stat = r.n ? `Acted on ${r.n} message${r.n > 1 ? "s" : ""}${when}` : "Has not acted yet";
           const nm = esc(r.name);
           return `<div class="rl-row${r.enabled ? "" : " off"}" data-id="${r.id}">
@@ -6586,7 +6605,7 @@ function cleanHtml(html) {
  */
 function quotedHistory(m, body) {
   const head =
-    `On ${esc(new Date(m.date).toLocaleString())}, ` +
+    `On ${esc(new Date(m.date).toLocaleString(LOCALE))}, ` +
     `${esc(m.from_name || m.from_email || "someone")} wrote:`;
   // What the reader is showing, in preference to what is stored: its cid:
   // references have been resolved to the pictures themselves, and remote
@@ -6747,7 +6766,7 @@ function forwardedBody(m, html) {
     `<div class="quote-head">Begin forwarded message:<br><br>` +
     line("From:", who) +
     line("Subject:", m.subject) +
-    line("Date:", new Date(m.date).toLocaleString()) +
+    line("Date:", new Date(m.date).toLocaleString(LOCALE)) +
     line("To:", m.to_line) +
     line("Cc:", m.cc_line) +
     // Cleaned on its own first, for the reason quotedHistory gives: a message
@@ -6938,7 +6957,7 @@ function printedHeader(m) {
     line("To", m.to_line) +
     line("Cc", m.cc_line) +
     line("Bcc", m.bcc_line) +
-    line("Date", new Date(m.date).toLocaleString()) +
+    line("Date", new Date(m.date).toLocaleString(LOCALE)) +
     `</div>`
   );
 }
@@ -7619,9 +7638,9 @@ async function refreshBackup() {
   const d = res && res.ok ? await res.json().catch(() => ({})) : {};
   const l = d.latest;
   let text = l
-    ? `Last snapshot ${new Date(l.uploaded).toLocaleString()} — ${l.messages} messages, ${Math.round(l.bytes / 1024)} KB.`
+    ? `Last snapshot ${new Date(l.uploaded).toLocaleString(LOCALE)} — ${l.messages} messages, ${Math.round(l.bytes / 1024)} KB.`
     : "No snapshot yet. The first one is taken tonight, or now.";
-  if (d.error) text += ` The last attempt failed (${new Date(d.error.at).toLocaleString()}): ${d.error.error}`;
+  if (d.error) text += ` The last attempt failed (${new Date(d.error.at).toLocaleString(LOCALE)}): ${d.error.error}`;
   $("#backupState").textContent = text;
 }
 $("#backupBox").addEventListener("toggle", (e) => { if (e.currentTarget.open) refreshBackup(); });
@@ -8251,6 +8270,26 @@ function applyTheme(choice) {
   });
   renderBody(); // a plain-text message on screen was drawn in the old theme's colours
 }
+/**
+ * The language chips come from the table in i18n.js, so a language added there
+ * has its chip. Each is named in its own language and is not translated.
+ */
+(function langPick() {
+  const pref = StratusI18n.preference();
+  const own = [["system", t("System"), false], ...StratusI18n.LANGUAGES.map((l) => [l.code, l.label, true])];
+  $("#langPick").innerHTML = own
+    .map(([v, label, fixed]) =>
+      `<button class="pill${v === pref ? " on" : ""}" data-lang="${v}" aria-pressed="${v === pref}"${fixed ? ` translate="no" lang="${v}"` : ""}>${esc(label)}</button>`)
+    .join("");
+  $("#langPick").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-lang]");
+    if (!b || b.dataset.lang === pref) return;
+    StratusI18n.setPreference(b.dataset.lang);
+    // Back to the same place in Settings once the page has reloaded.
+    try { sessionStorage.setItem("dmzs-after-lang", "appear"); } catch {}
+    location.reload();
+  });
+})();
 $("#themePick").addEventListener("click", (e) => {
   const b = e.target.closest("[data-theme]");
   if (b) applyTheme(b.dataset.theme);
@@ -9469,7 +9508,7 @@ const xf = { running: false, kind: "", total: 0, done: 0, added: 0, dupes: 0, fa
 
 const xfSleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const xfMB = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
-const xfPlural = (n, one, many) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+const xfPlural = (n, one, many) => `${n.toLocaleString(LOCALE)} ${n === 1 ? one : many}`;
 
 /** One place that draws the sheet's status block, the buttons it locks and the chip. */
 function xfPaint() {
@@ -9508,7 +9547,7 @@ function xfFail(label, reason) {
 }
 function xfProblems() {
   const more = xf.failed - xf.errors.length;
-  return `${xf.errors.join("\n")}${more > 0 ? `\n…and ${more.toLocaleString()} more` : ""}`;
+  return `${xf.errors.join("\n")}${more > 0 ? `\n…and ${more.toLocaleString(LOCALE)} more` : ""}`;
 }
 function xfEnd(summary, warn = false) {
   xf.running = false;
@@ -9639,9 +9678,9 @@ async function xfSend(m, target, label) {
 }
 
 function xfLine() {
-  const bits = [`${xf.kind === "import" ? "Importing" : "Exporting"} ${xf.done.toLocaleString()}${xf.total ? ` of ${xf.total.toLocaleString()}` : ""}`];
-  if (xf.dupes) bits.push(`${xf.dupes.toLocaleString()} already there`);
-  if (xf.failed) bits.push(`${xf.failed.toLocaleString()} failed`);
+  const bits = [`${xf.kind === "import" ? "Importing" : "Exporting"} ${xf.done.toLocaleString(LOCALE)}${xf.total ? ` of ${xf.total.toLocaleString(LOCALE)}` : ""}`];
+  if (xf.dupes) bits.push(`${xf.dupes.toLocaleString(LOCALE)} already there`);
+  if (xf.failed) bits.push(`${xf.failed.toLocaleString(LOCALE)} failed`);
   xf.line = xf.cancel ? "Stopping…" : bits.join(" · ");
   xfPaint();
 }
@@ -9677,7 +9716,7 @@ $("#xfStart").addEventListener("click", async () => {
         n++;
         xf.total++;
         if (n % 200 === 0) {
-          xf.line = `Counting messages… ${xf.total.toLocaleString()}`;
+          xf.line = `Counting messages… ${xf.total.toLocaleString(LOCALE)}`;
           xfPaint();
         }
       }
@@ -9706,8 +9745,8 @@ $("#xfStart").addEventListener("click", async () => {
   const lines = [];
   const into = `“${shown}”`;
   const left = xf.total - xf.done;
-  if (xf.fatal) lines.push(`Stopped after ${xf.done.toLocaleString()} of ${xf.total.toLocaleString()}: ${xf.fatal}.`);
-  else if (xf.cancel) lines.push(`Cancelled with ${left.toLocaleString()} of ${xf.total.toLocaleString()} not yet sent.`);
+  if (xf.fatal) lines.push(`Stopped after ${xf.done.toLocaleString(LOCALE)} of ${xf.total.toLocaleString(LOCALE)}: ${xf.fatal}.`);
+  else if (xf.cancel) lines.push(`Cancelled with ${left.toLocaleString(LOCALE)} of ${xf.total.toLocaleString(LOCALE)} not yet sent.`);
   lines.push(`Imported ${xfPlural(xf.added, "message", "messages")} into ${into}.`);
   if (xf.dupes) lines.push(`${xfPlural(xf.dupes, "message was", "messages were")} already in your account and skipped.`);
   if (xf.failed) lines.push(`${xfPlural(xf.failed, "message", "messages")} could not be imported:\n${xfProblems()}`);
@@ -9818,7 +9857,7 @@ async function xfExportTo(name, total, items) {
   else if (xf.fatal) lines.push(`Export stopped: ${xf.fatal}.`);
   else {
     if (xf.cancel) lines.push("Cancelled. The file holds the messages written so far.");
-    lines.push(`Exported ${xfPlural(written, "message", "messages")}${xf.total && !xf.cancel ? ` of ${xf.total.toLocaleString()}` : ""} ${sink.where}: ${name}`);
+    lines.push(`Exported ${xfPlural(written, "message", "messages")}${xf.total && !xf.cancel ? ` of ${xf.total.toLocaleString(LOCALE)}` : ""} ${sink.where}: ${name}`);
   }
   if (xf.failed) lines.push(`${xfPlural(xf.failed, "message", "messages")} could not be read from iCloud and ${xf.failed === 1 ? "is" : "are"} not in the file:\n${xfProblems()}`);
   xfEnd(lines.join("\n"), Boolean(problem || xf.fatal));
@@ -10312,7 +10351,7 @@ function laterChoices(now = new Date()) {
   return out;
 }
 const whenText = (ms) =>
-  new Date(ms).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  new Date(ms).toLocaleString(LOCALE, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 $("#cLater").addEventListener("click", () => {
   if (outgoingNow()) return;
   if (filesPending()) return toast("Attachments are still loading — try again in a moment");
@@ -10947,7 +10986,7 @@ function inviteWhen(inv) {
   const e = inv.end ? new Date(inv.end.ms) : null;
   const zone = whenZone(inv.start);
   const day = (d, how = { weekday: "long", day: "numeric", month: "long" }) =>
-    d.toLocaleDateString(undefined, { ...how, ...zone });
+    d.toLocaleDateString(LOCALE, { ...how, ...zone });
   // Compared in the zone they are shown in, or two times on one printed day
   // could count as two days.
   const sameDay = (a, b) => day(a, { dateStyle: "short" }) === day(b, { dateStyle: "short" });
@@ -10956,7 +10995,7 @@ function inviteWhen(inv) {
     const last = e ? new Date(e.getTime() - 86400_000) : null;
     return last && !sameDay(last, s) ? `${day(s)} – ${day(last)}` : `${day(s)}, all day`;
   }
-  const t = (d) => d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", ...zone });
+  const t = (d) => d.toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit", ...zone });
   if (!e) return `${day(s)}, ${t(s)}`;
   return sameDay(e, s)
     ? `${day(s)}, ${t(s)} – ${t(e)}`
@@ -11214,7 +11253,7 @@ function eventDayLabel(start) {
   if (diff === 0) return "Today";
   if (diff === 1) return "Tomorrow";
   if (diff === -1) return "Yesterday";
-  return d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", ...whenZone(start) });
+  return d.toLocaleDateString(LOCALE, { weekday: "long", day: "numeric", month: "long", ...whenZone(start) });
 }
 
 /** Draws the calendar, which now holds what this tab used to list; the dot is still the timeline's. */
@@ -11517,9 +11556,9 @@ const personTypeLabel = (kind, t) => (PERSON_TYPES[kind].find(([v]) => v === t) 
 
 function birthdayText(b) {
   let m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(b);
-  if (m) return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+  if (m) return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString(LOCALE, { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
   m = /^--(\d{2})-(\d{2})$/.exec(b);
-  if (m) return new Date(Date.UTC(2000, +m[1] - 1, +m[2])).toLocaleDateString(undefined, { day: "numeric", month: "long", timeZone: "UTC" });
+  if (m) return new Date(Date.UTC(2000, +m[1] - 1, +m[2])).toLocaleDateString(LOCALE, { day: "numeric", month: "long", timeZone: "UTC" });
   return b;
 }
 
@@ -12598,9 +12637,9 @@ function taskDueText(t) {
   else if (diff === -1) text = "Yesterday";
   else {
     const year = (t.allDay ? d.getUTCFullYear() : d.getFullYear()) !== new Date().getFullYear() ? { year: "numeric" } : {};
-    text = d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", ...year, ...zone });
+    text = d.toLocaleDateString(LOCALE, { weekday: "short", day: "numeric", month: "short", ...year, ...zone });
   }
-  return t.allDay ? text : `${text}, ${d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
+  return t.allDay ? text : `${text}, ${d.toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" })}`;
 }
 
 function taskRow(t, group) {
@@ -13183,7 +13222,7 @@ const calDayIdx = (d, first) => Math.round((calMidnight(d).getTime() - first.get
 function calWeekStart() {
   if (cal.opts.weekStart !== "auto") return Number(cal.opts.weekStart);
   try {
-    const loc = new Intl.Locale(navigator.language);
+    const loc = new Intl.Locale(LOCALE);
     const first = (loc.getWeekInfo ? loc.getWeekInfo() : loc.weekInfo)?.firstDay;
     if (first) return first % 7;
   } catch {}
@@ -13193,12 +13232,12 @@ const calWeekOf = (d) => calAddDays(calMidnight(d), -((d.getDay() - calWeekStart
 function calHour12() {
   if (cal.opts.clock === "12") return true;
   if (cal.opts.clock === "24") return false;
-  try { return !!new Intl.DateTimeFormat(undefined, { hour: "numeric" }).resolvedOptions().hour12; } catch { return false; }
+  try { return !!new Intl.DateTimeFormat(LOCALE, { hour: "numeric" }).resolvedOptions().hour12; } catch { return false; }
 }
-const calClock = (d) => d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", hourCycle: calHour12() ? "h12" : "h23" });
+const calClock = (d) => d.toLocaleTimeString(LOCALE, { hour: "numeric", minute: "2-digit", hourCycle: calHour12() ? "h12" : "h23" });
 const calHourLabel = (h) =>
-  calHour12() ? new Date(2000, 0, 1, h).toLocaleTimeString(undefined, { hour: "numeric", hourCycle: "h12" }) : `${calTwo(h)}:00`;
-const calDate = (d, how) => d.toLocaleDateString(undefined, how);
+  calHour12() ? new Date(2000, 0, 1, h).toLocaleTimeString(LOCALE, { hour: "numeric", hourCycle: "h12" }) : `${calTwo(h)}:00`;
+const calDate = (d, how) => d.toLocaleDateString(LOCALE, how);
 
 /** An occurrence's wall clock as local Dates, and back. */
 function calWall(ms, o) {
@@ -13305,7 +13344,7 @@ function calTitleText() {
     return calDate(cal.day, { weekday: wide ? "long" : "short", day: "numeric", month: wide ? "long" : "short", year: wide || cal.day.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined });
   }
   if (cal.view === "month") return calDate(cal.day, { month: "long", year: "numeric" });
-  const f = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", year: "numeric" });
+  const f = new Intl.DateTimeFormat(LOCALE, { day: "numeric", month: "short", year: "numeric" });
   return f.formatRange ? f.formatRange(from, last) : `${f.format(from)} – ${f.format(last)}`;
 }
 
@@ -14540,6 +14579,12 @@ $("#reactRow").addEventListener("click", (e) => {
   // What the address asked for is a convenience. Nothing in it may stop the
   // rest of startup, which is where the service worker is registered.
   try { openFromUrl(); } catch {}
+  // A language change reloads the page; Settings comes back on the same tab.
+  try {
+    const back = sessionStorage.getItem("dmzs-after-lang");
+    sessionStorage.removeItem("dmzs-after-lang");
+    if (back) { $("#acctBtn").click(); document.querySelector(`#setNav [data-set="${back}"]`)?.click(); }
+  } catch {}
 
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("/sw.js").catch(() => {});
