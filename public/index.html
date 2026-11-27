@@ -265,26 +265,71 @@ main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior
 /* Colour labels, five of them. Said twice on the row: a dot beside the date,
    where the star already lives, and a bar down the trailing edge — the
    leading edge is unread's. Mid-tones, so one set reads on both themes. */
-:root{--c1:#e5484d;--c2:#f2891c;--c3:#e3b10b;--c4:#2f9e5b;--c5:#2f7fe0}
-[data-color="1"]{--cl:var(--c1)}
-[data-color="2"]{--cl:var(--c2)}
-[data-color="3"]{--cl:var(--c3)}
-[data-color="4"]{--cl:var(--c4)}
-[data-color="5"]{--cl:var(--c5)}
-.row[data-color]::before{content:"";position:absolute;right:0;top:0;bottom:0;width:4px;background:var(--cl)}
-.when .cdot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;background:var(--cl)}
-/* The reader's button shows the colour it is set to. */
-#rColor .ring{width:15px;height:15px;border-radius:50%;border:2px solid currentColor;box-sizing:border-box}
-#rColor[data-color] .ring{background:var(--cl);border-color:var(--cl)}
-#colorPop{position:fixed;z-index:60;display:none;gap:6px;padding:7px;border-radius:999px;
+/* Categories. The palette is a fixed ten; a category stores an index into it
+   (src/categories.js). The first five are the five colours a message could
+   carry before categories had names. Colour never stands alone: every chip
+   carries the name. */
+:root{--cat0:#e5484d;--cat1:#f2891c;--cat2:#e3b10b;--cat3:#2f9e5b;--cat4:#2f7fe0;--cat5:#8e4ec6;--cat6:#d6409f;--cat7:#12a594;--cat8:#a07553;--cat9:#7b7f8a}
+.cat{--cl:var(--cat0);display:inline-flex;align-items:center;gap:5px;max-width:100%;height:19px;padding:0 8px 0 6px;
+  border-radius:999px;font-size:11px;font-weight:550;line-height:1;color:var(--t1);white-space:nowrap;
+  background:color-mix(in srgb,var(--cl) 15%,transparent);border:1px solid color-mix(in srgb,var(--cl) 40%,transparent)}
+.cat::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--cl);flex:none}
+.cat span{overflow:hidden;text-overflow:ellipsis}
+.cats{display:flex;flex-wrap:nowrap;gap:4px;margin-top:5px;overflow:hidden}
+.cats .cat{flex:0 1 auto;min-width:0}
+.cats .more{font-size:11px;color:var(--t3);align-self:center;flex:none}
+/* High importance and a pin, quiet beside the sender and the date. */
+.imp-hi{display:inline-flex;align-items:center;justify-content:center;flex:none;width:15px;height:15px;margin-right:6px;vertical-align:-3px;border-radius:50%;
+  background:var(--red);color:var(--on-red);font-size:10px;font-weight:800;line-height:1}
+.when .pn{display:inline-block;vertical-align:-1px;margin-right:5px;color:var(--t2)}
+.rowwrap.pinned .row:not(.sel){background:color-mix(in srgb,var(--acc) 5%,transparent)}
+/* What the reader says about the message under its header. */
+.rcats{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.rcats[hidden]{display:none}
+.tagchip{display:inline-flex;align-items:center;gap:4px;height:19px;padding:0 8px;border-radius:999px;font-size:11px;font-weight:550;
+  color:var(--t2);border:1px solid var(--line-strong)}
+.tagchip.hi{color:var(--red);border-color:color-mix(in srgb,var(--red) 45%,transparent)}
+#rPin.on{color:var(--acc)}
+#rPin.on svg{fill:currentColor}
+#rCategorize[data-has]{color:var(--acc)}
+/* The Categorize popover: a tick list, and the way into the full editor. */
+#catPop{position:fixed;z-index:60;display:none;flex-direction:column;min-width:210px;max-width:min(300px,calc(100vw - 16px));
+  max-height:min(420px,calc(100vh - 24px));overflow-y:auto;padding:5px;border-radius:16px;
   background:var(--g-fill-strong);border:1px solid var(--line-strong);
   box-shadow:0 10px 30px rgba(0,0,0,.18),0 2px 6px rgba(0,0,0,.08)}
-#colorPop.up{display:flex}
-#colorPop button{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;
-  background:var(--cl,transparent);color:var(--t2);border:2px solid transparent}
-#colorPop button[data-c="0"]{border-color:var(--line-strong)}
-#colorPop button[aria-checked="true"]{box-shadow:0 0 0 2px var(--g-fill-strong),0 0 0 4px var(--t1)}
-#colorPop button:hover{filter:brightness(1.08)}
+#catPop.up{display:flex}
+#catPop button{display:flex;align-items:center;gap:10px;justify-content:flex-start;min-height:38px;padding:0 10px;border-radius:11px;
+  font-size:14px;color:var(--t1);text-align:left;width:100%}
+#catPop button:hover,#catPop button:focus-visible{background:var(--press)}
+#catPop .sw{width:12px;height:12px;border-radius:50%;background:var(--cl);flex:none}
+#catPop .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#catPop kbd{font-size:11px;color:var(--t3)}
+#catPop .tick{width:16px;height:16px;flex:none;color:var(--acc);visibility:hidden}
+#catPop [aria-checked="true"] .tick{visibility:visible}
+#catPop .sep{height:1px;background:var(--line);margin:4px 6px;flex:none}
+#catPop .none{padding:10px;font-size:13px;color:var(--t3)}
+/* The All categories sheet. */
+.catrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)}
+.catrow:last-child{border-bottom:0}
+.catsw{width:30px;height:30px;border-radius:50%;flex:none;background:color-mix(in srgb,var(--cl) 18%,transparent);border:2px solid var(--cl)}
+.catsw::before{content:"";width:12px;height:12px;border-radius:50%;background:var(--cl)}
+.catname{flex:1;min-width:0;height:36px;padding:0 10px;font-size:14.5px;border-radius:var(--r-s);border:1px solid transparent}
+.catname:hover{border-color:var(--line)}
+.catname:focus-visible{outline:0;border-color:color-mix(in srgb,var(--acc) 55%,transparent);box-shadow:0 0 0 2px color-mix(in srgb,var(--acc) 22%,transparent);background:var(--input)}
+.catn{font-size:12px;color:var(--t3);flex:none;min-width:18px;text-align:right}
+.catdel{width:34px;height:34px;border-radius:50%;flex:none;color:var(--t2)}
+.catdel:hover,.catdel:focus-visible{background:color-mix(in srgb,var(--red) 14%,transparent);color:var(--red)}
+.catpal{display:flex;flex-wrap:wrap;gap:8px;width:100%;padding:2px 0 6px 38px}
+.catpal[hidden]{display:none}
+.catpal button{width:30px;height:30px;border-radius:50%;background:var(--cl);border:2px solid transparent}
+.catpal button[aria-checked="true"]{box-shadow:0 0 0 2px var(--sheet),0 0 0 4px var(--t1)}
+.catnew{display:flex;gap:8px;align-items:center;margin-top:12px}
+.catnew .field{flex:1;margin:0}
+.catnew .cta{width:auto;margin:0;padding:0 18px;flex:none}
+/* Importance, in the composer's subject line. */
+.field .impsel{display:flex;align-items:center;gap:4px;flex:none;color:var(--t2)}
+.field .impsel select{flex:none;width:auto;font-size:13px;padding-right:2px;color:var(--t2)}
+.field .impsel.hi,.field .impsel.hi select{color:var(--red)}
 .subj{font-size:13.5px;margin-top:1px;color:var(--t1)}
 .row:not(.unread) .subj{color:var(--t2)}
 .snip{font-size:12.5px;color:var(--t3);margin-top:1px}
@@ -1541,6 +1586,9 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
 <div id="bulkbar" role="toolbar" aria-label="Actions for selected messages" hidden>
   <div class="n-sel" id="bulkCount">0 selected</div>
   <button class="rbtn" id="bulkArchive" aria-label="Archive selected">Archive</button>
+  <button class="rbtn ico" id="bulkPin" aria-label="Pin or unpin selected" title="Pin or unpin (Shift+P)">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6l-1 6 3 3v1.5H7V13l3-3Z"/><path d="M12 14.5V21"/></svg>
+  </button>
   <button class="rbtn" id="bulkMove" aria-label="Move selected">Move</button>
   <button class="rbtn danger" id="bulkDelete" aria-label="Delete selected">Delete</button>
   <button class="rbtn" id="bulkDone">Done</button>
@@ -1559,6 +1607,7 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
     <div class="mi-info">
       <div class="rsubj" id="rSubj">—</div>
       <div class="rmeta" id="rMeta">—</div>
+      <div class="rcats" id="rCats" hidden></div>
       <!-- The only way to say "these buttons are about the conversation, not
            this one message", and it sits with the subject it qualifies.
            Inside the block with the subject and the meta so that on a narrow
@@ -1602,8 +1651,11 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
       <button class="rbtn ico" id="rStar" aria-label="Star" aria-pressed="false" title="Star (s)">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3.6 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.8l5.9-.9Z"/></svg>
         </button>
-      <button class="rbtn ico overflowable" id="rColor" aria-label="Colour" aria-haspopup="menu" aria-expanded="false" title="Colour (1–5, 0 removes)">
-        <span class="ring"></span>
+      <button class="rbtn ico overflowable" id="rCategorize" aria-label="Categorize" aria-haspopup="menu" aria-expanded="false" title="Categorize (1–5 toggle, 0 clears)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7a1 1 0 0 1 .7.3l7.3 7.3a1 1 0 0 1 0 1.4l-7.1 7.1a1 1 0 0 1-1.4 0L3.8 12.9a1 1 0 0 1-.3-.7Z"/><circle cx="8.2" cy="8.2" r="1.3" fill="currentColor"/></svg>
+        </button>
+      <button class="rbtn ico overflowable" id="rPin" aria-label="Pin conversation" aria-pressed="false" title="Pin to the top of the list (Shift+P)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6l-1 6 3 3v1.5H7V13l3-3Z"/><path d="M12 14.5V21"/></svg>
         </button>
       <button class="rbtn ico overflowable" id="rUnread" aria-label="Mark unread" title="Mark unread (u)">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m3.5 7 8.5 6 8.5-6"/></svg>
@@ -1663,16 +1715,9 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
 <!-- The overflow that keeps Reply at the far edge on a 375px screen. Each row
      is a mirror of the button it stands for, so there is one place a label and
      an icon are decided — the button above — and one place they are shown. -->
-<!-- The five colours, opened from #rColor. Nothing in it until a message is
-     open, so it is built once here and only its ticks change. -->
-<div id="colorPop" role="menu" aria-label="Colour">
-  <button role="menuitemradio" data-c="0" aria-label="No colour" title="No colour (0)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-  <button role="menuitemradio" data-c="1" data-color="1" aria-label="Red" title="Red (1)"></button>
-  <button role="menuitemradio" data-c="2" data-color="2" aria-label="Orange" title="Orange (2)"></button>
-  <button role="menuitemradio" data-c="3" data-color="3" aria-label="Yellow" title="Yellow (3)"></button>
-  <button role="menuitemradio" data-c="4" data-color="4" aria-label="Green" title="Green (4)"></button>
-  <button role="menuitemradio" data-c="5" data-color="5" aria-label="Blue" title="Blue (5)"></button>
-</div>
+<!-- Categorize, opened from #rCategorize. Filled when it opens, from the
+     categories the app holds. -->
+<div id="catPop" role="menu" aria-label="Categorize"></div>
 
 <div class="sheet" id="moreSheet">
   <div class="grab"></div>
@@ -1810,7 +1855,8 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
     <dt><kbd>e</kbd></dt><dd>Archive</dd>
     <dt><kbd>#</kbd> <kbd>Delete</kbd></dt><dd>Delete</dd>
     <dt><kbd>s</kbd></dt><dd>Star</dd>
-    <dt><kbd>1</kbd>–<kbd>5</kbd> <kbd>0</kbd></dt><dd>Colour it red, orange, yellow, green, blue; 0 removes</dd>
+    <dt><kbd>1</kbd>–<kbd>5</kbd> <kbd>0</kbd></dt><dd>Toggle the first five categories on the open message (Red, Orange, Yellow, Green, Blue to begin with); 0 clears them</dd>
+    <dt><kbd>P</kbd></dt><dd>Pin or unpin the conversation to the top of its list (<kbd>Shift</kbd> <kbd>p</kbd>)</dd>
     <dt><kbd>u</kbd></dt><dd>Mark unread</dd>
     <dt><kbd>x</kbd></dt><dd>Select the message, to act on several at once</dd>
     <dt><kbd>v</kbd></dt><dd>Move to a folder</dd>
@@ -1825,6 +1871,18 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
   </dl>
 </div>
 
+<div class="sheet" id="catSheet" tabindex="-1">
+  <div class="grab"></div>
+  <div class="sh-t">All categories</div>
+  <div class="sh-s">A message can have several. Names and colours are kept by this app, not by iCloud.</div>
+  <div id="catList"></div>
+  <div class="catnew">
+    <div class="field"><input id="catNew" type="text" maxlength="40" placeholder="New category" autocomplete="off" aria-label="New category name"></div>
+    <button class="cta" id="catAdd" type="button">Add</button>
+  </div>
+  <div class="formerr" id="catErr" role="alert"></div>
+</div>
+
 <div class="sheet" id="searchSheet" tabindex="-1">
   <div class="grab"></div>
   <div class="sh-t">Search operators</div>
@@ -1837,7 +1895,9 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
     <dt><kbd>attachment:</kbd></dt><dd>A file whose name contains it</dd>
     <dt><kbd>is:unread</kbd> <kbd>is:read</kbd></dt><dd>Read or not</dd>
     <dt><kbd>is:flagged</kbd></dt><dd>Starred (<kbd>is:starred</kbd> is the same)</dd>
-    <dt><kbd>category:red</kbd></dt><dd>Orange, yellow, green or blue too</dd>
+    <dt><kbd>category:</kbd></dt><dd>Has the category of that name, as in <kbd>category:red</kbd> or <kbd>category:"Project X"</kbd></dd>
+    <dt><kbd>is:pinned</kbd></dt><dd>In a pinned conversation</dd>
+    <dt><kbd>is:important</kbd> <kbd>importance:</kbd></dt><dd>Marked high importance; <kbd>importance:high</kbd>, <kbd>normal</kbd> or <kbd>low</kbd> picks one</dd>
     <dt><kbd>after:</kbd> <kbd>before:</kbd> <kbd>on:</kbd></dt><dd>A day such as 2026-10-01, in your time zone. <b>after:</b> counts that day, <b>before:</b> stops short of it</dd>
     <dt><kbd>"two words"</kbd></dt><dd>That exact phrase; also works after any operator, as in <kbd>from:"ada lovelace"</kbd></dd>
     <dt><kbd>-word</kbd></dt><dd>Leaves out mail containing the word</dd>
@@ -1947,7 +2007,9 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
     <input id="cBcc" type="text" inputmode="email" placeholder="Nobody else sees these" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Bcc"></div>
 
 
-  <div class="field" id="cSubjWrap"><input id="cSubj" type="text" placeholder="Subject" aria-label="Subject" autocomplete="off"></div>
+  <div class="field" id="cSubjWrap"><input id="cSubj" type="text" placeholder="Subject" aria-label="Subject" autocomplete="off">
+    <label class="impsel" id="cImpWrap" title="Importance"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg>
+      <select id="cImp" aria-label="Importance"><option value="0">Normal</option><option value="1">High</option><option value="-1">Low</option></select></label></div>
   <div class="formerr" id="cErr"></div>
 
   <!-- Drop a file anywhere in the composer. Without a hint the gesture looks
@@ -2056,14 +2118,19 @@ let messages = [];
 let folders = [];             // [{folder, n, unread}] straight from the server
 let veilleOn = false;        // this deployment has the digest linked
 let folder = "inbox";
-let starredOnly = false;
-// Colour labels (see setColor): declared up here because the first paint of
-// the list, which needs them, can run before the script reaches setColor.
-const COLOR_NAMES = ["", "Red", "Orange", "Yellow", "Green", "Blue"];
-const colorOf = (m) => {
-  const c = Number((m && m.color) || 0);
-  return c >= 1 && c <= 5 ? c : 0;
-};      // the Starred view is a filter, not a folder
+let starredOnly = false;      // the Starred view is a filter, not a folder
+// Categories (see the banner "categories and pins"): declared up here because
+// the first paint of the list, which needs them, can run before the script
+// reaches that block.
+let categories = [];        // [{id, name, color, position, n}], in the order the server keeps
+const CAT_COLORS = ["Red", "Orange", "Yellow", "Green", "Blue", "Purple", "Pink", "Teal", "Brown", "Gray"];
+const catById = (id) => categories.find((c) => c.id === id);
+/** The categories a row carries, in the editor's order; ids the app no longer knows are dropped. */
+const catsOf = (m) => {
+  const have = new Set((m && m.cats) || []);
+  return categories.filter((c) => have.has(c.id));
+};
+const catChip = (c) => `<span class="cat" style="--cl:var(--cat${c.color})"><span>${esc(c.name)}</span></span>`;
 let folderEditing = false;
 let query = "";               // search term; non-empty searches every folder
 let searchTimer = null;
@@ -2905,9 +2972,13 @@ async function loadList(more = false, { keep = false } = {}) {
       if (cursor) {
         p.set("before", cursor.date);
         p.set("before_id", cursor.id);
+        // Which section of the list the row was in: pinned conversations come
+        // first, so a date alone does not say where the next page starts.
+        p.set("before_pin", Number(cursor.pinned) ? "1" : "0");
       } else {
         p.delete("before");
         p.delete("before_id");
+        p.delete("before_pin");
       }
       const res = await api(`/api/messages?${p}`);
       if (seq !== listSeq || !res.ok) return;
@@ -2946,11 +3017,15 @@ function rowHtml(m, sub = false) {
   // it has been read. A screen reader gets the message rather than a row of
   // four unlabelled spans, and Enter opens it the way a click does.
   const starred = !!Number(m.starred);
-  const color = colorOf(m);
+  const cats = catsOf(m);
+  const pinned = !!Number(m.pinned);
+  const high = Number(m.importance) === 1;
   const label = [
     m.unread ? "Unread" : "",
     starred ? "Starred" : "",
-    color ? `${COLOR_NAMES[color]} label` : "",
+    pinned ? "Pinned" : "",
+    high ? "High importance" : "",
+    cats.length ? `Categories: ${cats.map((c) => c.name).join(", ")}` : "",
     m.from_name || m.from_email || "Unknown sender",
     m.subject ? `— ${m.subject}` : "",
     m.snippet || "",
@@ -2962,7 +3037,7 @@ function rowHtml(m, sub = false) {
   // Ticked in the markup, not only by togglePick: a repaint used to draw every
   // row unticked while the count in the bar still said three were chosen.
   const on = picked.has(m.id);
-  return `<div class="rowwrap${open ? " open" : ""}${on ? " picked" : ""}"><div class="row${m.unread ? " unread" : ""}${open ? " sel" : ""}${sub ? " sub" : ""}" data-id="${m.id}"${color ? ` data-color="${color}"` : ""}
+  return `<div class="rowwrap${open ? " open" : ""}${on ? " picked" : ""}${pinned ? " pinned" : ""}"><div class="row${m.unread ? " unread" : ""}${open ? " sel" : ""}${sub ? " sub" : ""}" data-id="${m.id}"
     role="listitem" tabindex="0" aria-label="${esc(label)}"${open ? ' aria-current="true"' : ""}>
     <button class="selbox" type="button" aria-label="Select this message" aria-pressed="${on}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg></button>
     ${
@@ -3005,7 +3080,7 @@ function rowHtml(m, sub = false) {
           ? `<span class="ftag" title="Comes back to the inbox then">${esc(whenText(snoozedUntil.get(m.id)))}</span>`
           : ""
       }
-      <span class="when num">${color ? `<span class="cdot" aria-hidden="true"></span>` : ""}${
+      <span class="when num">${high ? `<span class="imp-hi" role="img" aria-label="High importance" title="High importance">!</span>` : ""}${pinned ? `<svg class="pn" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><title>Pinned</title><path d="M9 4h6l-1 6 3 3v1.5H7V13l3-3Z"/><path d="M12 14.5V21" fill="none" stroke-linecap="round"/></svg>` : ""}${
         // The star, in the list. It could be set in the reader and then seen
         // nowhere else: a starred conversation looked like any other row.
         // With the date, so it cannot drift along the line as the sender's
@@ -3016,6 +3091,7 @@ function rowHtml(m, sub = false) {
       }${fmtWhen(m.date)}</span></div>
       ${sub ? "" : `<div class="subj tr">${esc(m.subject || "(no subject)")}</div>`}
       <div class="snip tr">${esc(m.snippet || "")}</div>
+      ${cats.length ? `<div class="cats">${cats.slice(0, 3).map(catChip).join("")}${cats.length > 3 ? `<span class="more">+${cats.length - 3}</span>` : ""}</div>` : ""}
     </div>
   </div>
   <div class="swipe-act" aria-hidden="true">
@@ -3695,7 +3771,7 @@ async function openMsg(id, threadRow = null) {
   showImagesOnce = false; // a fresh message asks again
   $("#rStar").classList.toggle("on", !!Number(m.starred));
   $("#rStar").setAttribute("aria-pressed", String(!!Number(m.starred)));
-  paintColorButton(colorOf(m));
+  paintReaderTags();
 
   // Unsubscribing is something you do to the message, not something attached
   // to it, so it belongs in the action bar with Archive and Delete rather than
@@ -3930,96 +4006,328 @@ addEventListener("keydown", (e) => {
       e.preventDefault();
       replyWritten(false);
       break;
-    // The colours, in the order the picker shows them.
-    case "0": case "1": case "2": case "3": case "4": case "5":
+    // The first five categories, in the order the picker shows them; 0 clears.
+    case "0":
       e.preventDefault();
-      setColor(Number(e.key));
+      clearCats();
+      break;
+    case "1": case "2": case "3": case "4": case "5":
+      e.preventDefault();
+      toggleCatAt(Number(e.key) - 1);
+      break;
+    case "P":
+      e.preventDefault();
+      $("#rPin").click();
       break;
   }
 });
 
-/* ── colour labels ──
-   Five colours, stored by the app alone (src/api.js says why), on the message
-   or on the whole conversation as the scope chip says. */
-function paintColorButton(c) {
-  const b = $("#rColor");
-  if (c) b.dataset.color = String(c);
-  else delete b.dataset.color;
-  b.setAttribute("aria-label", c ? `Colour: ${COLOR_NAMES[c]}` : "Colour");
-  for (const o of $("#colorPop").querySelectorAll("[data-c]")) {
-    o.setAttribute("aria-checked", String(Number(o.dataset.c) === c));
+/* ── categories and pins ──
+   Names you give to mail, several to a message, and conversations kept at the
+   top of their list. Stored by the app alone (src/categories.js says why).
+   A change reaches the whole conversation when the scope chip says so, as the
+   colour it replaces did. The state and the chips are declared near the top of
+   the script, where the first paint of the list needs them. */
+const JSON_POST = { "Content-Type": "application/json" };
+
+async function loadCategories() {
+  const res = await api("/api/categories").catch(() => null);
+  if (!res || !res.ok) return;
+  const d = await res.json().catch(() => ({}));
+  if (Array.isArray(d.categories)) categories = d.categories;
+  renderList();
+  paintReaderTags();
+}
+
+/** The open message and whether a change reaches its whole conversation. */
+function tagScope() {
+  const m = current.message;
+  const key = m.thread_key || (currentThread && currentThread.key) || "";
+  return { id: m.id, key, whole: !!(currentThread && currentThread.whole !== false && key) };
+}
+
+/** Every row the lists hold for this message, or for its conversation. */
+function eachRow(id, key, fn) {
+  for (const list of [messages, threadRows]) {
+    for (const r of list) if (r.id === id || (key && r.thread_key === key)) fn(r);
   }
 }
-function closeColorPop() {
-  $("#colorPop").classList.remove("up");
-  $("#rColor").setAttribute("aria-expanded", "false");
-}
-$("#rColor").addEventListener("click", (e) => {
-  e.stopPropagation();
-  const pop = $("#colorPop");
-  if (pop.classList.contains("up")) return closeColorPop();
+
+/** What the reader says about the open message: its categories, importance and pin. */
+function paintReaderTags() {
   if (!current) return;
-  paintColorButton(colorOf(current.message));
+  const m = current.message;
+  const cats = catsOf(m);
+  const pinned = !!Number(m.pinned);
+  const imp = Number(m.importance) || 0;
+  const b = $("#rCategorize");
+  if (cats.length) b.dataset.has = "1";
+  else delete b.dataset.has;
+  b.setAttribute("aria-label", cats.length ? `Categorize: ${cats.map((c) => c.name).join(", ")}` : "Categorize");
+  const pb = $("#rPin");
+  pb.classList.toggle("on", pinned);
+  pb.setAttribute("aria-pressed", String(pinned));
+  pb.setAttribute("aria-label", pinned ? "Unpin conversation" : "Pin conversation");
+  const chips = cats.map(catChip);
+  if (imp === 1) chips.push(`<span class="tagchip hi">High importance</span>`);
+  if (imp === -1) chips.push(`<span class="tagchip">Low importance</span>`);
+  if (pinned) chips.push(`<span class="tagchip">Pinned</span>`);
+  $("#rCats").innerHTML = chips.join("");
+  $("#rCats").hidden = !chips.length;
+  if ($("#catPop").classList.contains("up")) renderCatPop();
+}
+
+/* The Categorize popover. */
+const TICK = `<svg class="tick" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>`;
+function renderCatPop() {
+  const have = new Set((current && current.message.cats) || []);
+  const pop = $("#catPop");
+  const focused = document.activeElement && pop.contains(document.activeElement) ? document.activeElement.dataset.cat : null;
+  pop.innerHTML =
+    (categories.length
+      ? categories
+          .map(
+            (c, i) => `<button type="button" role="menuitemcheckbox" aria-checked="${have.has(c.id)}" data-cat="${c.id}">
+              <span class="sw" style="--cl:var(--cat${c.color})"></span><span class="nm">${esc(c.name)}</span>${i < 5 ? `<kbd>${i + 1}</kbd>` : ""}${TICK}</button>`
+          )
+          .join("")
+      : `<div class="none">No categories yet.</div>`) +
+    `<div class="sep"></div>` +
+    (have.size ? `<button type="button" role="menuitem" data-clear><span class="nm">Clear categories</span><kbd>0</kbd></button>` : "") +
+    `<button type="button" role="menuitem" data-all><span class="nm">All categories…</span></button>`;
+  if (focused) {
+    const again = pop.querySelector(`[data-cat="${focused}"]`);
+    if (again) again.focus();
+  }
+}
+function closeCatPop() {
+  $("#catPop").classList.remove("up");
+  $("#rCategorize").setAttribute("aria-expanded", "false");
+}
+$("#rCategorize").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const pop = $("#catPop");
+  if (pop.classList.contains("up")) return closeCatPop();
+  if (!current) return;
+  renderCatPop();
   pop.classList.add("up");
   // Above the button, kept on screen at either edge. On a phone the button
-  // lives in the More sheet, so the picker rises from "⋯" instead.
-  const r = ($("#rColor").offsetParent ? $("#rColor") : $("#rMore")).getBoundingClientRect();
+  // lives in the More sheet, so the list rises from "⋯" instead.
+  const r = ($("#rCategorize").offsetParent ? $("#rCategorize") : $("#rMore")).getBoundingClientRect();
   const w = pop.offsetWidth;
   pop.style.left = `${Math.max(8, Math.min(r.left + r.width / 2 - w / 2, innerWidth - w - 8))}px`;
   pop.style.top = `${Math.max(8, r.top - pop.offsetHeight - 10)}px`;
-  $("#rColor").setAttribute("aria-expanded", "true");
-  (pop.querySelector('[aria-checked="true"]') || pop.querySelector("[data-c]")).focus();
+  $("#rCategorize").setAttribute("aria-expanded", "true");
+  (pop.querySelector('[aria-checked="true"]') || pop.querySelector("button")).focus();
 });
-$("#colorPop").addEventListener("click", (e) => {
-  const o = e.target.closest("[data-c]");
-  if (!o) return;
-  closeColorPop();
-  setColor(Number(o.dataset.c));
+$("#catPop").addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  if (b.dataset.cat) {
+    const id = Number(b.dataset.cat);
+    const has = ((current && current.message.cats) || []).includes(id);
+    changeCats(has ? { remove: [id] } : { add: [id] });
+  } else if (b.hasAttribute("data-clear")) clearCats();
+  else if (b.hasAttribute("data-all")) {
+    closeCatPop();
+    openCatSheet();
+  }
+});
+$("#catPop").addEventListener("keydown", (e) => {
+  if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+  const items = [...$("#catPop").querySelectorAll("button")];
+  const at = items.indexOf(document.activeElement);
+  e.preventDefault();
+  items[(at + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length].focus();
 });
 addEventListener("click", (e) => {
   // Not the click that opened it, from the More sheet, which is still on its way up.
-  if ($("#colorPop").classList.contains("up") && !e.target.closest("#colorPop, #rColor, #moreList")) closeColorPop();
+  if ($("#catPop").classList.contains("up") && !e.target.closest("#catPop, #rCategorize, #moreList")) closeCatPop();
 });
 // Ahead of the reader's own Escape, which would otherwise close the message.
 addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && $("#colorPop").classList.contains("up")) {
+  if (e.key === "Escape" && $("#catPop").classList.contains("up")) {
     e.preventDefault();
     e.stopImmediatePropagation();
-    closeColorPop();
-    $("#rColor").focus();
+    closeCatPop();
+    $("#rCategorize").focus();
   }
 }, true);
 
-async function setColor(c) {
+/** Adds and removes categories on the open message, or on its whole conversation. */
+async function changeCats({ add = [], remove = [] }) {
   if (!current) return;
-  const m = current.message;
-  const id = m.id;
-  const key = m.thread_key || (currentThread && currentThread.key) || "";
-  const whole = !!(currentThread && currentThread.whole !== false && key);
-  const was = colorOf(m);
-  if (was === c && !whole) return;
+  const { id, key, whole } = tagScope();
+  const was = [...(current.message.cats || [])];
+  const next = [...new Set([...was.filter((c) => !remove.includes(c)), ...add])].sort((a, b) => a - b);
   // On the click, then put back if the server says no. By id and key, since
   // the reader may be on another message by the time the answer is in.
-  const paint = (v) => {
-    if (current && current.message.id === id) {
-      current.message.color = v;
-      paintColorButton(v);
-    }
-    for (const list of [messages, threadRows]) {
-      for (const r of list) if (r.id === id || (whole && key && r.thread_key === key)) r.color = v;
-    }
+  const paint = (cats) => {
+    if (current && current.message.id === id) current.message.cats = cats;
+    eachRow(id, whole ? key : "", (r) => (r.cats = cats));
+    paintReaderTags();
     renderList();
   };
-  paint(c);
-  const res = await api(`/api/messages/${id}/color`, {
+  paint(next);
+  const res = await api(`/api/messages/${id}/categories`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ color: c, thread: whole }),
+    headers: JSON_POST,
+    body: JSON.stringify({ add, remove, thread: whole }),
   }).catch(() => null);
-  if (res && res.ok) return;
+  const d = res && res.ok ? await res.json().catch(() => null) : null;
+  if (d && Array.isArray(d.cats)) return paint(d.cats);
   paint(was);
-  toast("Could not change the colour");
+  toast("Could not change the categories");
 }
+function toggleCatAt(i) {
+  const c = categories[i];
+  if (!c) return toast(`There is no category ${i + 1} yet`);
+  const has = ((current && current.message.cats) || []).includes(c.id);
+  say(`${c.name} ${has ? "removed" : "added"}`);
+  changeCats(has ? { remove: [c.id] } : { add: [c.id] });
+}
+function clearCats() {
+  const have = (current && current.message.cats) || [];
+  if (have.length) changeCats({ remove: have });
+}
+
+/* Pinning: always the whole conversation, which is what a list row is. */
+const postPin = (id, pinned) =>
+  api(`/api/messages/${id}/pin`, { method: "POST", headers: JSON_POST, body: JSON.stringify({ pinned }) })
+    .then((r) => r.ok)
+    .catch(() => false);
+async function setPinned(pinned) {
+  if (!current) return;
+  const { id, key } = tagScope();
+  const was = !!Number(current.message.pinned);
+  const paint = (v) => {
+    if (current && current.message.id === id) current.message.pinned = v ? 1 : 0;
+    eachRow(id, key, (r) => (r.pinned = v ? 1 : 0));
+    paintReaderTags();
+    renderList();
+  };
+  paint(pinned);
+  if (await postPin(id, pinned)) {
+    // The order of the list changed: pinned conversations lead it.
+    loadList(false, { keep: true });
+    toast(pinned ? "Pinned to the top" : "Unpinned");
+    return;
+  }
+  paint(was);
+  toast("Could not change the pin");
+}
+$("#rPin").addEventListener("click", () => {
+  if (current) setPinned(!Number(current.message.pinned));
+});
+$("#bulkPin").addEventListener("click", async () => {
+  const rows = [...picked].map((id) => messages.find((m) => m.id === id)).filter(Boolean);
+  if (!rows.length) return;
+  // All pinned already: this unpins them. Otherwise it pins the rest too.
+  const pin = !rows.every((r) => Number(r.pinned));
+  exitSelmode();
+  const done = (await Promise.all(rows.map((r) => postPin(r.id, pin)))).filter(Boolean).length;
+  loadList(false, { keep: true });
+  toast(done ? `${pin ? "Pinned" : "Unpinned"}${done > 1 ? ` — ${done} conversations` : ""}` : "Could not change the pin");
+});
+
+/* All categories: add, rename, recolour, delete. */
+const TRASH = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`;
+function renderCatSheet() {
+  $("#catList").innerHTML =
+    categories
+      .map(
+        (c) => `<div class="catrow" data-id="${c.id}" style="--cl:var(--cat${c.color})">
+          <button class="catsw" type="button" data-sw aria-expanded="false" aria-label="Colour of ${esc(c.name)}: ${CAT_COLORS[c.color]}. Change"></button>
+          <input class="catname" type="text" value="${esc(c.name)}" maxlength="40" data-name aria-label="Name of this category" autocomplete="off" spellcheck="false">
+          <span class="catn" title="Messages with it" aria-label="${c.n} messages">${c.n}</span>
+          <button class="catdel" type="button" data-del aria-label="Delete ${esc(c.name)}" title="Delete">${TRASH}</button>
+          <div class="catpal" role="radiogroup" aria-label="Colour" hidden>${CAT_COLORS.map(
+            (nm, i) => `<button type="button" role="radio" aria-checked="${i === c.color}" aria-label="${nm}" title="${nm}" data-col="${i}" style="--cl:var(--cat${i})"></button>`
+          ).join("")}</div>
+        </div>`
+      )
+      .join("") || `<div class="sh-s">No categories yet. Add the first one below.</div>`;
+}
+function catSheetError(msg) {
+  const el = $("#catErr");
+  el.textContent = msg || "";
+  el.classList.toggle("show", !!msg);
+}
+async function openCatSheet() {
+  catSheetError("");
+  renderCatSheet();
+  openSheet("#catSheet");
+  // Counts and names as the server has them now, in case another device changed them.
+  const typing = () => $("#catSheet").contains(document.activeElement) && document.activeElement.matches("input");
+  await loadCategories();
+  if (!typing()) renderCatSheet();
+}
+/** One change to the list. The server answers with the whole list, which replaces ours. */
+async function catCall(method, path, body) {
+  const res = await api(path, { method, headers: JSON_POST, body: body ? JSON.stringify(body) : undefined }).catch(() => null);
+  const d = res ? await res.json().catch(() => ({})) : {};
+  if (res && res.ok) {
+    if (Array.isArray(d.categories)) categories = d.categories;
+    catSheetError("");
+    renderCatSheet();
+    renderList();
+    paintReaderTags();
+    return d;
+  }
+  catSheetError(d.error || "That did not work");
+  renderCatSheet();
+  return null;
+}
+$("#catList").addEventListener("click", async (e) => {
+  const row = e.target.closest(".catrow");
+  if (!row) return;
+  const id = Number(row.dataset.id);
+  if (e.target.closest("[data-sw]")) {
+    const pal = row.querySelector(".catpal");
+    pal.hidden = !pal.hidden;
+    row.querySelector("[data-sw]").setAttribute("aria-expanded", String(!pal.hidden));
+  } else if (e.target.closest("[data-col]")) {
+    await catCall("PATCH", `/api/categories/${id}`, { color: Number(e.target.closest("[data-col]").dataset.col) });
+  } else if (e.target.closest("[data-del]")) {
+    const c = catById(id);
+    if (!c) return;
+    const used = Number(c.n) || 0;
+    if (!(await ask(
+      `Delete the category ${c.name}?`,
+      used ? `It is taken off ${used} message${used > 1 ? "s" : ""}. The messages themselves stay.` : "No message has it.",
+      { ok: "Delete", danger: true }
+    ))) return;
+    if (await catCall("DELETE", `/api/categories/${id}`)) {
+      if (current && current.message.cats) current.message.cats = current.message.cats.filter((x) => x !== id);
+      for (const list of [messages, threadRows]) for (const r of list) if (r.cats) r.cats = r.cats.filter((x) => x !== id);
+      paintReaderTags();
+      renderList();
+    }
+  }
+});
+$("#catList").addEventListener("change", (e) => {
+  const input = e.target.closest("[data-name]");
+  if (!input) return;
+  const id = Number(input.closest(".catrow").dataset.id);
+  const c = catById(id);
+  if (c && input.value.trim() !== c.name) catCall("PATCH", `/api/categories/${id}`, { name: input.value });
+});
+$("#catList").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.target.matches("[data-name]")) e.target.blur();
+});
+async function addCategory() {
+  const name = $("#catNew").value.trim();
+  if (!name) return $("#catNew").focus();
+  if (await catCall("POST", "/api/categories", { name })) $("#catNew").value = "";
+  $("#catNew").focus();
+}
+$("#catAdd").addEventListener("click", addCategory);
+$("#catNew").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    addCategory();
+  }
+});
 
 $("#rImages").addEventListener("click", () => {
   showImagesOnce = true;
@@ -5275,6 +5583,7 @@ function draftSnapshot() {
     html: $("#cBody").innerHTML.trim(),
     text: $("#cBody").innerText.trim(),
     reply_to: replyTo || "",
+    importance: Number($("#cImp").value) || 0,
     title: $("#cTitle").textContent,
     pid: draftPid,
     at: Date.now(),
@@ -5396,6 +5705,7 @@ function resumeKept(d) {
     html: d.html,
     reply: d.reply_to || null,
     pid: d.pid || "",
+    importance: d.importance,
   });
   // Bcc is cleared by openCompose on purpose, so it is put back here rather
   // than by teaching that function to inherit blind recipients.
@@ -5421,6 +5731,10 @@ function resumeKept(d) {
 for (const id of ["#cTo", "#cCc", "#cBcc", "#cSubj", "#cBody"]) {
   $(id).addEventListener("input", queueDraftSave);
 }
+$("#cImp").addEventListener("change", () => {
+  $("#cImpWrap").classList.toggle("hi", $("#cImp").value === "1");
+  queueDraftSave();
+});
 
 /**
  * The copy at Apple.
@@ -5822,6 +6136,8 @@ function openCompose(opts = {}) {
   // chips host instead, and both buttons read "+ #cCcChips".
   for (const [btn, wrap, , , name] of CC_TOGGLES) markToggle(btn, wrap, name);
   $("#cSubj").value = opts.subject || "";
+  $("#cImp").value = String(Number(opts.importance) || 0);
+  $("#cImpWrap").classList.toggle("hi", Number(opts.importance) === 1);
   $("#cBody").innerHTML = withSignature(cleanHtml(opts.html));
   // Nothing to answer in a message that is not a reply to anything.
   $("#aiDraft").hidden = !replyTo;
@@ -6897,6 +7213,7 @@ function outgoing() {
     text,
     html,
     reply_to: replyTo || undefined,
+    importance: Number($("#cImp").value) || undefined,
   };
 }
 
@@ -7171,6 +7488,7 @@ $("#outboxList").addEventListener("click", async (e) => {
       subject: m.subject,
       html: m.html,
       reply: m.reply_to || null,
+      importance: m.importance,
     });
     if (m.bcc) {
       addrSet("#cBcc", "#cBccChips", m.bcc);
@@ -7322,6 +7640,7 @@ async function resumeDraft(id) {
     cc: d.message.cc_line || "",
     subject: d.message.subject || "",
     html: d.body.html || "",
+    importance: d.message.importance,
     // Saving again supersedes this copy rather than adding a second one —
     // unless this copy has files. They are not loaded into the composer, so
     // the copy that superseded it had none: fixing a typo in a draft started
@@ -8185,7 +8504,7 @@ $("#rEml").addEventListener("click", () => {
    them, so a label and an icon are decided in one place. */
 const OVERFLOW_IDS = [
   "#rImages", "#rUnsub", "#rNotSpam",
-  "#rColor", "#rUnread", "#rMove", "#rPdf", "#rForward", "#rReplyAI", "#rReplyAll",
+  "#rCategorize", "#rPin", "#rUnread", "#rMove", "#rPdf", "#rForward", "#rReplyAI", "#rReplyAll",
   "#rSummarize", "#rSnooze", "#rEml",
 ];
 function renderMoreSheet() {
@@ -8678,7 +8997,7 @@ if (new URLSearchParams(location.search).has("reminders")) openReminders();
   // The signature is wanted the moment a reply opens, which can be before
   // any settings sheet has ever been looked at, so it is read at startup
   // alongside the mail rather than after it.
-  await Promise.all([refreshAll(), loadSignature(), loadImageSenders()]);
+  await Promise.all([refreshAll(), loadSignature(), loadImageSenders(), loadCategories()]);
   schedulePoll();
   resumeKeptDraft();
   // What the address asked for is a convenience. Nothing in it may stop the
