@@ -19,6 +19,8 @@
  * dies part-way leaves the previous one exactly as it was.
  */
 
+import { moduleTables } from "./modules.js";
+
 const TABLES = [
   "accounts", "messages", "settings", "blocked_senders", "outbox", "snoozed",
   "contacts_hidden", "contacts_added", "push_subs",
@@ -28,6 +30,10 @@ const TABLES = [
   // only ever rebuilt once.
   "image_senders", "revoked_sessions", "events",
 ];
+
+// The core tables, then whatever the modules own (src/modules.js). Read on
+// each run, never cached, so there is one list for the snapshot and the restore.
+const tablesToKeep = () => [...new Set([...TABLES, ...moduleTables()])];
 
 // Rebuildable from the messages themselves, and by far the largest table.
 // Restoring re-indexes rather than reloading it: the search backfill picks
@@ -75,7 +81,7 @@ export async function runBackup(env, now) {
   const parts = [];
   let bytes = 0;
   try {
-    for (const table of TABLES) {
+    for (const table of tablesToKeep()) {
       counts[table] = 0;
       let held = [];
       let n = 0;
@@ -227,13 +233,14 @@ export async function restoreBackup(env) {
   if (!obj) return { restored: {}, key: null };
   const head = JSON.parse(await obj.text());
 
-  const restored = Object.fromEntries(TABLES.map((t) => [t, 0]));
+  const tables = tablesToKeep();
+  const restored = Object.fromEntries(tables.map((t) => [t, 0]));
   if (snap.legacy) {
-    for (const table of TABLES) restored[table] = await restoreRows(env, table, head.tables?.[table] || []);
+    for (const table of tables) restored[table] = await restoreRows(env, table, head.tables?.[table] || []);
   } else {
     // The table name goes into the statement, so it is one of ours or it is
     // not restored.
-    const parts = (head.parts || []).filter((p) => TABLES.includes(p.table));
+    const parts = (head.parts || []).filter((p) => tables.includes(p.table));
     // Checked before anything is written: half a restore, then an error, is
     // harder to reason about than an error.
     const held = new Set(snap.files.map((o) => o.key));

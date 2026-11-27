@@ -16,6 +16,7 @@ import { latin1ToBytes } from "./rfc822.js";
 import { isRelayed, relayMessage, relaySend } from "./relay.js";
 import { smtpCheck, smtpSend } from "./smtp.js";
 import { zipStream } from "./zip.js";
+import { moduleApi } from "./modules.js";
 import { ensureBody } from "./bodies.js";
 import { accountById, aiKey, aiModel, aliasesOf, fileDraftCopy, forgetLocal, moveAtProvider, senderFor } from "./filing.js";
 import { folderNameFor, icloudAct, icloudPassword, mailboxList, renameCursor, resolveMailbox, theAccount, threadAct, threadRowsIn, withImap } from "./mailbox.js";
@@ -26,6 +27,9 @@ import { countDestroyed, forgetBlockedLocally, mailboxNames, noteMailbox, purgeB
 import { ATTACHMENT_HEADERS, FLAG_FLAGGED, FLAG_SEEN, bodyKey, hashHex, json } from "./util.js";
 
 export async function handleApi(request, env, path, ctx, session) {
+  const fromModule = await moduleApi(request, env, path, ctx, session);
+  if (fromModule) return fromModule;
+
   // GET /api/accounts — who is connected, how fresh, how much unread.
   if (path === "/api/accounts" && request.method === "GET") {
     const [a, u] = await env.DB.batch([

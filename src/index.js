@@ -21,6 +21,7 @@ import { DurableObject } from "cloudflare:workers";
 import { NO_ROUTE, RAN_IN, runElsewhere } from "./elsewhere.js";
 import { NoRouteError } from "./errors.js";
 import { handleApi } from "./api.js";
+import { moduleCrons } from "./modules.js";
 import { flushOutbox, wakeSnoozed } from "./outgoing.js";
 import { syncAccount } from "./sync.js";
 import { SYNC_PER_RUN, json, keepHost, learnHost, recallHost } from "./util.js";
@@ -378,6 +379,10 @@ export default {
         // column the database has not got cannot sync at all, and this is the
         // only place that can put that right.
         await ensureSchema(env).catch((e) => console.log(`schema: ${e.message || e}`));
+
+        // After the schema, so a module's tables exist; before the mail sync,
+        // so a slow sync does not hold them up. Each runs on its own.
+        moduleCrons(env, ctx, event);
 
         // The newest unread message in the inbox, before and after. Counting
         // them missed a pass where one arrived and another was read: the
