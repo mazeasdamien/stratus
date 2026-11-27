@@ -8,6 +8,7 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
+import { demoContacts } from "./demo-contacts.mjs";
 
 const root = join(fileURLToPath(new URL("..", import.meta.url)), "public");
 const port = Number(process.argv[2] || 8765);
@@ -120,6 +121,7 @@ createServer(async (req, res) => {
       reminders = reminders.filter((r) => r.id !== rem[1]);
       return json(res, { ok: true });
     }
+    if (await demoContacts(req, res, p)) return;
     if (p === "/api/accounts") return json(res, { accounts });
     if (p === "/api/folders") return json(res, { folders });
     if (p === "/api/messages") {
