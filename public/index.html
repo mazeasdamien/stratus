@@ -13453,22 +13453,22 @@ function calVisible() {
 /* ── the view ── */
 function calBuild() {
   const seg = ["agenda", "day", "week", "month"]
-    .map((v) => `<button type="button" data-cal-view="${v}" aria-pressed="false">${v[0].toUpperCase()}${v.slice(1)}</button>`)
+    .map((v) => `<button type="button" data-cal-view="${v}" aria-pressed="false">${{ agenda: t("Agenda"), day: t("Day"), week: t("Week"), month: t("Month") }[v]}</button>`)
     .join("");
   const ico = (p) => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
   $("#timelineView").innerHTML =
     `<div class="cal-bar">` +
     `<div class="cal-nav">` +
-    `<button type="button" class="cal-btn ico" id="calPrev" aria-label="Previous">${ico('<path d="m15 18-6-6 6-6"/>')}</button>` +
-    `<button type="button" class="cal-btn ico" id="calNext" aria-label="Next">${ico('<path d="m9 18 6-6-6-6"/>')}</button>` +
-    `<button type="button" class="cal-btn" id="calToday">Today</button>` +
+    `<button type="button" class="cal-btn ico" id="calPrev" aria-label="${t("Previous")}">${ico('<path d="m15 18-6-6 6-6"/>')}</button>` +
+    `<button type="button" class="cal-btn ico" id="calNext" aria-label="${t("Next")}">${ico('<path d="m9 18 6-6-6-6"/>')}</button>` +
+    `<button type="button" class="cal-btn" id="calToday">${t("Today")}</button>` +
     `</div>` +
     `<h2 class="cal-title" id="calTitle" aria-live="polite"></h2>` +
-    `<button type="button" class="cal-btn acc ico cal-new" id="calNew" aria-label="New event" title="New event">${ico('<path d="M12 5v14M5 12h14"/>')}</button>` +
+    `<button type="button" class="cal-btn acc ico cal-new" id="calNew" aria-label="${t("New event")}" title="${t("New event")}">${ico('<path d="M12 5v14M5 12h14"/>')}</button>` +
     `<div class="cal-row2">` +
-    `<div class="cal-seg" role="group" aria-label="View">${seg}</div>` +
-    `<button type="button" class="cal-btn ico" id="calCals" aria-label="Calendars" aria-haspopup="dialog" title="Calendars">${ico('<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>')}</button>` +
-    `<button type="button" class="cal-btn ico" id="calOpts" aria-label="Calendar options" aria-haspopup="dialog" title="Options">${ico('<path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>')}</button>` +
+    `<div class="cal-seg" role="group" aria-label="${t("View")}">${seg}</div>` +
+    `<button type="button" class="cal-btn ico" id="calCals" aria-label="${t("Calendars")}" aria-haspopup="dialog" title="${t("Calendars")}">${ico('<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>')}</button>` +
+    `<button type="button" class="cal-btn ico" id="calOpts" aria-label="${t("Calendar options")}" aria-haspopup="dialog" title="${t("Options")}">${ico('<path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>')}</button>` +
     `</div>` +
     `</div>` +
     `<div class="cal-scroll" id="calBody" tabindex="-1"></div>`;
@@ -13498,12 +13498,12 @@ function calRender(reset = false) {
   const top = body.scrollTop;
   const left = body.scrollLeft;
 
-  if (!cal.loaded) body.innerHTML = `<div class="cal-msg">Loading…</div>`;
+  if (!cal.loaded) body.innerHTML = `<div class="cal-msg">${t("Loading…")}</div>`;
   else if (cal.failed && !cal.occ.length && !cal.calendars.length) {
     body.innerHTML =
-      `<div class="cal-msg"><div><b>Could not load your calendar</b></div>` +
-      `<div style="font-size:12.5px;color:var(--t3);max-width:260px">The server did not answer. Check the connection.</div>` +
-      `<button type="button" class="ghost" data-cal-retry>Try again</button></div>`;
+      `<div class="cal-msg"><div><b>${t("Could not load your calendar")}</b></div>` +
+      `<div style="font-size:12.5px;color:var(--t3);max-width:260px">${t("The server did not answer. Check the connection.")}</div>` +
+      `<button type="button" class="ghost" data-cal-retry>${t("Try again")}</button></div>`;
   } else body.innerHTML = cal.view === "agenda" ? calAgendaHtml() : cal.view === "month" ? calMonthHtml() : calGridHtml();
 
   if (reset) cal.wantScroll = true;
@@ -13525,7 +13525,7 @@ function calRender(reset = false) {
 
   if (currentTab === "timeline") {
     const n = cal.loaded ? calVisible().length : 0;
-    $("#hmeta").textContent = cal.failed && !cal.occ.length ? "Calendar · could not be loaded" : `Calendar · ${n} ${n === 1 ? "event" : "events"}`;
+    $("#hmeta").textContent = cal.failed && !cal.occ.length ? t("Calendar · could not be loaded") : t("Calendar · {n, plural, one {# event} other {# events}}", { n });
   }
 }
 const calHourPx = () => parseFloat(getComputedStyle($("#calBody").querySelector(".cal-grid") || document.body).getPropertyValue("--h")) || 46;
@@ -13540,18 +13540,21 @@ function calVisibleDays() {
 function calLabel(o) {
   const c = calCalendar(o.calendarId);
   const when = o.allDay
-    ? `${calDate(o.ws, { weekday: "long", day: "numeric", month: "long" })}, all day`
+    ? t("{date}, all day", { date: calDate(o.ws, { weekday: "long", day: "numeric", month: "long" }) })
     : `${calDate(o.ws, { weekday: "long", day: "numeric", month: "long" })}, ${calTimeText(o)}`;
-  return [o.summary || "No title", when, o.location, c ? c.name : "", o.recurring ? "repeats" : "", o.status === "CANCELLED" ? "cancelled" : ""].filter(Boolean).join(", ");
+  return [o.summary || t("No title"), when, o.location, c ? c.name : "", o.recurring ? t("repeats") : "", o.status === "CANCELLED" ? t("cancelled") : ""].filter(Boolean).join(", ");
 }
 function calTimeText(o) {
-  if (o.allDay) return "All day";
+  if (o.allDay) return t("All day");
   const same = o.we.getTime() === o.ws.getTime();
   if (same) return calClock(o.ws);
   if (calSameDay(o.ws, o.we)) return `${calClock(o.ws)} – ${calClock(o.we)}`;
   return `${calClock(o.ws)} – ${calDate(o.we, { day: "numeric", month: "short" })} ${calClock(o.we)}`;
 }
-const calTitleOf = (o) => (o.status === "CANCELLED" ? "Cancelled: " : "") + (o.summary || "(No title)");
+const calTitleOf = (o) => {
+  const title = o.summary || t("(No title)");
+  return o.status === "CANCELLED" ? t("Cancelled: {title}", { title }) : title;
+};
 const calEvAttrs = (o) => `data-occ="${esc(o.id)}" aria-label="${esc(calLabel(o))}"`;
 
 /* ── day and week ── */
@@ -13623,7 +13626,7 @@ function calGridHtml() {
   }
   let ad = "";
   if (bars.length) {
-    ad = `<div class="cal-ad"><span class="lbl">all-day</span>`;
+    ad = `<div class="cal-ad"><span class="lbl">${t("all-day")}</span>`;
     for (const b of bars) {
       const o = b.o;
       ad +=
@@ -13733,7 +13736,7 @@ function calMonthHtml() {
     }
     for (let c = 0; c < 7; c++) {
       if (hidden[c]) {
-        html += `<button type="button" class="cal-more" data-cal-day="${calAddDays(ws, c).getTime()}" style="--r:${used + 2};grid-row:${used + 2};grid-column:${c + 1}">+${hidden[c]} more</button>`;
+        html += `<button type="button" class="cal-more" data-cal-day="${calAddDays(ws, c).getTime()}" style="--r:${used + 2};grid-row:${used + 2};grid-column:${c + 1}">${t("{n, plural, one {+# more} other {+# more}}", { n: hidden[c] })}</button>`;
       }
     }
     html += `</div>`;
@@ -13744,9 +13747,9 @@ function calMonthHtml() {
 /* ── agenda ── */
 function calDayLabel(d) {
   const diff = Math.round((calMidnight(d) - calMidnight(new Date())) / CAL_DAY);
-  if (diff === 0) return "Today";
-  if (diff === 1) return "Tomorrow";
-  if (diff === -1) return "Yesterday";
+  if (diff === 0) return t("Today");
+  if (diff === 1) return t("Tomorrow");
+  if (diff === -1) return t("Yesterday");
   return calDate(d, { weekday: "long", day: "numeric", month: "long" });
 }
 function calAgendaHtml() {
@@ -13756,8 +13759,8 @@ function calAgendaHtml() {
   if (!vis.length) {
     return (
       `<div class="cal-msg"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:var(--t3);opacity:.7"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>` +
-      `<div><b>Nothing planned</b></div>` +
-      `<div style="font-size:12.5px;color:var(--t3);max-width:280px">Nothing in the next 30 days. Make an event with the + button, or subscribe to a calendar.</div></div>`
+      `<div><b>${t("Nothing planned")}</b></div>` +
+      `<div style="font-size:12.5px;color:var(--t3);max-width:280px">${t("Nothing in the next 30 days. Make an event with the + button, or subscribe to a calendar.")}</div></div>`
     );
   }
   const groups = new Map();
@@ -13785,13 +13788,13 @@ function calAgendaHtml() {
         const known = timelineEvents.find((x) => x.id === o.eventId);
         const sent = known ? known.rsvp : o.rsvp;
         const shown = rsvpShown(o.eventId, sent);
-        const pill = { accepted: `<span class="tl-rsvp accepted">Accepted</span>`, declined: `<span class="tl-rsvp declined">Declined</span>`, tentative: `<span class="tl-rsvp">Maybe</span>` }[sent] || "";
+        const pill = { accepted: `<span class="tl-rsvp accepted">${t("Accepted")}</span>`, declined: `<span class="tl-rsvp declined">${t("Declined")}</span>`, tentative: `<span class="tl-rsvp">${t("Maybe")}</span>` }[sent] || "";
         extra =
           `<div class="tl-actions">` +
-          (join ? `<a class="tl-join" href="${esc(join.href)}" target="_blank" rel="noopener noreferrer">Join · ${esc(join.host)}</a>` : "") +
+          (join ? `<a class="tl-join" href="${esc(join.href)}" target="_blank" rel="noopener noreferrer">${t("Join · {host}", { host: esc(join.host) })}</a>` : "") +
           pill +
           ["accepted", "tentative", "declined"]
-            .map((s) => `<button type="button" class="ghost" data-tl-rsvp="${s}" data-eid="${esc(o.eventId)}" aria-pressed="${shown === s}">${{ accepted: "Accept", tentative: "Maybe", declined: "Decline" }[s]}</button>`)
+            .map((s) => `<button type="button" class="ghost" data-tl-rsvp="${s}" data-eid="${esc(o.eventId)}" aria-pressed="${shown === s}">${{ accepted: t("Accept"), tentative: t("Maybe"), declined: t("Decline") }[s]}</button>`)
             .join("") +
           `</div>`;
       }
@@ -13799,15 +13802,15 @@ function calAgendaHtml() {
         `<div class="tl-card${today ? " today" : ""}${cancelled ? " cancelled" : ""}${past ? " past" : ""}" data-occ="${esc(o.id)}" style="--c:${esc(calColor(o))}">` +
         `<div class="tl-head"><button type="button" class="tl-title" data-cal-${inv ? "msg" : "open"} aria-label="${esc(calLabel(o))}">${esc(calTitleOf(o))}</button>` +
         `<div class="tl-badge">${esc(multi)}</div></div>` +
-        `<div class="tl-meta"><span class="dot"></span>${esc(c ? c.name : "")}${o.recurring ? " · repeats" : ""}</div>` +
+        `<div class="tl-meta"><span class="dot"></span>${esc(c ? c.name : "")}${o.recurring ? ` · ${t("repeats")}` : ""}</div>` +
         (o.location ? `<div class="tl-meta">${esc(o.location)}</div>` : "") +
-        (inv && o.organizer ? `<div class="tl-meta">Organised by ${esc(o.organizer)}</div>` : "") +
+        (inv && o.organizer ? `<div class="tl-meta">${t("Organised by {name}", { name: esc(o.organizer) })}</div>` : "") +
         extra +
         `</div>`;
     }
     html += `</div>`;
   }
-  return html + `<button type="button" class="ghost tl-more" id="calMore">Show the next 30 days</button></div>`;
+  return html + `<button type="button" class="ghost tl-more" id="calMore">${t("Show the next 30 days")}</button></div>`;
 }
 
 /* ── moving about ── */
@@ -14115,7 +14118,7 @@ async function calMoveTo(o, ws, we) {
   if (patch.start === o.start && patch.end === o.end) return;
   let body = patch;
   if (o.recurring) {
-    const scope = await calAskScope("Change a repeating event", "Move this one, or every event in the series?");
+    const scope = await calAskScope(t("Change a repeating event"), t("Move this one, or every event in the series?"));
     if (!scope) return calRender();
     body = scope === "one" ? { scope, occurrence: o.occurrence, ...patch } : { scope, from: o.start, ...patch };
   }
@@ -14125,13 +14128,13 @@ async function calMoveTo(o, ws, we) {
   calPrep(o);
   calRender();
   const r = await calReq(`/api/calendar/events/${encodeURIComponent(o.eventId)}`, "PATCH", body);
-  if (!r.ok) toast(r.data.error || "Could not move that");
+  if (!r.ok) toast(r.data.error ? tw(r.data.error) : t("Could not move that"));
   await calLoad();
 }
 
 /* ── the event sheet ── */
-const CAL_REMIND = [[null, "No reminder"], [0, "At the time of the event"], [5, "5 minutes before"], [10, "10 minutes before"], [15, "15 minutes before"], [30, "30 minutes before"], [60, "1 hour before"], [120, "2 hours before"], [1440, "1 day before"], [2880, "2 days before"]];
-const CAL_REMIND_DAY = [[null, "No reminder"], [-540, "On the day, at 9:00"], [900, "The day before, at 9:00"], [2340, "2 days before, at 9:00"], [9540, "A week before, at 9:00"]];
+const CAL_REMIND = [[null, t("No reminder")], [0, t("At the time of the event")], [5, t("5 minutes before")], [10, t("10 minutes before")], [15, t("15 minutes before")], [30, t("30 minutes before")], [60, t("1 hour before")], [120, t("2 hours before")], [1440, t("1 day before")], [2880, t("2 days before")]];
+const CAL_REMIND_DAY = [[null, t("No reminder")], [-540, t("On the day, at 9:00")], [900, t("The day before, at 9:00")], [2340, t("2 days before, at 9:00")], [9540, t("A week before, at 9:00")]];
 const CAL_WD = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
 
 function calTimeOptions(sel, extra) {
@@ -14146,23 +14149,31 @@ function calTimeOptions(sel, extra) {
 const calMinOf = (d) => d.getHours() * 60 + d.getMinutes();
 function calRemindOptions(allDay, value) {
   const list = (allDay ? CAL_REMIND_DAY : CAL_REMIND).slice();
-  if (value !== null && value !== undefined && !list.some(([v]) => v === value)) list.push([value, `${value} minutes before`]);
+  if (value !== null && value !== undefined && !list.some(([v]) => v === value)) list.push([value, t("{n, plural, one {# minute before} other {# minutes before}}", { n: value })]);
   $("#calEvRemind").innerHTML = list.map(([v, l]) => `<option value="${v === null ? "" : v}">${esc(l)}</option>`).join("");
   $("#calEvRemind").value = value === null || value === undefined ? "" : String(value);
 }
 
 /** The weekday names, from the week's first day. */
 const calWeekdays = () => Array.from({ length: 7 }, (_, i) => (calWeekStart() + i) % 7);
-const calOrdinal = (n) => ({ 1: "first", 2: "second", 3: "third", 4: "fourth", [-1]: "last" })[n];
+/** "On the second Tuesday", whole, so a language can order and agree its own words. */
+const calOnNth = (n, weekday) =>
+  ({
+    1: t("On the first {weekday}", { weekday }),
+    2: t("On the second {weekday}", { weekday }),
+    3: t("On the third {weekday}", { weekday }),
+    4: t("On the fourth {weekday}", { weekday }),
+    [-1]: t("On the last {weekday}", { weekday }),
+  })[n];
 
 /** The monthly choices for the date being edited. */
 function calMonthlyOptions(d, value) {
   const wd = calDate(d, { weekday: "long" });
   const nth = Math.ceil(d.getDate() / 7);
   const lastWeek = d.getDate() + 7 > new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-  const opts = [["date", `On day ${d.getDate()}`]];
-  if (nth <= 4) opts.push([`${nth}${CAL_WD[d.getDay()]}`, `On the ${calOrdinal(nth)} ${wd}`]);
-  if (lastWeek) opts.push([`-1${CAL_WD[d.getDay()]}`, `On the last ${wd}`]);
+  const opts = [["date", t("{day, plural, other {On day #}}", { day: d.getDate() })]];
+  if (nth <= 4) opts.push([`${nth}${CAL_WD[d.getDay()]}`, calOnNth(nth, wd)]);
+  if (lastWeek) opts.push([`-1${CAL_WD[d.getDay()]}`, calOnNth(-1, wd)]);
   $("#calEvMonthly").innerHTML = opts.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
   $("#calEvMonthly").value = opts.some(([v]) => v === value) ? value : "date";
 }
@@ -14221,7 +14232,13 @@ function calSyncSheet() {
   const f = $("#calEvRepeat").value;
   $("#calEvRep").hidden = f === "none" || f === "custom";
   $("#calEvIntW").hidden = f === "none" || f === "custom";
-  $("#calEvUnit").textContent = { daily: "day(s)", weekly: "week(s)", monthly: "month(s)", yearly: "year(s)" }[f] || "";
+  const n = Math.max(1, Number($("#calEvInt").value) || 1);
+  $("#calEvUnit").textContent = {
+    daily: t("{n, plural, one {day} other {days}}", { n }),
+    weekly: t("{n, plural, one {week} other {weeks}}", { n }),
+    monthly: t("{n, plural, one {month} other {months}}", { n }),
+    yearly: t("{n, plural, one {year} other {years}}", { n }),
+  }[f] || "";
   $("#calEvDays").hidden = f !== "weekly";
   $("#calEvMonthlyW").hidden = f !== "monthly";
   const end = $("#calEvEnd").value;
@@ -14248,7 +14265,7 @@ function calNew(pre = {}) {
 /** Opens an existing occurrence: its own fields from the server, its time from what is drawn. */
 async function calEdit(o) {
   const r = await calReq(`/api/calendar/events/${encodeURIComponent(o.eventId)}`, "GET");
-  if (!r.ok) return toast(r.data.error || "Could not open that event");
+  if (!r.ok) return toast(r.data.error ? tw(r.data.error) : t("Could not open that event"));
   calOpenSheet({ ev: r.data.event, o, ws: o.ws, we: o.we, isNew: false });
 }
 
@@ -14258,7 +14275,7 @@ function calOpenSheet({ ev, o, ws, we, isNew }) {
   const lastDay = allDay ? calAddDays(we, -1) : we;
   const ui = calRuleToUi(ev.rrule, ws) || { freq: "custom" };
   cal.sheet = { ev, o, isNew, custom: ev.rrule, wasAllDay: allDay, remind: ev.reminderMin, start: o ? o.start : ev.start };
-  $("#calEvHead").textContent = isNew ? "New event" : ro ? "Event" : "Edit event";
+  $("#calEvHead").textContent = isNew ? t("New event") : ro ? t("Event") : t("Edit event");
   $("#calEvTitle").value = ev.summary;
   $("#calEvCal").innerHTML = (ro ? cal.calendars.filter((c) => c.id === ev.calendarId) : calWritable())
     .map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join("");
@@ -14292,12 +14309,12 @@ function calOpenSheet({ ev, o, ws, we, isNew }) {
 
   const roBox = $("#calEvRo");
   roBox.hidden = !ro;
-  roBox.textContent = ro ? `From the subscribed calendar “${ev.calendarName}”. It is read-only here.` : "";
+  roBox.textContent = ro ? t("From the subscribed calendar “{name}”. It is read-only here.", { name: ev.calendarName }) : "";
   for (const el of $("#calEvSheet").querySelectorAll("input,select,textarea")) el.disabled = ro;
   for (const b of $("#calEvDays").querySelectorAll("button")) b.disabled = ro;
   $("#calEvSave").hidden = ro;
   $("#calEvDelete").hidden = ro || isNew;
-  $("#calEvCancel").textContent = ro ? "Close" : "Cancel";
+  $("#calEvCancel").textContent = ro ? t("Close") : t("Cancel");
   closeOverlays();
   setTimeout(() => openSheet("#calEvSheet"), 60);
 }
@@ -14305,17 +14322,17 @@ function calOpenSheet({ ev, o, ws, we, isNew }) {
 async function calSaveSheet() {
   const sh = cal.sheet;
   const err = (m) => { $("#calEvErr").textContent = m; $("#calEvErr").classList.add("show"); };
-  const t = calSheetTimes();
-  if (!t) return err("Pick a start and an end");
+  const tm = calSheetTimes();
+  if (!tm) return err(t("Pick a start and an end"));
   const allDay = $("#calEvAllDay").checked;
-  if (allDay ? t.e <= t.s : t.e < t.s) return err("The event cannot end before it starts");
+  if (allDay ? tm.e <= tm.s : tm.e < tm.s) return err(t("The event cannot end before it starts"));
   const floating = sh.ev.tzid === "" && !allDay && !sh.isNew;
   const stored = (d) => (allDay ? Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) : floating ? Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes()) : d.getTime());
-  const rule = calUiToRule(t.s);
+  const rule = calUiToRule(tm.s);
   const remind = $("#calEvRemind").value === "" ? null : Number($("#calEvRemind").value);
   const body = {
     summary: $("#calEvTitle").value.trim(), location: $("#calEvLoc").value, description: $("#calEvNotes").value,
-    calendarId: $("#calEvCal").value, allDay, start: stored(t.s), end: stored(t.e), tzid: sh.ev.tzid,
+    calendarId: $("#calEvCal").value, allDay, start: stored(tm.s), end: stored(tm.e), tzid: sh.ev.tzid,
   };
   let path = "/api/calendar/events";
   let method = "POST";
@@ -14327,7 +14344,7 @@ async function calSaveSheet() {
       const repeatChanged = rule !== (sh.ev.rrule || "");
       const scope = repeatChanged || remind !== sh.ev.reminderMin
         ? "all"
-        : await calAskScope("Change a repeating event", "Change this event only, or every event in the series?");
+        : await calAskScope(t("Change a repeating event"), t("Change this event only, or every event in the series?"));
       if (!scope) return;
       Object.assign(body, scope === "one" ? { scope, occurrence: sh.o ? sh.o.occurrence : sh.ev.recurrenceId ?? sh.ev.start } : { scope, from: sh.start, rrule: rule, reminderMin: remind });
     } else Object.assign(body, { rrule: rule, reminderMin: remind });
@@ -14335,9 +14352,9 @@ async function calSaveSheet() {
   $("#calEvSave").disabled = true;
   const r = await calReq(path, method, body);
   $("#calEvSave").disabled = false;
-  if (!r.ok) return err(r.data.error || "Could not save that");
+  if (!r.ok) return err(r.data.error ? tw(r.data.error) : t("Could not save that"));
   closeSheets();
-  toast(sh.isNew ? "Event added" : "Event saved");
+  toast(sh.isNew ? t("Event added") : t("Event saved"));
   await calLoad();
 }
 
@@ -14345,14 +14362,14 @@ async function calDeleteSheet() {
   const sh = cal.sheet;
   let scope = "all";
   if (sh.ev.recurring) {
-    scope = await calAskScope("Delete a repeating event", "Delete this event only, or every event in the series?");
+    scope = await calAskScope(t("Delete a repeating event"), t("Delete this event only, or every event in the series?"));
     if (!scope) return;
-  } else if (!(await ask("Delete this event?", "It is removed from your calendar.", { ok: "Delete", danger: true }))) return;
+  } else if (!(await ask(t("Delete this event?"), t("It is removed from your calendar."), { ok: t("Delete"), danger: true }))) return;
   const occ = sh.o ? sh.o.occurrence : sh.ev.recurrenceId ?? sh.ev.start;
   const r = await calReq(`/api/calendar/events/${encodeURIComponent(sh.ev.id)}?scope=${scope}&occurrence=${occ}`, "DELETE");
-  if (!r.ok) return toast(r.data.error || "Could not delete that");
+  if (!r.ok) return toast(r.data.error ? tw(r.data.error) : t("Could not delete that"));
   closeSheets();
-  toast("Event deleted");
+  toast(t("Event deleted"));
   await calLoad();
 }
 
@@ -14402,23 +14419,23 @@ const CAL_COLORS = ["#1f6fd0", "#d9534f", "#2e9e5b", "#e0892b", "#8a5cc7", "#17a
 let calManage = "";
 let calForm = null;
 function calAgo(ms) {
-  if (!ms) return "not fetched yet";
+  if (!ms) return t("not fetched yet");
   const m = Math.round((Date.now() - ms) / 60000);
-  return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
+  return m < 1 ? t("just now") : m < 60 ? t("{n} min ago", { n: m }) : m < 1440 ? t("{n} h ago", { n: Math.round(m / 60) }) : t("{n} d ago", { n: Math.round(m / 1440) });
 }
-const calEvery = (m) => (m < 60 ? `${m} minutes` : m === 60 ? "hour" : m < 1440 ? `${m / 60} hours` : "day");
+const calEvery = (m) => (m < 60 ? t("{n} minutes", { n: m }) : m === 60 ? t("hour") : m < 1440 ? t("{n} hours", { n: m / 60 }) : t("day"));
 function calSwatches(current) {
-  return `<div class="cal-swatches" role="group" aria-label="Colour">${CAL_COLORS.map((c) => `<button type="button" data-cal-color="${c}" style="--c:${c}" aria-label="${c}" aria-pressed="${c === current}"></button>`).join("")}</div>`;
+  return `<div class="cal-swatches" role="group" aria-label="${t("Colour")}">${CAL_COLORS.map((c) => `<button type="button" data-cal-color="${c}" style="--c:${c}" aria-label="${c}" aria-pressed="${c === current}"></button>`).join("")}</div>`;
 }
 function calRenderCals() {
   let html = "";
   for (const c of cal.calendars) {
     const sub = c.kind === "subscription";
     const open = calManage === c.id;
-    const note = sub ? (c.lastError ? `<small class="err">${esc(c.lastError)}</small>` : `<small>Subscribed · ${esc(calAgo(c.fetchedAt))}</small>`) : c.kind === "invitations" ? `<small>From your mail</small>` : "";
+    const note = sub ? (c.lastError ? `<small class="err">${esc(tw(c.lastError))}</small>` : `<small>${t("Subscribed · {when}", { when: esc(calAgo(c.fetchedAt)) })}</small>`) : c.kind === "invitations" ? `<small>${t("From your mail")}</small>` : "";
     html +=
       `<div class="cal-crow" style="--c:${esc(c.color)}" data-cid="${esc(c.id)}">` +
-      `<input type="checkbox" data-cal-tick="${esc(c.id)}" ${cal.hidden.has(c.id) ? "" : "checked"} aria-label="Show ${esc(c.name)}">` +
+      `<input type="checkbox" data-cal-tick="${esc(c.id)}" ${cal.hidden.has(c.id) ? "" : "checked"} aria-label="${t("Show {name}", { name: esc(c.name) })}">` +
       `<span class="cal-sw"></span>` +
       (c.kind === "invitations"
         ? `<div class="cal-cname"><span class="cal-nm">${esc(c.name)}</span>${note}</div>`
@@ -14428,33 +14445,33 @@ function calRenderCals() {
     if (open) {
       html +=
         `<div class="cal-manage" data-cid="${esc(c.id)}">` +
-        `<input class="field" type="text" data-cal-name value="${esc(c.name)}" aria-label="Calendar name" maxlength="80">` +
+        `<input class="field" type="text" data-cal-name value="${esc(c.name)}" aria-label="${t("Calendar name")}" maxlength="80">` +
         calSwatches(c.color) +
         (sub
-          ? `<label class="cal-lbl" for="calMRefresh">Check for changes every</label><div class="field"><select id="calMRefresh">${[15, 30, 60, 180, 360, 720, 1440].map((m) => `<option value="${m}" ${m === c.refreshMin ? "selected" : ""}>${esc(calEvery(m))}</option>`).join("")}</select></div>` +
-            `<input class="field" type="url" data-cal-url placeholder="New address (leave empty to keep the saved one)" aria-label="New address" autocomplete="off" autocapitalize="off" spellcheck="false">`
+          ? `<label class="cal-lbl" for="calMRefresh">${t("Check for changes every")}</label><div class="field"><select id="calMRefresh">${[15, 30, 60, 180, 360, 720, 1440].map((m) => `<option value="${m}" ${m === c.refreshMin ? "selected" : ""}>${esc(calEvery(m))}</option>`).join("")}</select></div>` +
+            `<input class="field" type="url" data-cal-url placeholder="${t("New address (leave empty to keep the saved one)")}" aria-label="${t("New address")}" autocomplete="off" autocapitalize="off" spellcheck="false">`
           : "") +
         `<div class="cal-acts">` +
-        `<button type="button" class="cta" data-cal-save>Save</button>` +
-        (sub ? `<button type="button" class="cta quiet" data-cal-refresh>Refresh now</button>` : `<button type="button" class="cta quiet" data-cal-import>Import .ics</button>`) +
-        `<a class="cal-lnk" href="/api/calendar/calendars/${encodeURIComponent(c.id)}/export" download>Export .ics</a>` +
-        `<button type="button" class="cta danger" data-cal-delete>Delete</button>` +
+        `<button type="button" class="cta" data-cal-save>${t("Save")}</button>` +
+        (sub ? `<button type="button" class="cta quiet" data-cal-refresh>${t("Refresh now")}</button>` : `<button type="button" class="cta quiet" data-cal-import>${t("Import .ics")}</button>`) +
+        `<a class="cal-lnk" href="/api/calendar/calendars/${encodeURIComponent(c.id)}/export" download>${t("Export .ics")}</a>` +
+        `<button type="button" class="cta danger" data-cal-delete>${t("Delete")}</button>` +
         `</div></div>`;
     }
   }
   $("#calCalsList").innerHTML = html;
   const f = calForm;
   $("#calCalsForm").innerHTML = !f ? "" :
-    `<div class="cal-manage" style="margin-top:10px"><div class="sh-t" style="font-size:14px">${f === "sub" ? "Subscribe to a calendar" : "New calendar"}</div>` +
+    `<div class="cal-manage" style="margin-top:10px"><div class="sh-t" style="font-size:14px">${f === "sub" ? t("Subscribe to a calendar") : t("New calendar")}</div>` +
     (f === "sub"
-      ? `<div class="cal-sub">A calendar on the web, from an https:// or webcal:// address. It is read-only here, and the address is kept private on the server.</div>` +
-        `<input class="field" type="url" id="calFormUrl" placeholder="https:// or webcal://" aria-label="Calendar address" autocomplete="off" autocapitalize="off" spellcheck="false">`
+      ? `<div class="cal-sub">${t("A calendar on the web, from an https:// or webcal:// address. It is read-only here, and the address is kept private on the server.")}</div>` +
+        `<input class="field" type="url" id="calFormUrl" placeholder="${t("https:// or webcal://")}" aria-label="${t("Calendar address")}" autocomplete="off" autocapitalize="off" spellcheck="false">`
       : "") +
-    `<input class="field" type="text" id="calFormName" placeholder="Name" aria-label="Calendar name" maxlength="80" autocomplete="off">` +
+    `<input class="field" type="text" id="calFormName" placeholder="${t("Name")}" aria-label="${t("Calendar name")}" maxlength="80" autocomplete="off">` +
     calSwatches(calForm === "sub" ? CAL_COLORS[3] : CAL_COLORS[1]) +
-    (f === "sub" ? `<label class="cal-lbl" for="calFormRefresh">Check for changes every</label><div class="field"><select id="calFormRefresh">${[15, 30, 60, 180, 360, 720, 1440].map((m) => `<option value="${m}" ${m === 60 ? "selected" : ""}>${esc(calEvery(m))}</option>`).join("")}</select></div>` : "") +
+    (f === "sub" ? `<label class="cal-lbl" for="calFormRefresh">${t("Check for changes every")}</label><div class="field"><select id="calFormRefresh">${[15, 30, 60, 180, 360, 720, 1440].map((m) => `<option value="${m}" ${m === 60 ? "selected" : ""}>${esc(calEvery(m))}</option>`).join("")}</select></div>` : "") +
     `<div class="formerr" id="calFormErr" role="alert"></div>` +
-    `<div class="cal-acts"><button type="button" class="cta" id="calFormGo">${f === "sub" ? "Subscribe" : "Create"}</button><button type="button" class="cta quiet" id="calFormCancel">Cancel</button></div></div>`;
+    `<div class="cal-acts"><button type="button" class="cta" id="calFormGo">${f === "sub" ? t("Subscribe") : t("Create")}</button><button type="button" class="cta quiet" id="calFormCancel">${t("Cancel")}</button></div></div>`;
   $("#calCalsNew").hidden = $("#calCalsSub").hidden = !!calForm;
 }
 function calOpenCals() {
@@ -14475,9 +14492,15 @@ $("#calFile").addEventListener("change", async (e) => {
   if (!file || !calImportInto) return;
   const text = await file.text().catch(() => "");
   const r = await calReq(`/api/calendar/calendars/${encodeURIComponent(calImportInto)}/import`, "POST", undefined, text);
-  if (!r.ok) return toast(r.data.error || "Could not import that file");
+  if (!r.ok) return toast(r.data.error ? tw(r.data.error) : t("Could not import that file"));
   const d = r.data;
-  toast(`Imported ${d.imported} ${d.imported === 1 ? "event" : "events"}${d.skipped ? `, ${d.skipped} left out` : ""}${d.droppedRules ? `, ${d.droppedRules} repeat${d.droppedRules === 1 ? "" : "s"} not kept` : ""}`);
+  toast(
+    [
+      t("{n, plural, one {Imported # event} other {Imported # events}}", { n: d.imported }),
+      d.skipped ? t("{n, plural, one {# left out} other {# left out}}", { n: d.skipped }) : "",
+      d.droppedRules ? t("{n, plural, one {# repeat not kept} other {# repeats not kept}}", { n: d.droppedRules }) : "",
+    ].filter(Boolean).join(", "),
+  );
   await calLoad();
   calRenderCals();
 });
@@ -14499,7 +14522,7 @@ $("#calCalsSheet").addEventListener("click", async (e) => {
     const url = row.querySelector("[data-cal-url]");
     if (url && url.value.trim()) body.url = url.value.trim();
     const r = await calReq(`/api/calendar/calendars/${encodeURIComponent(cid)}`, "PATCH", body);
-    if (!r.ok) return toast(r.data.error || "Could not save that");
+    if (!r.ok) return toast(r.data.error ? tw(r.data.error) : t("Could not save that"));
     calManage = "";
     await calLoad();
     return calRenderCals();
@@ -14509,16 +14532,16 @@ $("#calCalsSheet").addEventListener("click", async (e) => {
     b.disabled = true;
     const r = await calReq(`/api/calendar/calendars/${encodeURIComponent(cid)}/refresh`, "POST", {});
     b.disabled = false;
-    toast(r.ok && r.data.ok ? "Up to date" : (r.data && r.data.error) || "Could not refresh");
+    toast(r.ok && r.data.ok ? t("Up to date") : r.data && r.data.error ? tw(r.data.error) : t("Could not refresh"));
     await calLoad();
     return calRenderCals();
   }
   if (e.target.closest("[data-cal-import]")) { calImportInto = cid; $("#calFile").click(); return; }
   if (e.target.closest("[data-cal-delete]")) {
     const c = calCalendar(cid);
-    if (!(await ask(`Delete “${c.name}”?`, "Its events are deleted with it. This cannot be undone.", { ok: "Delete", danger: true }))) return;
+    if (!(await ask(t("Delete “{name}”?", { name: c.name }), t("Its events are deleted with it. This cannot be undone."), { ok: t("Delete"), danger: true }))) return;
     const r = await calReq(`/api/calendar/calendars/${encodeURIComponent(cid)}`, "DELETE");
-    if (!r.ok) return toast(r.data.error || "Could not delete that");
+    if (!r.ok) return toast(r.data.error ? tw(r.data.error) : t("Could not delete that"));
     cal.hidden.delete(cid);
     calSave();
     calManage = "";
@@ -14532,9 +14555,15 @@ $("#calCalsSheet").addEventListener("click", async (e) => {
     const body = { name: $("#calFormName").value.trim(), color: color(f) };
     if (sub) { body.url = $("#calFormUrl").value.trim(); body.refreshMin = Number($("#calFormRefresh").value); }
     const r = await calReq("/api/calendar/calendars", "POST", body);
-    if (!r.ok) { $("#calFormErr").textContent = r.data.error || "Could not make that calendar"; $("#calFormErr").classList.add("show"); return; }
+    if (!r.ok) { $("#calFormErr").textContent = r.data.error ? tw(r.data.error) : t("Could not make that calendar"); $("#calFormErr").classList.add("show"); return; }
     calForm = null;
-    toast(sub && r.data.calendar.lastError ? `Subscribed, but ${r.data.calendar.lastError}` : sub ? `Subscribed, ${r.data.calendar.events} events` : "Calendar added");
+    toast(
+      sub && r.data.calendar.lastError
+        ? t("Subscribed, but {error}", { error: tw(r.data.calendar.lastError) })
+        : sub
+          ? t("{n, plural, one {Subscribed, # event} other {Subscribed, # events}}", { n: r.data.calendar.events })
+          : t("Calendar added"),
+    );
     await calLoad();
     calRenderCals();
   }
@@ -14602,7 +14631,7 @@ function calHide() {
 reminderOpeners.event = async (id) => {
   switchTab("timeline");
   const r = await calReq(`/api/calendar/events/${encodeURIComponent(id)}`, "GET");
-  if (!r.ok) return toast(r.data.error || "That event is gone");
+  if (!r.ok) return toast(r.data.error ? tw(r.data.error) : t("That event is gone"));
   const ev = r.data.event;
   const o = calPrep({ ...ev, eventId: ev.id, occurrence: ev.recurring ? ev.start : null, readOnly: ev.readOnly, id: ev.id });
   cal.day = calMidnight(o.ws);
@@ -14632,11 +14661,11 @@ $("#rInvite").addEventListener("click", async (e) => {
     calendarId: cals[0].id, summary: pre.summary, location: pre.location, description: pre.description, url: pre.url,
     allDay: pre.allDay, start: startMs, end: endMs, tzid: floating ? "" : Intl.DateTimeFormat().resolvedOptions().timeZone,
   });
-  if (!r.ok) return toast(r.data.error || "Could not add that to your calendar");
+  if (!r.ok) return toast(r.data.error ? tw(r.data.error) : t("Could not add that to your calendar"));
   const made = r.data.event.id;
-  toast(`Added to ${cals[0].name}`, async () => {
+  toast(t("Added to {calendar}", { calendar: cals[0].name }), async () => {
     await calReq(`/api/calendar/events/${encodeURIComponent(made)}?scope=all`, "DELETE");
-    toast("Removed again");
+    toast(t("Removed again"));
     calLoad();
   });
   calLoad();
@@ -14660,8 +14689,8 @@ rReact.type = "button";
 rReact.id = "rReact";
 rReact.className = "rbtn ico overflowable";
 rReact.hidden = true;
-rReact.title = "React with an emoji";
-rReact.setAttribute("aria-label", "React with an emoji");
+rReact.title = t("React with an emoji");
+rReact.setAttribute("aria-label", t("React with an emoji"));
 rReact.setAttribute("aria-haspopup", "dialog");
 rReact.innerHTML =
   '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.6 14.2c.8 1.1 1.9 1.7 3.4 1.7s2.6-.6 3.4-1.7"/><circle cx="9" cy="10" r=".7" fill="currentColor"/><circle cx="15" cy="10" r=".7" fill="currentColor"/></svg>';
@@ -14683,22 +14712,36 @@ function syncReactButton() {
   rReact.hidden = !senderChecked || senderWarned || !reactionTarget();
 }
 
+/** The reactions' names as shown, by the English name reaction.js gives each. */
+const REACTION_NAMES = {
+  "Thumbs up": t("Thumbs up"),
+  Heart: t("Heart"),
+  Celebration: t("Celebration"),
+  Laughing: t("Laughing"),
+  Surprised: t("Surprised"),
+  Sad: t("Sad"),
+};
+
 rReact.addEventListener("click", () => {
-  const t = reactionTarget();
-  if (!t || senderWarned) return;
-  $("#reactRow").innerHTML = window.Reaction.REACTIONS.map(
-    (r) => `<button class="react" data-emoji="${r.emoji}" aria-label="${esc(r.name)}" title="${esc(r.name)}">${r.emoji}</button>`
-  ).join("");
-  $("#reactTo").innerHTML = `Goes to <b>${esc(t.to.join(", "))}</b>${t.from ? ` from ${esc(t.from)}` : ""}, as a reply in this conversation.`;
+  const tg = reactionTarget();
+  if (!tg || senderWarned) return;
+  $("#reactRow").innerHTML = window.Reaction.REACTIONS.map((r) => {
+    const name = esc(REACTION_NAMES[r.name] || r.name);
+    return `<button class="react" data-emoji="${r.emoji}" aria-label="${name}" title="${name}">${r.emoji}</button>`;
+  }).join("");
+  const to = `<b>${esc(tg.to.join(", "))}</b>`;
+  $("#reactTo").innerHTML = tg.from
+    ? t("Goes to {to} from {from}, as a reply in this conversation.", { to, from: esc(tg.from) })
+    : t("Goes to {to}, as a reply in this conversation.", { to });
   openSheet("#reactSheet");
 });
 
 $("#reactRow").addEventListener("click", (e) => {
   const b = e.target.closest("[data-emoji]");
-  const t = reactionTarget();
-  if (!b || !t || senderWarned) return;
-  if (outgoingNow()) return toast("The previous message is still going out — try again in a moment");
-  const body = window.Reaction.reactionMessage({ message: t.m, to: t.to, from: t.from, emoji: b.dataset.emoji });
+  const tg = reactionTarget();
+  if (!b || !tg || senderWarned) return;
+  if (outgoingNow()) return toast(t("The previous message is still going out — try again in a moment"));
+  const body = window.Reaction.reactionMessage({ message: tg.m, to: tg.to, from: tg.from, emoji: b.dataset.emoji });
   closeOverlays();
   holdSend(body, { session: -1, pid: "", slot: `${DRAFT_KEY}:react-${crypto.randomUUID()}`, key: crypto.randomUUID(), reaction: true });
 });
