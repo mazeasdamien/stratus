@@ -12607,7 +12607,7 @@ let taskOpen = null;         // the task in the sheet, with the field values it 
 
 registerView({
   id: "tasks",
-  label: "Tasks",
+  label: t("Tasks"),
   icon: '<circle cx="12" cy="12" r="10"/><path d="m8 12.5 2.8 2.8L16.2 9.5"/>',
   pane: "#tasksView",
   dot: true,
@@ -12638,50 +12638,54 @@ async function loadTasks() {
 }
 
 /** "Today", "Tomorrow", or the date, then the time unless the task is due any time that day. */
-function taskDueText(t) {
+function taskDueText(tk) {
   const off = new Date().getTimezoneOffset();
   const day = (ms) => Math.floor(ms / 86400_000);
-  const diff = day(t.allDay ? t.due : t.due - off * 60_000) - day(Date.now() - off * 60_000);
-  const d = new Date(t.due);
-  const zone = t.allDay ? { timeZone: "UTC" } : {};
+  const diff = day(tk.allDay ? tk.due : tk.due - off * 60_000) - day(Date.now() - off * 60_000);
+  const d = new Date(tk.due);
+  const zone = tk.allDay ? { timeZone: "UTC" } : {};
   let text;
-  if (diff === 0) text = "Today";
-  else if (diff === 1) text = "Tomorrow";
-  else if (diff === -1) text = "Yesterday";
+  if (diff === 0) text = t("Today");
+  else if (diff === 1) text = t("Tomorrow");
+  else if (diff === -1) text = t("Yesterday");
   else {
-    const year = (t.allDay ? d.getUTCFullYear() : d.getFullYear()) !== new Date().getFullYear() ? { year: "numeric" } : {};
+    const year = (tk.allDay ? d.getUTCFullYear() : d.getFullYear()) !== new Date().getFullYear() ? { year: "numeric" } : {};
     text = d.toLocaleDateString(LOCALE, { weekday: "short", day: "numeric", month: "short", ...year, ...zone });
   }
-  return t.allDay ? text : `${text}, ${d.toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" })}`;
+  return tk.allDay ? text : t("{day}, {time}", { day: text, time: d.toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" }) });
 }
 
-function taskRow(t, group) {
-  const id = esc(t.id);
-  const done = t.doneAt != null;
+// The group labels the server sends are English; the page shows its own, by id.
+const TASK_GROUP_LABEL = { overdue: t("Overdue"), today: t("Today"), upcoming: t("Upcoming"), nodate: t("No date"), done: t("Done") };
+
+function taskRow(tk, group) {
+  const id = esc(tk.id);
+  const done = tk.doneAt != null;
   const meta = [];
-  if (done) meta.push(`<span>Done ${esc(whenText(t.doneAt))}</span>`);
+  if (done) meta.push(`<span>${t("Done {when}", { when: esc(whenText(tk.doneAt)) })}</span>`);
   else {
-    if (t.due != null) {
-      const late = group === "overdue" || (!t.allDay && t.due < Date.now());
-      meta.push(`<span${late ? ' class="late"' : ""}>${esc(taskDueText(t))}</span>`);
+    if (tk.due != null) {
+      const late = group === "overdue" || (!tk.allDay && tk.due < Date.now());
+      meta.push(`<span${late ? ' class="late"' : ""}>${esc(taskDueText(tk))}</span>`);
     }
-    if (t.reminder != null) meta.push(`<span>${TASK_ICON.bell}${esc(whenText(t.reminder))}</span>`);
-    if (t.important) meta.push(`<span class="imp">${TASK_ICON.flag}Important</span>`);
+    if (tk.reminder != null) meta.push(`<span>${TASK_ICON.bell}${esc(whenText(tk.reminder))}</span>`);
+    if (tk.important) meta.push(`<span class="imp">${TASK_ICON.flag}${t("Important")}</span>`);
   }
+  const chk = done ? t("Mark not done: {title}", { title: esc(tk.title) }) : t("Mark done: {title}", { title: esc(tk.title) });
   return `<div class="tk${done ? " done" : ""}" data-id="${id}">
-    <button class="tk-chk" type="button" role="checkbox" aria-checked="${done}" aria-label="${done ? "Mark not done" : "Mark done"}: ${esc(t.title)}" data-fk="chk:${id}" data-tk-chk><span class="box">${TASK_ICON.check}</span></button>
+    <button class="tk-chk" type="button" role="checkbox" aria-checked="${done}" aria-label="${chk}" data-fk="chk:${id}" data-tk-chk><span class="box">${TASK_ICON.check}</span></button>
     <div class="tk-body">
-      <button class="tk-main" type="button" data-fk="edit:${id}" data-tk-edit><span class="tk-t">${esc(t.title)}</span>${meta.length ? `<span class="tk-m">${meta.join("")}</span>` : ""}</button>
-      ${t.message ? `<button class="ghost tk-open" type="button" data-fk="msg:${id}" data-tk-msg>${TASK_ICON.mail}Open message</button>` : ""}
+      <button class="tk-main" type="button" data-fk="edit:${id}" data-tk-edit><span class="tk-t">${esc(tk.title)}</span>${meta.length ? `<span class="tk-m">${meta.join("")}</span>` : ""}</button>
+      ${tk.message ? `<button class="ghost tk-open" type="button" data-fk="msg:${id}" data-tk-msg>${TASK_ICON.mail}${t("Open message")}</button>` : ""}
     </div></div>`;
 }
 
 function renderTasks() {
   const due = tasksData ? tasksData.due : 0;
   $("#tasksDot").hidden = !due;
-  $("#tabTasks").setAttribute("aria-label", due ? `Tasks, ${due} due` : "Tasks");
+  $("#tabTasks").setAttribute("aria-label", due ? t("Tasks, {n} due", { n: due }) : t("Tasks"));
   if (currentTab === "tasks") {
-    $("#hmeta").textContent = tasksFailed && !tasksData ? "Tasks · could not be loaded" : due ? `Tasks · ${due} due` : "Tasks";
+    $("#hmeta").textContent = tasksFailed && !tasksData ? t("Tasks · could not be loaded") : due ? t("Tasks · {n} due", { n: due }) : t("Tasks");
   }
 
   const list = $("#tasksList");
@@ -12690,26 +12694,27 @@ function renderTasks() {
 
   if (!tasksData) {
     list.innerHTML = tasksFailed
-      ? `<div class="tk-empty"><div><b>Could not load your tasks</b></div><button class="ghost" type="button" data-tk-retry>Try again</button></div>`
+      ? `<div class="tk-empty"><div><b>${t("Could not load your tasks")}</b></div><button class="ghost" type="button" data-tk-retry>${t("Try again")}</button></div>`
       : "";
     return;
   }
   const groups = tasksData.groups.filter((g) => g.tasks.length);
   if (!groups.length) {
-    list.innerHTML = `<div class="tk-empty">${TASK_SVG('<circle cx="12" cy="12" r="10"/><path d="m8 12.5 2.8 2.8L16.2 9.5"/>', 40, 1.8)}<div><b>Nothing to do</b></div><div style="font-size:12.5px;color:var(--t3);max-width:260px">Add a task above, or choose Add to tasks on any message.</div></div>`;
+    list.innerHTML = `<div class="tk-empty">${TASK_SVG('<circle cx="12" cy="12" r="10"/><path d="m8 12.5 2.8 2.8L16.2 9.5"/>', 40, 1.8)}<div><b>${t("Nothing to do")}</b></div><div style="font-size:12.5px;color:var(--t3);max-width:260px">${t("Add a task above, or choose Add to tasks on any message.")}</div></div>`;
     return;
   }
   list.innerHTML = groups
     .map((g) => {
       if (g.id !== "done") {
-        return `<section class="tk-group" aria-label="${esc(g.label)}"><div class="tk-h ${g.id}">${esc(g.label)}<span class="n2">${g.tasks.length}</span></div>
-          <div class="tk-list">${g.tasks.map((t) => taskRow(t, g.id)).join("")}</div></section>`;
+        const label = TASK_GROUP_LABEL[g.id] || g.label;
+        return `<section class="tk-group" aria-label="${esc(label)}"><div class="tk-h ${g.id}">${esc(label)}<span class="n2">${g.tasks.length}</span></div>
+          <div class="tk-list">${g.tasks.map((tk) => taskRow(tk, g.id)).join("")}</div></section>`;
       }
-      return `<section class="tk-group" aria-label="Done"><div class="tk-h">
-          <button class="tk-toggle" type="button" aria-expanded="${tasksDoneOpen}" data-fk="done" data-tk-done>${TASK_ICON.chev}Done<span class="n2">${tasksData.doneCount}</span></button>
+      return `<section class="tk-group" aria-label="${TASK_GROUP_LABEL.done}"><div class="tk-h">
+          <button class="tk-toggle" type="button" aria-expanded="${tasksDoneOpen}" data-fk="done" data-tk-done>${TASK_ICON.chev}${TASK_GROUP_LABEL.done}<span class="n2">${tasksData.doneCount}</span></button>
           <span class="grow"></span>
-          <button class="ghost tk-clear" type="button" data-fk="clear" data-tk-clear>Clear completed</button></div>
-          ${tasksDoneOpen ? `<div class="tk-list">${g.tasks.map((t) => taskRow(t, g.id)).join("")}</div>` : ""}</section>`;
+          <button class="ghost tk-clear" type="button" data-fk="clear" data-tk-clear>${t("Clear completed")}</button></div>
+          ${tasksDoneOpen ? `<div class="tk-list">${g.tasks.map((tk) => taskRow(tk, g.id)).join("")}</div>` : ""}</section>`;
     })
     .join("");
   // The row that had focus may have moved, into a collapsed Done: focus then
@@ -12721,7 +12726,7 @@ async function addTask(title, messageId) {
   const res = await api("/api/tasks", taskJson("POST", { title, ...(messageId ? { messageId } : {}) })).catch(() => null);
   const d = res ? await res.json().catch(() => ({})) : {};
   if (!res || !res.ok) {
-    toast(d.error || "Could not add that task");
+    toast(tw(d.error) || t("Could not add that task"));
     return null;
   }
   return d.task;
@@ -12732,9 +12737,9 @@ async function quickAddTask() {
   const title = input.value.trim();
   if (!title) return;
   input.value = "";
-  const t = await addTask(title);
-  if (!t) { input.value = title; return; }
-  say("Task added");
+  const tk = await addTask(title);
+  if (!tk) { input.value = title; return; }
+  say(t("Task added"));
   await loadTasks();
 }
 $("#taskAddBtn").addEventListener("click", () => { quickAddTask(); $("#taskAdd").focus(); });
@@ -12748,12 +12753,12 @@ async function setTaskDone(id, done, quiet = false) {
   if (box) box.setAttribute("aria-checked", String(done));
   const res = await api(`${taskUrl(id)}/${done ? "complete" : "reopen"}`,{ method: "POST" }).catch(() => null);
   if (!res || !res.ok) {
-    toast("Could not update that task");
+    toast(t("Could not update that task"));
     return loadTasks();
   }
   await loadTasks();
-  if (quiet) toast(done ? "Task done" : "Task reopened");
-  else toast(done ? "Task done" : "Task reopened", () => setTaskDone(id, !done, true));
+  if (quiet) toast(done ? t("Task done") : t("Task reopened"));
+  else toast(done ? t("Task done") : t("Task reopened"), () => setTaskDone(id, !done, true));
 }
 
 function findTask(id) {
@@ -12784,23 +12789,23 @@ function taskFields(t) {
 }
 
 async function openTask(id) {
-  let t = findTask(id);
-  if (!t) {
+  let tk = findTask(id);
+  if (!tk) {
     const res = await api(taskUrl(id)).catch(() => null);
-    if (!res || !res.ok) { toast("That task is gone"); return; }
-    t = (await res.json()).task;
+    if (!res || !res.ok) { toast(t("That task is gone")); return; }
+    tk = (await res.json()).task;
   }
-  const f = taskFields(t);
-  taskOpen = { ...t, init: f };
-  $("#taskTitle").value = t.title;
-  $("#taskNotes").value = t.notes;
+  const f = taskFields(tk);
+  taskOpen = { ...tk, init: f };
+  $("#taskTitle").value = tk.title;
+  $("#taskNotes").value = tk.notes;
   $("#taskDate").value = f.date;
   $("#taskTime").value = f.time;
   $("#taskTime").disabled = !f.date;
   $("#taskRem").value = f.rem;
-  $("#taskImp").setAttribute("aria-pressed", String(t.important));
-  $("#taskOpenMsg").hidden = !t.message;
-  $("#taskOpenMsgS").textContent = t.message ? t.message.subject || "(no subject)" : "";
+  $("#taskImp").setAttribute("aria-pressed", String(tk.important));
+  $("#taskOpenMsg").hidden = !tk.message;
+  $("#taskOpenMsgS").textContent = tk.message ? tk.message.subject || t("(no subject)") : "";
   openSheet("#taskSheet");
 }
 
@@ -12824,10 +12829,10 @@ $("#taskTitle").addEventListener("keydown", (e) => {
 });
 
 async function saveTask() {
-  const t = taskOpen;
-  if (!t) return;
+  const tk = taskOpen;
+  if (!tk) return;
   const title = $("#taskTitle").value.trim();
-  if (!title) { toast("A task needs a title"); $("#taskTitle").focus(); return; }
+  if (!title) { toast(t("A task needs a title")); $("#taskTitle").focus(); return; }
   const date = $("#taskDate").value;
   const time = $("#taskTime").value;
   const rem = $("#taskRem").value;
@@ -12835,17 +12840,17 @@ async function saveTask() {
   // Only what was changed is sent for the two times. The inputs show minutes,
   // so sending them back unchanged could move a time that has seconds, and a
   // reminder that has since passed must not be refused for being left alone.
-  if (date !== t.init.date || time !== t.init.time) {
+  if (date !== tk.init.date || time !== tk.init.time) {
     if (!date) { body.due = null; body.allDay = false; }
     else if (!time) { const [y, m, d] = date.split("-").map(Number); body.due = Date.UTC(y, m - 1, d); body.allDay = true; }
     else { body.due = new Date(`${date}T${time}`).getTime(); body.allDay = false; }
   }
-  if (rem !== t.init.rem) body.reminder = rem ? new Date(rem).getTime() : null;
+  if (rem !== tk.init.rem) body.reminder = rem ? new Date(rem).getTime() : null;
   $("#taskSave").disabled = true;
-  const res = await api(taskUrl(t.id), taskJson("POST", body)).catch(() => null);
+  const res = await api(taskUrl(tk.id), taskJson("POST", body)).catch(() => null);
   $("#taskSave").disabled = false;
   const d = res ? await res.json().catch(() => ({})) : {};
-  if (!res || !res.ok) { toast(d.error || "Could not save that task"); return; }
+  if (!res || !res.ok) { toast(tw(d.error) || t("Could not save that task")); return; }
   closeSheets();
   taskOpen = null;
   await loadTasks();
@@ -12853,18 +12858,18 @@ async function saveTask() {
 $("#taskSave").addEventListener("click", saveTask);
 
 async function deleteTask() {
-  const t = taskOpen;
-  if (!t) return;
+  const tk = taskOpen;
+  if (!tk) return;
   closeSheets();
   taskOpen = null;
-  const res = await api(taskUrl(t.id), { method: "DELETE" }).catch(() => null);
-  if (!res || !res.ok) { toast("Could not delete that task"); return loadTasks(); }
+  const res = await api(taskUrl(tk.id), { method: "DELETE" }).catch(() => null);
+  if (!res || !res.ok) { toast(t("Could not delete that task")); return loadTasks(); }
   await loadTasks();
   // Undo makes the task again, with the same words, dates and link. It is a
   // new row, so a reminder that has passed is left off rather than refused.
-  toast("Task deleted", async () => {
-    const back = await addTaskFull(t);
-    if (back && t.doneAt != null) await api(`${taskUrl(back.id)}/complete`,{ method: "POST" }).catch(() => null);
+  toast(t("Task deleted"), async () => {
+    const back = await addTaskFull(tk);
+    if (back && tk.doneAt != null) await api(`${taskUrl(back.id)}/complete`,{ method: "POST" }).catch(() => null);
     await loadTasks();
   });
 }
@@ -12895,10 +12900,10 @@ $("#tasksList").addEventListener("click", async (e) => {
   }
   if (e.target.closest("[data-tk-clear]")) {
     const n = tasksData ? tasksData.doneCount : 0;
-    const yes = await ask("Clear completed tasks?", `${n} done ${n === 1 ? "task" : "tasks"} will be deleted. This cannot be undone.`, { ok: "Clear", danger: true });
+    const yes = await ask(t("Clear completed tasks?"), t("{n, plural, one {# done task will be deleted.} other {# done tasks will be deleted.}} This cannot be undone.", { n }), { ok: t("Clear"), danger: true });
     if (!yes) return;
     const res = await api("/api/tasks/clear-completed", { method: "POST" }).catch(() => null);
-    toast(res && res.ok ? "Cleared" : "Could not clear them");
+    toast(res && res.ok ? t("Cleared") : t("Could not clear them"));
     loadTasks();
     return;
   }
@@ -12933,19 +12938,19 @@ const rTask = document.createElement("button");
 rTask.type = "button";
 rTask.id = "rTask";
 rTask.className = "rbtn ico overflowable";
-rTask.title = "Add to tasks";
-rTask.setAttribute("aria-label", "Add to tasks");
+rTask.title = t("Add to tasks");
+rTask.setAttribute("aria-label", t("Add to tasks"));
 rTask.innerHTML = TASK_SVG('<circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.8 2.8L16.2 9.5"/>', 16);
 $("#rPdf").after(rTask);
 OVERFLOW_IDS.splice(OVERFLOW_IDS.indexOf("#rPdf") + 1, 0, "#rTask");
 rTask.addEventListener("click", async () => {
   if (!current) return;
   const m = current.message;
-  const t = await addTask((m.subject || "").trim() || "(no subject)", m.id);
-  if (!t) return;
+  const tk = await addTask((m.subject || "").trim() || t("(no subject)"), m.id);
+  if (!tk) return;
   loadTasks();
-  toast("Added to tasks", async () => {
-    await api(taskUrl(t.id), { method: "DELETE" }).catch(() => null);
+  toast(t("Added to tasks"), async () => {
+    await api(taskUrl(tk.id), { method: "DELETE" }).catch(() => null);
     loadTasks();
   });
 });
