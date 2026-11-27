@@ -92,6 +92,8 @@ const server = createServer(async (req, res) => {
   else if (p === "/api/messages" || /^\/api\/messages\/\w+$/.test(p)) log.push({ method: "GET", path: p, query: Object.fromEntries(url.searchParams) });
   const wait = (ms) => new Promise((r) => setTimeout(r, Number(ms) || 0));
 
+  // The address book the send checks compare against.
+  if (p === "/api/contacts/suggest") return json({ contacts: [{ email: "alice@acme-corp.test", name: "Alice", n: 4 }] });
   // Signatures: with `sigs` on, two of them and an alias, so From can change.
   if (p === "/api/accounts") return json({ accounts: knobs.sigs ? [{ ...accounts[0], aliases: ["work@icloud.com"] }] : accounts });
   if (p === "/api/signatures") {
@@ -484,6 +486,69 @@ try {
     const sent = (await posts("/api/send"))[0]?.body || {};
     ok(/Studio/.test(sent.html || "") && !/data-sig/.test(sent.html || ""), `a signature chosen by hand stays when From changes, and its bookkeeping does not leave — ${JSON.stringify(sent.html)}`);
     ok(/words\s+Damien Mazeas\nStudio site \(https:\/\/studio\.example\)$/.test(sent.text || ""), `the plain-text alternative carries a plain rendering — ${JSON.stringify(sent.text)}`);
+  });
+
+  await scenario("send-warnings", async () => {
+    // Fills the composer with the given To and Cc; the body is a line of words.
+    const open = `
+      window.compose = async (to, cc, opts = {}) => {
+        openCompose(opts); await wait(150);
+        addrSet("#cTo", "#cToChips", to); if (cc) { addrSet("#cCc", "#cCcChips", cc); $("#cCcWrap").hidden = false; }
+        $("#cSubj").value = "Hello"; $("#cBody").innerHTML = "<div>words</div>";
+        await loadContacts();
+      };
+      window.state = () => ({ asking: $("#modal").open, title: $("#modalTitle").textContent, detail: $("#modalDetail").textContent, alt: !$("#modalAlt").hidden, held: !!pendingSend });`;
+    // A look-alike stops the send until Send anyway.
+    await fresh();
+    let s = await ev(`${open}
+      await compose("alice@acme-corp.tset"); $("#cSend").click(); await wait(300);
+      return state();`);
+    ok(s.asking && /alice@acme-corp\.tset/.test(s.detail) && /alice@acme-corp\.test/.test(s.detail) && !s.held && !s.alt, `a look-alike recipient is asked about, naming both addresses, and nothing is held — ${JSON.stringify(s)}`);
+    ok((await posts("/api/send")).length === 0, "and nothing has been sent");
+    s = await ev(`$("#modalCancel").click(); await wait(200); return { ...state(), composing: document.body.classList.contains("composing") };`);
+    ok(!s.asking && !s.held && s.composing && (await posts("/api/send")).length === 0, `Go back leaves the message in the composer — ${JSON.stringify(s)}`);
+    s = await ev(`$("#cSend").click(); await wait(300); $("#modalOk").click(); await wait(200); const held = !!pendingSend; pendingSend && pendingSend.fire(); await wait(500); return held;`);
+    const sent = await posts("/api/send");
+    ok(s && sent.length === 1 && sent[0].body.to === "alice@acme-corp.tset", `Send anyway starts the usual hold, and then the send — held ${s}, sent ${sent.length}`);
+
+    // Five outside addresses: Move them to Bcc.
+    await fresh();
+    const five = "a@one.test, b@two.test, c@three.test, d@four.test, e@five.test";
+    s = await ev(`${open}
+      await compose("a@one.test, b@two.test, c@three.test", "d@four.test, e@five.test"); $("#cSend").click(); await wait(300);
+      return state();`);
+    ok(s.asking && s.alt && !s.held && /5 people/.test(s.detail), `five outside addresses across domains are asked about, with Move them to Bcc offered — ${JSON.stringify(s)}`);
+    await ev(`$("#modalAlt").click(); await wait(200); pendingSend && pendingSend.fire(); await wait(500);`);
+    const moved = (await posts("/api/send"))[0]?.body || {};
+    const sets = (x) => (x || "").split(",").map((v) => v.trim()).filter(Boolean).sort();
+    ok(JSON.stringify(sets(moved.bcc)) === JSON.stringify(sets(five)) && !/one\.test|two\.test|three\.test|four\.test|five\.test/.test(`${moved.to} ${moved.cc || ""}`), `Move to Bcc sends with all five in Bcc and none in To or Cc — to ${moved.to}, cc ${moved.cc}, bcc ${moved.bcc}`);
+
+    // Scheduled: asked at scheduling.
+    await fresh();
+    s = await ev(`${open}
+      await compose("alice@acme-corp.tset"); const at = Date.now() + 2 * 3600000;
+      const p = scheduleAt(at); await wait(300); const mid = state(); $("#modalOk").click(); await p; await wait(300);
+      return mid;`);
+    const later = (await posts("/api/send"))[0]?.body || {};
+    ok(s.asking && later.at > Date.now(), `a scheduled send asks at the moment it is scheduled — ${JSON.stringify(s)}, at ${later.at}`);
+    await fresh();
+    s = await ev(`${open}
+      await compose("alice@acme-corp.tset"); const p = scheduleAt(Date.now() + 2 * 3600000); await wait(300); $("#modalCancel").click(); await p; await wait(200);
+      return state();`);
+    ok(!s.asking && (await posts("/api/send")).length === 0, "and Go back schedules nothing");
+
+    // A reply-all to people who were all on the message is not asked about.
+    await fresh();
+    s = await ev(`${open}
+      await compose(${JSON.stringify(five)}, "", { title: "Reply all", reply: "m1", to: ${JSON.stringify(five)} }); $("#cSend").click(); await wait(400);
+      return state();`);
+    ok(!s.asking && s.held, `a reply-all whose recipients were all already on the message goes straight to the hold — ${JSON.stringify(s)}`);
+    // The same five, written fresh into a new message, are asked about.
+    await fresh();
+    s = await ev(`${open}
+      await compose(${JSON.stringify(five)}); $("#cSend").click(); await wait(300);
+      return state();`);
+    ok(s.asking, "but the same five in a new message are");
   });
 
   await scenario("stale-selection", async () => {

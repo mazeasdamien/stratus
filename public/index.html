@@ -1267,10 +1267,10 @@ html.busy #bar{opacity:1}
 .mcard{background:var(--sheet);border:1px solid var(--line-strong);border-radius:14px;
   padding:20px 22px 16px;width:min(430px,100%);box-shadow:0 20px 60px var(--shadow)}
 .mtitle{font-size:16px;font-weight:600;letter-spacing:-.011em;color:var(--t1)}
-.mdetail{font-size:13.5px;color:var(--t2);line-height:1.5;margin-top:7px}
+.mdetail{font-size:13.5px;color:var(--t2);line-height:1.5;margin-top:7px;white-space:pre-line}
 .mdetail:empty{display:none}
 #modalInput{margin-top:14px;width:100%}
-.mactions{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
+.mactions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;margin-top:18px}
 .mactions .rbtn{margin-left:0;min-width:92px}
 /* The session has ended. Above everything, the toast and the loading bar
    included, with the page left in place and dimmed behind it. */
@@ -2846,6 +2846,7 @@ body.selmode .xf-chip{bottom:calc(var(--sab) + 92px)}
     <input class="field" id="modalInput" type="text" aria-labelledby="modalTitle" autocomplete="off" spellcheck="false" hidden>
     <div class="mactions">
       <button class="rbtn" id="modalCancel">Cancel</button>
+      <button class="rbtn" id="modalAlt" hidden></button>
       <button class="rbtn acc" id="modalOk">OK</button>
     </div>
   </div>
@@ -2988,6 +2989,8 @@ body.selmode .xf-chip{bottom:calc(var(--sab) + 92px)}
 </dialog>
 <!-- ══ end calendar ═══════════════════════════════════════════════════ -->
 
+<!-- The pure checks the page runs before a send; test/ imports the same files. -->
+<script type="module" src="/sendguard.js"></script>
 <script>
 "use strict";
 
@@ -3112,11 +3115,15 @@ function closeModal(value) {
   if (done) done(value);
 }
 
-function openModal({ title, detail = "", input = false, value = "", placeholder = "", ok = "OK", danger = false }) {
+function openModal({ title, detail = "", input = false, value = "", placeholder = "", ok = "OK", danger = false, alt = "", cancel = "Cancel" }) {
   // A second dialog would orphan the first one's promise, so resolve it first.
   if (modalDone) closeModal(null);
   $("#modalTitle").textContent = title;
   $("#modalDetail").textContent = detail;
+  // A third answer, for the question that has two ways to go on (askChoice).
+  $("#modalAlt").hidden = !alt;
+  $("#modalAlt").textContent = alt;
+  $("#modalCancel").textContent = cancel;
   const field = $("#modalInput");
   field.hidden = !input;
   field.value = value;
@@ -3143,6 +3150,11 @@ const ask = (title, detail, opts = {}) =>
 /** Text entry. Resolves null when cancelled, so "" stays distinguishable. */
 const askText = (title, value = "", opts = {}) =>
   openModal({ title, input: true, value, ...opts }).then((v) => (v === null ? null : String(v)));
+
+/** Three answers: "ok", "alt" (opts.alt names it) or null for the cancel. */
+const askChoice = (title, detail, opts = {}) =>
+  openModal({ title, detail, ...opts }).then((v) => (v === null ? null : v === "alt" ? "alt" : "ok"));
+$("#modalAlt").addEventListener("click", () => closeModal("alt"));
 
 $("#modalOk").addEventListener("click", () =>
   closeModal($("#modalInput").hidden ? true : $("#modalInput").value.trim())
@@ -7759,6 +7771,7 @@ function openCompose(opts = {}) {
   $("#composeSheet").inert = false;
   $("#cSend").textContent = "Send";
   replyTo = opts.reply || null;
+  replyKnown = replyParticipants(opts);
   composeAcct = opts.account || composeAcct || (accounts[0] && accounts[0].id) || "";
   composeFrom = String(opts.from || "").toLowerCase();
   $("#cTitle").textContent = opts.title || (replyTo ? "Reply" : "New message");
@@ -10050,11 +10063,20 @@ addEventListener("beforeunload", (e) => {
 document.addEventListener("visibilitychange", () => {
   if (document.hidden && pendingSend) pendingSend.fire();
 });
-$("#cSend").addEventListener("click", () => {
+$("#cSend").addEventListener("click", async () => {
   if (outgoingNow()) return toast("The previous message is still going out — try again in a moment");
   if (filesPending()) return toast("Attachments are still loading — try again in a moment");
-  const body = outgoing();
-  if (!body) return;
+  // Asked before anything starts: not under the undo hold, where a "Send
+  // anyway" would have to be answered while the message is already leaving.
+  if (asking) return;
+  asking = true;
+  let body = null;
+  try {
+    body = await confirmRecipients();
+  } finally {
+    asking = false;
+  }
+  if (!body || outgoingNow()) return;
   const which = sendIdentity();
   // The words exist in this browser until the server has answered.
   saveDraftLocal();
@@ -10089,6 +10111,98 @@ $("#cSend").addEventListener("click", () => {
   pendingSend = { timer: setTimeout(fire, 5000), fire, body, which };
 });
 
+/* ── before sending ──
+   Two questions asked ahead of the undo hold, and ahead of a scheduled send at
+   the moment it is scheduled: is a recipient a typo of someone you write to, and
+   would this show many outside addresses to each other. The checks themselves
+   are public/sendguard.js, loaded as window.SendGuard; this is the asking. If
+   that file did not load, nothing is asked and nothing is blocked: a warning
+   that cannot be shown must not become a message that cannot be sent. */
+
+/** Everyone who was already on the message being answered, for a reply. */
+let replyKnown = new Set();
+/** True while a send is being checked, so a second press does not start a second question. */
+let asking = false;
+
+function replyParticipants(opts) {
+  const set = new Set();
+  if (!opts.reply) return set;
+  const m = [typeof current !== "undefined" && current && current.message, ...messages].find((x) => x && x.id === opts.reply);
+  if (m) for (const a of [m.from_email, ...addressesIn(m.to_line), ...addressesIn(m.cc_line)]) if (a) set.add(String(a).toLowerCase());
+  // What a reply opens with is, by construction, what was already on it.
+  if (/^Reply/.test(opts.title || "")) for (const a of [...addressesIn(opts.to), ...addressesIn(opts.cc)]) set.add(a);
+  return set;
+}
+
+/** Moves the outside recipients from To and Cc to Bcc, keeping the message addressable. */
+function moveToBcc(outside) {
+  const gone = new Set(outside);
+  const moved = [];
+  const split = (sel, chips) => addrGet(sel, chips).split(",").map((s) => s.trim()).filter(Boolean);
+  for (const [sel, chips] of [["#cTo", "#cToChips"], ["#cCc", "#cCcChips"]]) {
+    const keep = split(sel, chips).filter((it) => {
+      if (!gone.has(addressesIn(it)[0])) return true;
+      moved.push(it);
+      return false;
+    });
+    addrSet(sel, chips, keep.join(", "));
+  }
+  addrSet("#cBcc", "#cBccChips", [...split("#cBcc", "#cBccChips"), ...moved].join(", "));
+  $("#cBccWrap").hidden = false;
+  markToggle("#cBccToggle", "#cBccWrap", "Bcc");
+  // Nobody left to put in To: the message goes to you, and everyone else is blind.
+  if (!addrGet("#cTo", "#cToChips")) addrSet("#cTo", "#cToChips", composeAddress());
+  queueDraftSave();
+}
+
+/**
+ * What would be sent, once the user has agreed to what it warns about; null
+ * when they went back, or when there is nothing to send. Moving recipients to
+ * Bcc rewrites the fields, so the message is read again after it.
+ */
+async function confirmRecipients() {
+  let body = outgoing();
+  const G = window.SendGuard;
+  if (!body || !G) return body;
+  await loadContacts();
+  // The composer can be closed or replaced while the address book loads.
+  if (outgoingNow()) return null;
+  const to = addressesIn(body.to);
+  const cc = addressesIn(body.cc);
+  const everyone = [...to, ...cc, ...addressesIn(body.bcc)];
+  // A reply to everyone, with nobody added: every address is already on the
+  // message being answered, and asking about them is asking about the sender.
+  if (replyTo && everyone.every((a) => replyKnown.has(a))) return body;
+
+  const own = accounts.flatMap(identitiesOf);
+  const flagged = G.lookalikes(everyone, contacts.map((c) => c.email), own).filter((l) => !replyKnown.has(l.address));
+  if (flagged.length) {
+    const lines = flagged.slice(0, 4).map((l) => `${l.address} is one character from ${l.resembles}.`);
+    if (flagged.length > 4) lines.push(`And ${flagged.length - 4} more.`);
+    const go = await ask(
+      flagged.length === 1 ? "Is this the right address?" : "Are these the right addresses?",
+      lines.join(NL) + NL + NL + `You have not written to ${flagged.length === 1 ? "it" : "them"} before. A typo sends a message to a stranger.`,
+      { ok: "Send anyway", cancel: "Go back" }
+    );
+    if (!go) return null;
+  }
+
+  const ex = G.exposure([...to, ...cc], own);
+  if (ex) {
+    const r = await askChoice(
+      "Show everyone each other's address?",
+      `${ex.outside.length} people at ${ex.domains.length} different domains are on To and Cc. Each of them will see everyone else's address. Bcc keeps them private.`,
+      { ok: "Send anyway", alt: "Move them to Bcc", cancel: "Go back" }
+    );
+    if (r === null) return null;
+    if (r === "alt") {
+      moveToBcc(ex.outside);
+      body = outgoing();
+    }
+  }
+  return body;
+}
+
 /* ── send later ── */
 function laterChoices(now = new Date()) {
   const at = (days, h) => {
@@ -10121,9 +10235,10 @@ $("#cLater").addEventListener("click", () => {
 });
 async function scheduleAt(ms) {
   if (!(ms > Date.now() + 60_000)) { toast("Pick a time at least a minute from now"); return; }
-  const body = outgoing();
-  if (!body) { closeOverlays(); return; }
   closeOverlays();
+  // Asked now, when it is scheduled, and not again when it later goes.
+  const body = await confirmRecipients();
+  if (!body) return;
   const d = await postSend(body, ms);
   if (d) {
     toast(`Scheduled — ${whenText(d.scheduled)}`);
