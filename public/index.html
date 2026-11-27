@@ -1525,6 +1525,91 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
 .rem-a .ghost.acc{background:var(--acc);color:var(--on-acc)}
 .rem-a .ghost:disabled{opacity:.5}
 .rem-l{font-size:12px;color:var(--t3);margin-right:2px}
+
+/* ── people: the address book ──
+   Laid out the way mail is: a list in the left column and, from 900px up, the
+   card beside it where the reader would be. Below that the card slides over
+   the list like a message does. */
+#peopleView{padding-bottom:40px}
+.pp-tools{display:flex;gap:8px;align-items:center;padding:6px 16px 0}
+.pp-tools .field{flex:1;margin-bottom:0}
+.pp-sub{display:flex;gap:4px;padding:6px 10px 2px;flex-wrap:wrap;align-items:center}
+.pp-sub .ghost{display:inline-flex;align-items:center;min-height:36px;text-decoration:none}
+#ppResult{margin:6px 16px 4px;padding:9px 12px;border-radius:var(--r);border:1px solid var(--line);
+  background:color-mix(in srgb,var(--acc) 9%,var(--elev));font-size:13px;line-height:1.4;display:flex;gap:10px;align-items:center}
+#ppResult.bad{background:color-mix(in srgb,var(--red) 10%,var(--elev))}
+#ppResult span{flex:1;min-width:0;user-select:text;-webkit-user-select:text}
+.pp-letter{padding:14px 16px 4px;font-size:11.5px;font-weight:700;letter-spacing:.05em;color:var(--t3)}
+.pp-row{display:flex;gap:12px;align-items:center;justify-content:flex-start;width:100%;min-height:56px;padding:8px 16px;
+  text-align:left;position:relative;transition:background-color .16s ease}
+.pp-row::after{content:"";position:absolute;left:66px;right:0;bottom:0;height:1px;background:var(--line)}
+.pp-row:active{background:var(--press)}
+.pp-row.sel{background:color-mix(in srgb,var(--acc) 12%,transparent)}
+.pp-av{width:40px;height:40px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;
+  background:color-mix(in srgb,var(--acc) 14%,var(--elev));color:var(--acc);font-size:14px;font-weight:650;letter-spacing:.01em}
+.pp-av.lg{width:76px;height:76px;font-size:27px}
+.pp-tx{min-width:0;flex:1;display:flex;flex-direction:column;gap:1px}
+.pp-nm{font-size:15px;font-weight:600;letter-spacing:-.011em}
+.pp-ln{font-size:12.5px;color:var(--t3)}
+.pp-empty{padding:48px 24px;text-align:center;color:var(--t3);font-size:14px;line-height:1.55;display:flex;flex-direction:column;align-items:center;gap:8px}
+.pp-empty b{color:var(--t2);font-weight:600}
+
+#peopleCard{position:fixed;inset:0;z-index:40;background:var(--bg);display:flex;flex-direction:column;
+  transform:translateX(103%);visibility:hidden;transition:transform .3s cubic-bezier(.32,.72,0,1),visibility 0s .3s}
+#peopleCard.up{transform:translateX(0);visibility:visible;transition:transform .3s cubic-bezier(.32,.72,0,1)}
+#peopleCard .rhead{justify-content:space-between}
+#peopleCard .rhead .rsubj{flex:1}
+#pcBody{flex:1;overflow-y:auto;padding:22px 20px calc(var(--sab) + 40px);-webkit-overflow-scrolling:touch}
+.pc-hero{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;padding-bottom:6px}
+.pc-name{font-size:22px;font-weight:650;letter-spacing:-.02em;line-height:1.2;margin-top:8px;overflow-wrap:anywhere;user-select:text;-webkit-user-select:text}
+.pc-org{font-size:14px;color:var(--t2);overflow-wrap:anywhere}
+.pc-acts{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin:14px 0 18px}
+.pc-acts .rbtn{text-decoration:none;display:inline-flex;align-items:center}
+.pc-acts .rbtn.acc{margin-left:0;min-width:0}
+.pc-sec{margin:0 auto 14px;max-width:560px;border:1px solid var(--line);border-radius:var(--r-l);background:var(--elev);overflow:hidden}
+.pc-line{display:flex;align-items:center;gap:12px;width:100%;min-height:50px;padding:9px 14px;text-align:left;justify-content:flex-start;
+  position:relative;color:var(--t1);text-decoration:none;font-size:15px}
+.pc-line + .pc-line{border-top:1px solid var(--line)}
+a.pc-line:active,.pc-wr:active{background:var(--press2)}
+/* An address row is two buttons side by side, so the row itself carries no padding. */
+.pc-multi{padding:0;gap:0}
+.pc-wr{flex:1;min-width:0;display:flex;align-items:center;justify-content:flex-start;gap:12px;min-height:50px;padding:9px 14px;text-align:left}
+.pc-find{flex:none;width:44px;height:44px;margin-right:4px;border-radius:50%;color:var(--t3)}
+.pc-find:active{background:var(--press2)}
+.pc-k{flex:none;width:68px;font-size:12px;font-weight:600;color:var(--t3);text-transform:capitalize}
+.pc-v{flex:1;min-width:0;overflow-wrap:anywhere;user-select:text;-webkit-user-select:text}
+.pc-v.pre{white-space:pre-line}
+.pc-wr .pc-v,a.pc-line .pc-v{color:var(--acc)}
+.pc-wr svg{color:var(--t3)}
+#pcEmpty{display:none;flex:1;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--t3);font-size:14.5px;text-align:center;padding:24px}
+#pcEmpty .ico{width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--fill);color:var(--t2)}
+#pcEmpty .t{font-size:16px;font-weight:600;color:var(--t1)}
+#peopleCard:not(.up) #pcEmpty{display:flex}
+#peopleCard:not(.up) .rhead,#peopleCard:not(.up) #pcBody{display:none}
+#personSheet > *{flex:none}
+.pe-h{font-size:11.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--t3);margin:12px 2px 6px}
+.pe-row .pe-type{flex:none;width:96px;height:42px}
+.pe-row input{height:42px}
+.pe-row .pe-x{flex:none;width:32px;height:32px;margin-right:-6px;border-radius:50%;color:var(--t3)}
+.pe-row .pe-x:active{background:var(--press2)}
+textarea.pe-ta{min-height:76px}
+@media (min-width:900px){
+  /* The card takes the reader's place; the reader steps aside while People is up. */
+  #peopleCard{position:static;flex:1;min-width:0;transform:none;transition:none;visibility:visible}
+  #peopleCard:not(.up) .rhead{display:none}
+  #pcBack{display:none}
+  body:not(.people) #peopleCard{display:none}
+  body.people #reader{display:none}
+  .pp-row{cursor:pointer}
+  .pp-row.sel{background:color-mix(in srgb,var(--acc) 25%,transparent)}
+  #pcBody{padding-top:34px}
+}
+body.composing #peopleCard{display:none}
+@media (hover:hover) and (pointer:fine){
+  .pp-row:hover{background:var(--press)}
+  .pp-row.sel:hover{background:color-mix(in srgb,var(--acc) 30%,transparent)}
+  a.pc-line:hover,.pc-wr:hover,.pc-find:hover{background:var(--press2)}
+}
 </style>
 </head>
 <body>
@@ -1710,6 +1795,73 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
         </button>
     </div>
   </div>
+</div>
+
+<!-- ── people: the address book ──
+     Three pieces in one place: the list (moved into #main by the script, where
+     the mail list and the timeline live), the card that sits where the reader
+     does, and the editor. -->
+<div id="peopleView" role="region" aria-label="People" hidden>
+  <div class="pp-tools">
+    <div class="field">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="ppSearch" type="text" placeholder="Search people" aria-label="Search people" autocomplete="off" autocapitalize="off" spellcheck="false">
+    </div>
+    <button class="iconbtn" id="ppNew" aria-label="New contact" title="New contact">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+  </div>
+  <div class="pp-sub">
+    <button class="ghost" id="ppImport" title="Add the contacts in a .vcf file">Import .vcf</button>
+    <a class="ghost" id="ppExportAll" href="/api/contacts/export" download title="Every contact, as one .vcf file">Export all (.vcf)</a>
+  </div>
+  <div id="ppResult" role="status" hidden><span id="ppResultText"></span><button class="ghost" id="ppResultX" aria-label="Dismiss this message">Dismiss</button></div>
+  <input type="file" id="ppFile" accept=".vcf,.vcard,text/vcard,text/x-vcard,text/directory" hidden>
+  <div id="ppList"></div>
+</div>
+
+<div id="peopleCard" role="region" aria-label="Contact">
+  <div class="rhead">
+    <button class="iconbtn" id="pcBack" aria-label="Back to people" title="Back to the list">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="m14 6-6 6 6 6"/></svg>
+    </button>
+    <div class="rsubj" id="pcTitle">Contact</div>
+    <button class="ghost" id="pcEdit">Edit</button>
+  </div>
+  <div id="pcBody"></div>
+  <div id="pcEmpty">
+    <div class="ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c.8-3.6 3.6-5.6 7-5.6s6.2 2 7 5.6"/></svg></div>
+    <div class="t">Select a person</div>
+    <div>Or add someone with the + above.</div>
+  </div>
+</div>
+
+<div class="sheet lg" id="personSheet">
+  <div class="grab"></div>
+  <div class="crow">
+    <div class="sh-t" id="peTitle">New contact</div>
+    <div class="crow-actions">
+      <button class="ghost" id="peCancel">Cancel</button>
+      <button class="cta" id="peSave">Save</button>
+    </div>
+  </div>
+  <div class="pe-h">Name</div>
+  <div class="field"><input id="peName" type="text" placeholder="Full name" aria-label="Name" autocomplete="off"></div>
+  <div class="field"><input id="peOrg" type="text" placeholder="Company" aria-label="Company" autocomplete="off"></div>
+  <div class="field"><input id="peJob" type="text" placeholder="Job title" aria-label="Job title" autocomplete="off"></div>
+  <div class="pe-h">Email</div>
+  <div id="peEmails"></div>
+  <button class="ghost" id="peAddEmail">+ Add email</button>
+  <div class="pe-h">Phone</div>
+  <div id="pePhones"></div>
+  <button class="ghost" id="peAddPhone">+ Add phone</button>
+  <div class="pe-h">Address</div>
+  <textarea class="field pe-ta" id="peAddress" rows="3" aria-label="Address" placeholder="Street, postcode, city, country"></textarea>
+  <div class="pe-h">Birthday</div>
+  <div class="field"><input id="peBday" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" aria-label="Birthday, as year-month-day" autocomplete="off"></div>
+  <div class="pe-h">Notes</div>
+  <textarea class="field pe-ta" id="peNotes" rows="3" aria-label="Notes"></textarea>
+  <div class="formerr" id="peErr" role="alert"></div>
 </div>
 
 <!-- The overflow that keeps Reply at the far edge on a 375px screen. Each row
@@ -1967,7 +2119,7 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
 <div class="sheet" id="contactsSheet">
   <div class="grab"></div>
   <div class="sh-t">Contacts</div>
-  <div class="sh-s">Gathered from mail you have sent, plus anyone you added from a message you received. Removing one only hides it from autocomplete here &mdash; it changes nothing at your provider.</div>
+  <div class="sh-s">What the composer suggests: the people saved in People, then anyone you have sent mail to. Removing one only hides the address from suggestions here &mdash; it changes no card and nothing at your provider.</div>
   <div class="field"><input id="ctSearch" type="text" placeholder="Filter" aria-label="Filter contacts" autocomplete="off" spellcheck="false"></div>
   <div id="contactList"></div>
 </div>
@@ -4593,11 +4745,9 @@ function openSender() {
   if (!email) return;
   // Settles a moment later rather than holding the sheet shut on a request:
   // the sheet's job is to show the address, and it can do that immediately.
-  loadContacts().then(() => {
+  loadPeople().then(() => {
     if (!current || current.message.id !== m.id) return;
-    const known = contacts.some((c) => c.email === email);
-    btn.disabled = known;
-    btn.textContent = known ? "Already in your contacts" : "Add to contacts";
+    btn.textContent = personByEmail(email) ? "Open contact" : "Add to contacts";
   });
 }
 $("#rMeta").addEventListener("click", (e) => {
@@ -4619,32 +4769,10 @@ $("#sdImages").addEventListener("click", () => {
   trustImages(email, !imageSenders.has(email));
 });
 
-$("#sdAdd").addEventListener("click", async () => {
-  if (!current) return;
-  const m = current.message;
-  const email = String(m.from_email || "").toLowerCase();
-  if (!email) return;
-  const btn = $("#sdAdd");
-  btn.disabled = true;
-  const res = await api("/api/contacts", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, name: m.from_name || "" }),
-  }).catch(() => null);
-  const d = res ? await res.json().catch(() => ({})) : {};
-  if (!res || !res.ok) {
-    btn.disabled = false;
-    toast(d.error || "Could not add this contact");
-    return;
-  }
-  // Kept in the cached list too, so autocomplete has them without a reload and
-  // reopening the sheet says so.
-  if (!contacts.some((c) => c.email === email)) {
-    contacts.push({ email, name: m.from_name || "", n: 0, added: 1 });
-  }
-  btn.textContent = "Already in your contacts";
-  closeSheets();
-  toast(`Added ${email}`);
+// A new card for this sender, prefilled, or the card they already have: both
+// are in People (see "people" below).
+$("#sdAdd").addEventListener("click", () => {
+  if (current) senderToPeople(current.message);
 });
 
 /* ── blocked senders ── */
@@ -5440,7 +5568,7 @@ $("#rAtts").addEventListener("click", (e) => {
  */
 let popIgnore = false;
 function syncHistory() {
-  const open = !!document.querySelector(".sheet.up") || $("#reader").classList.contains("up");
+  const open = !!document.querySelector(".sheet.up") || $("#reader").classList.contains("up") || $("#peopleCard").classList.contains("up");
   if (open && !history.state?.dmzs) history.pushState({ dmzs: 1 }, "");
   else if (!open && history.state?.dmzs) {
     popIgnore = true;
@@ -5465,6 +5593,7 @@ addEventListener("popstate", () => {
   else if (document.body.classList.contains("overlay")) closeOverlays();
   else if (document.querySelector(".sheet.up")) closeSheets();
   else if ($("#reader").classList.contains("up")) closeReader();
+  else if ($("#peopleCard").classList.contains("up")) closePerson();
   setTimeout(syncHistory, 0);
 });
 
@@ -6102,11 +6231,11 @@ function replyFrom(m) {
 }
 let contacts = [];
 
-/** Addresses out of your own sent mail; loaded once, filtered as you type. */
+/** Saved contacts, then addresses out of your own sent mail; loaded once, filtered as you type. */
 async function loadContacts() {
   if (contacts.length) return;
   try {
-    const res = await api("/api/contacts");
+    const res = await api("/api/contacts/suggest");
     if (res.ok) contacts = (await res.json()).contacts || [];
   } catch { /* autocomplete is a convenience, never a blocker */ }
 }
@@ -7164,7 +7293,12 @@ $("#contactList").addEventListener("click", async (e) => {
   const email = b.dataset.forget;
   contacts = contacts.filter((c) => c.email !== email);
   renderContacts();
-  await api(`/api/contacts/${encodeURIComponent(email)}`, { method: "DELETE" }).catch(() => {});
+  // Hidden from suggestions, nothing more: the card, if there is one, stays in People.
+  await api("/api/contacts/hide", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  }).catch(() => {});
   toast(`Removed ${email}`);
 });
 $("#composeBtn").addEventListener("click", () => {
@@ -8595,6 +8729,426 @@ $("#composeSheet").addEventListener("keydown", (e) => {
     $("#cSend").click();
   }
 });
+
+/* ── people: the address book ──
+ *
+ * Saved cards, kept in the database (src/contacts.js). Not the same list as
+ * `contacts` above, which is what the composer suggests: that one is read out
+ * of sent mail too. Anything that changes a card empties it, so the next
+ * suggestion is built from the book as it now is.
+ */
+let people = [];
+let peopleState = "idle"; // idle, ready or failed
+let peopleLoading = null;
+let personOpen = "";      // the id of the card showing
+let personEdit = null;    // the card in the editor; no id means a new one
+
+const PEOPLE_ICON = '<circle cx="9" cy="8" r="3.4"/><path d="M2.8 20c.6-3.5 3.1-5.4 6.2-5.4s5.6 1.9 6.2 5.4"/><path d="M16 4.9a3.4 3.4 0 0 1 0 6.4"/><path d="M18.4 14.9c1.7.7 2.8 2.2 3.1 4.6"/>';
+
+// The list column is #main; the pane is written with its card and its editor,
+// further up, and moved here before it registers.
+$("#main").append($("#peopleView"));
+
+const personName = (c) =>
+  c.name || c.org || (c.emails[0] && c.emails[0].value) || (c.phones[0] && c.phones[0].value) || "No name";
+const personSort = (c) => personName(c).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const personLetter = (c) => {
+  const ch = personSort(c)[0] || "";
+  return /[a-z]/.test(ch) ? ch.toUpperCase() : "#";
+};
+function personInitials(c) {
+  const w = (c.name || c.org || "").trim().split(/\s+/).filter(Boolean);
+  if (!w.length) return personName(c)[0].toUpperCase();
+  return (w.length > 1 ? w[0][0] + w[w.length - 1][0] : w[0].slice(0, 2)).toUpperCase();
+}
+const personByEmail = (email) => people.find((c) => c.emails.some((e) => e.value === email));
+const personCard = (id) => people.find((c) => c.id === id);
+function sortPeople() {
+  people.sort((a, b) => personSort(a).localeCompare(personSort(b)) || a.id.localeCompare(b.id));
+}
+
+async function loadPeople(force = false) {
+  if (peopleState === "ready" && !force) return;
+  if (peopleLoading) return peopleLoading;
+  peopleLoading = (async () => {
+    try {
+      const res = await api("/api/contacts");
+      if (!res.ok) throw new Error(String(res.status));
+      people = (await res.json()).contacts || [];
+      sortPeople();
+      peopleState = "ready";
+    } catch {
+      // What is already listed is kept: a failed refresh is not an empty book.
+      if (peopleState !== "ready") peopleState = "failed";
+    } finally {
+      peopleLoading = null;
+    }
+  })();
+  return peopleLoading;
+}
+
+function renderPeople() {
+  const term = $("#ppSearch").value.trim().toLowerCase();
+  const digits = term.replace(/\D/g, "");
+  const shown = people.filter(
+    (c) =>
+      !term ||
+      [c.name, c.org, c.title, ...c.emails.map((e) => e.value)].some((s) => (s || "").toLowerCase().includes(term)) ||
+      (digits.length >= 3 && c.phones.some((p) => p.value.replace(/\D/g, "").includes(digits)))
+  );
+  if (currentTab === "people") {
+    $("#hmeta").textContent =
+      peopleState === "failed" && !people.length
+        ? "People · could not be loaded"
+        : `People · ${people.length} ${people.length === 1 ? "contact" : "contacts"}`;
+  }
+  const list = $("#ppList");
+  if (!people.length) {
+    list.innerHTML =
+      peopleState === "idle"
+        ? `<div class="pp-empty">Loading…</div>`
+        : peopleState === "failed"
+        ? `<div class="pp-empty"><b>Could not load your contacts</b>The server did not answer.<button class="ghost" data-pp-retry>Try again</button></div>`
+        : `<div class="pp-empty"><b>No contacts yet</b>Add someone with the + above, bring a .vcf file in with Import, or add a sender from a message you are reading.</div>`;
+    return;
+  }
+  if (!shown.length) {
+    list.innerHTML = `<div class="pp-empty"><b>No one matches</b>Nothing here goes by “${esc(term)}”.</div>`;
+    return;
+  }
+  let html = "";
+  let letter = "";
+  for (const c of shown) {
+    const l = personLetter(c);
+    if (l !== letter) {
+      letter = l;
+      html += `<div class="pp-letter" role="presentation">${l}</div>`;
+    }
+    const sub = [c.name ? c.org : "", c.emails[0] ? c.emails[0].value : c.phones[0] ? c.phones[0].value : ""].filter(Boolean).join(" · ");
+    html +=
+      `<div role="listitem"><button class="pp-row${c.id === personOpen ? " sel" : ""}" data-pid="${esc(c.id)}"${c.id === personOpen ? ' aria-current="true"' : ""}>` +
+      `<span class="pp-av" aria-hidden="true">${esc(personInitials(c))}</span>` +
+      `<span class="pp-tx"><span class="pp-nm tr">${esc(personName(c))}</span>${sub ? `<span class="pp-ln tr">${esc(sub)}</span>` : ""}</span>` +
+      `</button></div>`;
+  }
+  list.innerHTML = `<div role="list" aria-label="People">${html}</div>`;
+}
+
+const PERSON_TYPES = {
+  emails: [["", "Email"], ["work", "Work"], ["home", "Home"], ["other", "Other"]],
+  phones: [["", "Phone"], ["cell", "Mobile"], ["work", "Work"], ["home", "Home"], ["fax", "Fax"], ["other", "Other"]],
+};
+const personTypeLabel = (kind, t) => (PERSON_TYPES[kind].find(([v]) => v === t) || [t, t])[1];
+
+function birthdayText(b) {
+  let m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(b);
+  if (m) return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+  m = /^--(\d{2})-(\d{2})$/.exec(b);
+  if (m) return new Date(Date.UTC(2000, +m[1] - 1, +m[2])).toLocaleDateString(undefined, { day: "numeric", month: "long", timeZone: "UTC" });
+  return b;
+}
+
+const PC_WRITE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+const PC_FIND = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>';
+
+function renderPerson() {
+  const c = personCard(personOpen);
+  if (!c) { closePerson(); return; }
+  const sec = (rows) => (rows ? `<div class="pc-sec">${rows}</div>` : "");
+  const kind = (list, t) => (t ? personTypeLabel(list, t) : list === "emails" ? "email" : "phone");
+  // Tapping an address writes to it. With several, each one can also be
+  // searched on its own, because the search takes one sender at a time and the
+  // big button below only knows the first.
+  const emailRows = c.emails
+    .map(
+      (e) =>
+        `<div class="pc-line pc-multi"><button class="pc-wr" data-write="${esc(e.value)}" aria-label="Write to ${esc(e.value)}">` +
+        `<span class="pc-k">${esc(kind("emails", e.type))}</span><span class="pc-v">${esc(e.value)}</span>${PC_WRITE}</button>` +
+        (c.emails.length > 1
+          ? `<button class="pc-find" data-find="${esc(e.value)}" aria-label="Show mail from ${esc(e.value)}" title="Mail from this address">${PC_FIND}</button>`
+          : "") +
+        `</div>`
+    )
+    .join("");
+  const phones = c.phones
+    .map(
+      (p) =>
+        `<a class="pc-line" href="tel:${esc(p.value.replace(/[^\d+*#]/g, ""))}" aria-label="Call ${esc(p.value)}">` +
+        `<span class="pc-k">${esc(kind("phones", p.type))}</span><span class="pc-v">${esc(p.value)}</span></a>`
+    )
+    .join("");
+  const plain = (k, v, cls = "") => (v ? `<div class="pc-line"><span class="pc-k">${k}</span><span class="pc-v ${cls}">${esc(v)}</span></div>` : "");
+  $("#pcBody").innerHTML =
+    `<div class="pc-hero"><div class="pp-av lg" aria-hidden="true">${esc(personInitials(c))}</div>` +
+    `<h2 class="pc-name">${esc(personName(c))}</h2>` +
+    ([c.title, c.org].filter(Boolean).join(" · ") ? `<div class="pc-org">${esc([c.title, c.org].filter(Boolean).join(" · "))}</div>` : "") +
+    `</div>` +
+    `<div class="pc-acts">` +
+    (c.emails.length ? `<button class="rbtn acc" data-pc="mail">Mail with this person</button>` : "") +
+    `<a class="rbtn" href="/api/contacts/${esc(c.id)}/export" download>Export .vcf</a>` +
+    `<button class="rbtn danger" data-pc="delete">Delete</button>` +
+    `</div>` +
+    sec(emailRows) +
+    sec(phones) +
+    sec(plain("address", c.address, "pre") + plain("birthday", c.birthday ? birthdayText(c.birthday) : "") + plain("notes", c.notes, "pre"));
+}
+
+function showPerson(id) {
+  personOpen = id;
+  renderPeople();
+  renderPerson();
+  $("#peopleCard").classList.add("up");
+  syncHistory();
+  $("#pcBody").scrollTop = 0;
+}
+
+function closePerson() {
+  personOpen = "";
+  $("#peopleCard").classList.remove("up");
+  if ($("#ppList").firstChild) renderPeople();
+  syncHistory();
+}
+
+registerView({
+  id: "people",
+  label: "People",
+  icon: PEOPLE_ICON,
+  pane: "#peopleView",
+  onShow: async () => {
+    document.body.classList.add("people");
+    renderPeople();
+    await loadPeople();
+    renderPeople();
+  },
+  onHide: () => {
+    document.body.classList.remove("people");
+    closePerson();
+  },
+});
+
+$("#ppSearch").addEventListener("input", renderPeople);
+$("#ppList").addEventListener("click", async (e) => {
+  if (e.target.closest("[data-pp-retry]")) { await loadPeople(true); renderPeople(); return; }
+  const row = e.target.closest("[data-pid]");
+  if (row) showPerson(row.dataset.pid);
+});
+$("#pcBack").addEventListener("click", closePerson);
+$("#ppNew").addEventListener("click", () => openPersonEditor({}));
+$("#pcEdit").addEventListener("click", () => {
+  const c = personCard(personOpen);
+  if (c) openPersonEditor(c);
+});
+
+/** Write to an address: the composer, with the person already in it. */
+function writeTo(email) {
+  if (!accounts.length) { toast(noAccountWhy()); return; }
+  openCompose({ to: email });
+}
+
+/** The existing search, for mail from this address, in the Mail view. */
+function mailFrom(email) {
+  switchTab("mail");
+  const box = $("#q");
+  box.value = `from:${email}`;
+  box.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+$("#pcBody").addEventListener("click", async (e) => {
+  const c = personCard(personOpen);
+  if (!c) return;
+  const w = e.target.closest("[data-write]");
+  if (w) { writeTo(w.dataset.write); return; }
+  const f = e.target.closest("[data-find]");
+  if (f) { mailFrom(f.dataset.find); return; }
+  const act = e.target.closest("[data-pc]");
+  if (!act) return;
+  if (act.dataset.pc === "mail") mailFrom(c.emails[0].value);
+  if (act.dataset.pc === "delete") await deletePerson(c);
+});
+
+async function deletePerson(c) {
+  const name = personName(c);
+  if (!(await ask(`Delete ${name}?`, "The card is removed from People. Mail to and from them stays where it is.", { ok: "Delete", danger: true }))) return;
+  const res = await api(`/api/contacts/${c.id}`, { method: "DELETE" }).catch(() => null);
+  if (!res || !res.ok) { toast("Could not delete this contact"); return; }
+  people = people.filter((p) => p.id !== c.id);
+  contacts = [];
+  closePerson();
+  toast(`Deleted ${name}`, async () => {
+    const { id, uid, created_at, updated_at, ...fields } = c;
+    const back = await api("/api/contacts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(fields),
+    }).catch(() => null);
+    const d = back && back.ok ? await back.json().catch(() => null) : null;
+    if (!d) { toast("Could not bring it back"); return; }
+    people.push(d.contact);
+    sortPeople();
+    contacts = [];
+    renderPeople();
+  });
+}
+
+/* the editor */
+const optionList = (kind, t) =>
+  (t && !PERSON_TYPES[kind].some(([v]) => v === t) ? [...PERSON_TYPES[kind], [t, t.charAt(0).toUpperCase() + t.slice(1)]] : PERSON_TYPES[kind])
+    .map(([v, label]) => `<option value="${esc(v)}"${v === t ? " selected" : ""}>${esc(label)}</option>`)
+    .join("");
+
+function addPersonRow(kind, item = {}) {
+  const host = $(kind === "emails" ? "#peEmails" : "#pePhones");
+  const row = document.createElement("div");
+  row.className = "field pe-row";
+  const what = kind === "emails" ? "Email address" : "Phone number";
+  row.innerHTML =
+    `<select class="pe-type" aria-label="${what} type">${optionList(kind, item.type || "")}</select>` +
+    `<input type="${kind === "emails" ? "email" : "tel"}" aria-label="${what}" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${kind === "emails" ? "name@example.com" : "+33 6 00 00 00 00"}" value="${esc(item.value || "")}">` +
+    `<button class="pe-x" type="button" aria-label="Remove this ${what.toLowerCase()}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>`;
+  host.append(row);
+  return row;
+}
+
+function openPersonEditor(c) {
+  personEdit = c;
+  $("#peTitle").textContent = c.id ? "Edit contact" : "New contact";
+  $("#peName").value = c.name || "";
+  $("#peOrg").value = c.org || "";
+  $("#peJob").value = c.title || "";
+  $("#peEmails").textContent = "";
+  $("#pePhones").textContent = "";
+  for (const e of c.emails && c.emails.length ? c.emails : [{}]) addPersonRow("emails", e);
+  for (const p of c.phones && c.phones.length ? c.phones : [{}]) addPersonRow("phones", p);
+  $("#peAddress").value = c.address || "";
+  $("#peBday").value = c.birthday || "";
+  $("#peNotes").value = c.notes || "";
+  $("#peErr").classList.remove("show");
+  $("#peSave").disabled = false;
+  openSheet("#personSheet");
+  setTimeout(() => $("#peName").focus(), 80);
+}
+
+$("#peAddEmail").addEventListener("click", () => addPersonRow("emails").querySelector("input").focus());
+$("#peAddPhone").addEventListener("click", () => addPersonRow("phones").querySelector("input").focus());
+$("#personSheet").addEventListener("click", (e) => {
+  const x = e.target.closest(".pe-x");
+  if (!x) return;
+  const row = x.closest(".pe-row");
+  const host = row.parentElement;
+  row.remove();
+  // One empty row always stays, so there is somewhere to type.
+  if (!host.children.length) addPersonRow(host.id === "peEmails" ? "emails" : "phones");
+});
+$("#peCancel").addEventListener("click", closeSheets);
+$("#personSheet").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.target.tagName === "INPUT") { e.preventDefault(); $("#peSave").click(); }
+});
+
+/** "Dr. Jane Q. Doe" as given and family names, for the N line of an exported card. */
+function splitName(name) {
+  const w = name.trim().split(/\s+/).filter(Boolean);
+  return w.length < 2 ? { given: w[0] || "", family: "" } : { given: w.slice(0, -1).join(" "), family: w[w.length - 1] };
+}
+
+$("#peSave").addEventListener("click", async () => {
+  const base = personEdit || {};
+  const name = $("#peName").value.trim();
+  // The parts of a name are only worked out afresh when the name was edited:
+  // an imported card keeps the N it came with.
+  const parts = !base.id || name !== (base.name || "") ? splitName(name) : { given: base.given || "", family: base.family || "" };
+  const list = (host) =>
+    [...$(host).children]
+      .map((r) => ({ type: r.querySelector("select").value, value: r.querySelector("input").value.trim() }))
+      .filter((x) => x.value);
+  const body = {
+    name, ...parts,
+    org: $("#peOrg").value.trim(),
+    title: $("#peJob").value.trim(),
+    emails: list("#peEmails"),
+    phones: list("#pePhones"),
+    address: $("#peAddress").value.trim(),
+    birthday: $("#peBday").value.trim(),
+    notes: $("#peNotes").value.trim(),
+  };
+  const fail = (msg) => {
+    $("#peErr").textContent = msg;
+    $("#peErr").classList.add("show");
+    $("#peSave").disabled = false;
+  };
+  if (body.birthday && !/^(\d{4}-\d{2}-\d{2}|--\d{2}-\d{2})$/.test(body.birthday)) { fail("Write the birthday as year-month-day, like 1990-04-23."); return; }
+  $("#peSave").disabled = true;
+  $("#peErr").classList.remove("show");
+  const res = await api(base.id ? `/api/contacts/${base.id}` : "/api/contacts", {
+    method: base.id ? "PUT" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }).catch(() => null);
+  const d = res ? await res.json().catch(() => ({})) : {};
+  if (!res || !res.ok) { fail(d.error || "Could not save this contact."); return; }
+  people = people.filter((p) => p.id !== d.contact.id);
+  people.push(d.contact);
+  sortPeople();
+  peopleState = "ready";
+  contacts = [];
+  closeSheets();
+  if (currentTab === "people") showPerson(d.contact.id);
+  toast(base.id ? "Saved" : `Added ${personName(d.contact)}`);
+});
+
+/* import and export */
+function peopleResult(text, bad = false) {
+  $("#ppResult").hidden = false;
+  $("#ppResult").classList.toggle("bad", bad);
+  $("#ppResultText").textContent = text;
+}
+$("#ppResultX").addEventListener("click", () => { $("#ppResult").hidden = true; });
+$("#ppImport").addEventListener("click", () => $("#ppFile").click());
+$("#ppFile").addEventListener("change", async () => {
+  const file = $("#ppFile").files[0];
+  $("#ppFile").value = "";
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) { peopleResult(`${file.name} is larger than 5 MB, which is more than an address book needs.`, true); return; }
+  peopleResult(`Importing ${file.name}…`);
+  // The file goes as it is, bytes and all: read as text here, a card written in
+  // Windows-1252 would already have lost its accents.
+  const res = await api("/api/contacts/import", { method: "POST", headers: { "Content-Type": "text/vcard" }, body: file }).catch(() => null);
+  const d = res ? await res.json().catch(() => ({})) : {};
+  if (!res || !res.ok) { peopleResult(`${file.name}: ${d.error || "could not be imported."}`, true); return; }
+  contacts = [];
+  await loadPeople(true);
+  renderPeople();
+  if (!d.found) { peopleResult(`${file.name}: no contacts found in it.`, true); return; }
+  const n = (k, one) => `${d[k]} ${one}`;
+  peopleResult(`${file.name}: ${n("added", "added")}, ${n("updated", "updated")}, ${n("skipped", "skipped")}.`);
+  say(`Imported: ${d.added} added, ${d.updated} updated, ${d.skipped} skipped`);
+});
+
+/** The sender sheet's button: add this sender as a card, or open the one they have. */
+async function senderToPeople(m) {
+  const email = String(m.from_email || "").toLowerCase();
+  if (!email) return;
+  await loadPeople();
+  const known = personByEmail(email);
+  closeSheets();
+  // On a phone the message is a screen over everything, tabs included.
+  if (matchMedia("(max-width:899px)").matches) closeReader();
+  switchTab("people");
+  if (known) showPerson(known.id);
+  else openPersonEditor({ name: m.from_name || "", emails: [{ type: "", value: email }] });
+}
+
+// The mail shortcuts act on the open message, which is hidden behind the card
+// while People is up. A letter pressed here must not archive or delete it.
+addEventListener("keydown", (e) => {
+  if (currentTab !== "people") return;
+  if (e.key === "Escape") {
+    const layered = $("#modal").open || document.body.classList.contains("overlay") || document.querySelector(".sheet.up");
+    if (e.target === $("#ppSearch") && $("#ppSearch").value) { $("#ppSearch").value = ""; renderPeople(); e.stopImmediatePropagation(); }
+    else if (!layered && personOpen) { closePerson(); e.stopImmediatePropagation(); }
+    return;
+  }
+  if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && !isTyping(e.target) && e.key !== " ") e.stopImmediatePropagation();
+}, true);
 
 /* ── drop to attach ── */
 (function dropToAttach() {
