@@ -1151,6 +1151,27 @@ html.busy #bar{opacity:1}
   background:color-mix(in srgb,var(--acc) 4%,var(--bg))}
 .rowwrap.open .row,.rowwrap .row.sel{background:color-mix(in srgb,var(--acc) 25%,var(--bg))}
 
+/* Dragging a message to a folder, with a mouse. The strip is above everything
+   but the dialogs, and takes no clicks until a drag has begun. No blur behind
+   it: the message frame is sandboxed and a blur over it has cost it paint
+   before. */
+#dropStrip{position:fixed;left:50%;bottom:calc(var(--sab) + 18px);z-index:95;
+  display:flex;flex-wrap:wrap;gap:8px;justify-content:center;
+  width:max-content;max-width:min(920px,calc(100vw - 32px));max-height:46vh;overflow:hidden;
+  padding:12px;border-radius:18px;background:var(--elev);border:1px solid var(--line-strong);
+  box-shadow:0 10px 34px var(--shadow);
+  opacity:0;transform:translate(-50%,24px);pointer-events:none;
+  transition:opacity .16s ease,transform .22s cubic-bezier(.32,.72,0,1)}
+#dropStrip.up{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+#dropStrip .hint{flex:0 0 100%;text-align:center;font-size:12px;color:var(--t3)}
+#dropStrip .dt{display:inline-flex;align-items:center;height:38px;padding:0 16px;border-radius:10px;
+  border:1.5px dashed var(--line-strong);background:var(--bg);color:var(--t1);
+  font-size:13px;font-weight:550;white-space:nowrap;max-width:230px;overflow:hidden;text-overflow:ellipsis;
+  transition:background .1s,border-color .1s,color .1s}
+#dropStrip .dt.over{background:var(--acc);border:1.5px solid var(--acc);color:var(--on-acc)}
+.dragghost{position:fixed;top:-100px;left:-100px;padding:8px 14px;border-radius:10px;
+  background:var(--acc);color:var(--on-acc);font-size:13px;font-weight:650}
+
 /* Selection mode replaces the row's swipe behaviour with a checkbox. */
 .rowwrap .selbox{
   flex:none;width:22px;height:22px;border-radius:50%;border:1.5px solid var(--line-strong);
@@ -1839,6 +1860,10 @@ body.composing #peopleCard{display:none}
     <div id="timelineView" role="region" aria-label="Timeline of meetings" hidden></div>
   </main>
 </div>
+
+<!-- Folders to drop a dragged message on. Only while a mouse drag is under way;
+     the keyboard has Move (v), so none of it is read out. -->
+<div id="dropStrip" aria-hidden="true"></div>
 
 <!-- Bulk actions. Appears only in selection mode; it is the one place these
      three filing actions are supposed to live while you are choosing. -->
@@ -10084,6 +10109,158 @@ $("#swipePick").addEventListener("click", (e) => {
   paintSwipePick();
 });
 paintSwipePick();
+
+/* ── drag a message onto a folder ──────────────────────────────────────
+   With a mouse, a row (or the rows picked, when the row is one of them) can be
+   carried to a folder. The folders live behind a button, so a strip of them
+   appears when a drag starts and goes when it ends, wherever it ends: dropped
+   on a folder it moves the conversation, dropped anywhere else or cancelled
+   with Escape it does nothing.
+
+   Native drag and drop, and only for what began on a row. The rows are made
+   draggable at the moment a mouse button goes down on one, so a finger never
+   sees a draggable row and the long press that selects keeps working. The
+   strip answers to nothing but this drag's own data type, so a file dragged
+   toward the composer, or text dragged out of the reader, is left alone. */
+const DRAG_TYPE = "application/x-stratus-rows";
+
+/**
+ * The folders a drag of these rows can be dropped on: all of them, except the
+ * one every dragged row is already in. A drag of rows from several folders (a
+ * search lists every folder at once) offers every folder.
+ */
+function dropTargets(rows, all) {
+  const homes = new Set(rows.map((m) => String(m.folder || "inbox")));
+  return all.filter((f) => !(homes.size === 1 && homes.has(f.folder)));
+}
+
+/** One conversation's move, either way: from `a` to `b`, limited to `ids` when given. */
+const threadMove = (key, a, b, ids) =>
+  api("/api/thread", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key, from: a, folder: b, ids }) })
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null);
+
+/**
+ * Files the dragged rows in a folder, through the same two calls the swipe and
+ * the move sheet use, and answers with one Undo that puts every one of them
+ * back where it came from. A row already in the folder is left out.
+ */
+async function dropMove(rows, target, fromSelection) {
+  const todo = rows.filter((m) => String(m.folder || "inbox") !== target);
+  if (!todo.length) return;
+  const said = `Moved to ${folderLabel(target)}`;
+  if (fromSelection) exitSelmode();
+  if (todo.length === 1) return swipeFile(todo[0], target, said);
+
+  const gone = new Set(todo.map((m) => m.id));
+  say(said);
+  messages = messages.filter((m) => !gone.has(m.id));
+  if (openThread && todo.some((m) => m.thread_key === openThread)) { openThread = ""; threadRows = []; }
+  renderList();
+
+  const moved = await Promise.all(
+    todo.map(async (m) => {
+      const from = m.folder || "inbox";
+      if (Number(m.n || 1) > 1 && m.thread_key) {
+        const d = await threadMove(m.thread_key, from, target);
+        return d ? { key: m.thread_key, from, ids: Array.isArray(d.ids) && d.ids.length ? d.ids : undefined, n: Number(d.n) || 1 } : null;
+      }
+      const d = await fileMessage(m.id, target);
+      return d ? { id: m.id, from: d.from || from, n: 1 } : null;
+    })
+  );
+  const done = moved.filter(Boolean);
+  // Whatever did not move is still where it was; show it again.
+  if (done.length < todo.length) loadList();
+  if (!done.length) return;
+  const n = done.reduce((a, r) => a + r.n, 0);
+  toast(n > 1 ? `${said} — ${n} messages` : said, async () => {
+    await Promise.all(done.map((r) => (r.key ? threadMove(r.key, target, r.from, r.ids) : fileMessage(r.id, r.from))));
+    await Promise.all([loadList(), refreshCounts()]);
+  });
+  refreshCounts();
+}
+
+(function dragToFolder() {
+  const list = $("#list");
+  const strip = $("#dropStrip");
+  let drag = null; // { rows, fromSelection, at } while a drag that began on a row is under way
+
+  const mine = (e) => !!drag && [...((e.dataTransfer && e.dataTransfer.types) || [])].includes(DRAG_TYPE);
+  const settle = () => list.querySelectorAll(".row[draggable]").forEach((r) => r.removeAttribute("draggable"));
+  const hide = () => {
+    strip.classList.remove("up");
+    strip.querySelectorAll(".over").forEach((x) => x.classList.remove("over"));
+    drag = null;
+    settle();
+  };
+
+  list.addEventListener("pointerdown", (e) => {
+    if (e.pointerType !== "mouse" || e.button !== 0 || !matchMedia("(pointer: fine)").matches) return;
+    const row = e.target instanceof Element ? e.target.closest(".row") : null;
+    if (row && !e.target.closest("button")) row.draggable = true;
+  });
+  // A click that did not turn into a drag leaves nothing draggable behind.
+  document.addEventListener("pointerup", settle);
+
+  list.addEventListener("dragstart", (e) => {
+    const row = e.target instanceof Element ? e.target.closest(".row") : null;
+    if (!row || !e.dataTransfer) return;
+    const id = row.dataset.id;
+    const fromSelection = picked.has(id);
+    const rows = (fromSelection ? [...picked] : [id]).map(listRow).filter(Boolean);
+    if (!rows.length) return e.preventDefault();
+    e.dataTransfer.setData(DRAG_TYPE, rows.map((m) => m.id).join(","));
+    e.dataTransfer.effectAllowed = "move";
+    if (rows.length > 1 && e.dataTransfer.setDragImage) {
+      const ghost = document.createElement("div");
+      ghost.className = "dragghost";
+      ghost.textContent = `${rows.length} messages`;
+      document.body.appendChild(ghost);
+      e.dataTransfer.setDragImage(ghost, 14, 14);
+      setTimeout(() => ghost.remove());
+    }
+    drag = { rows, fromSelection, at: Date.now() };
+    const targets = dropTargets(rows, folders);
+    strip.innerHTML =
+      `<div class="hint">${rows.length > 1 ? `Drop ${rows.length} messages on a folder` : "Drop on a folder to move it"} · Esc cancels</div>` +
+      targets.map((f) => `<div class="dt" data-folder="${esc(f.folder)}" title="${esc(folderPath(f.folder))}">${esc(folderLabel(f.folder))}</div>`).join("");
+    // After the browser has taken its picture of the row, so the strip is not
+    // in it and nothing moves under the pointer before the drag has begun.
+    setTimeout(() => { if (drag) strip.classList.add("up"); });
+  });
+
+  const target = (e) => (e.target instanceof Element ? e.target.closest(".dt") : null);
+  strip.addEventListener("dragover", (e) => {
+    if (!mine(e)) return;
+    const t = target(e);
+    strip.querySelectorAll(".over").forEach((x) => x !== t && x.classList.remove("over"));
+    if (!t) return;
+    e.preventDefault(); // this is a place to drop
+    e.dataTransfer.dropEffect = "move";
+    t.classList.add("over");
+  });
+  strip.addEventListener("dragleave", (e) => {
+    const t = target(e);
+    if (t && !t.contains(e.relatedTarget)) t.classList.remove("over");
+  });
+  strip.addEventListener("drop", (e) => {
+    const t = target(e);
+    if (!mine(e) || !t) return;
+    e.preventDefault();
+    const { rows, fromSelection } = drag;
+    hide();
+    dropMove(rows, t.dataset.folder, fromSelection);
+  });
+
+  // Ends however it ends: dropped on a folder, dropped elsewhere, Escape.
+  document.addEventListener("dragend", hide);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && drag) hide(); });
+  // A row repainted mid-drag can take its dragend with it. No mouse event is
+  // delivered during a drag, so the first one after it, with no button held,
+  // means it is over.
+  document.addEventListener("mousemove", (e) => { if (drag && e.buttons === 0 && Date.now() - drag.at > 600) hide(); });
+})();
 
 /* ── bulk select ── */
 function enterSelmode() {
