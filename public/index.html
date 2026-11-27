@@ -4930,7 +4930,7 @@ function showInFrame(doc) {
   const old = $("#rframe");
   const f = document.createElement("iframe");
   f.id = "rframe";
-  f.title = "Message body";
+  f.title = t("Message body");
   f.setAttribute("sandbox", "allow-popups allow-popups-to-escape-sandbox");
   f.setAttribute("referrerpolicy", "no-referrer");
   // Inserted empty. A frame with no document is an in-process about:blank
@@ -4971,11 +4971,12 @@ async function renderBody() {
   // Two different failures, said in our own voice rather than spliced into the
   // body where they would read as something the sender wrote.
   const html = current.body.missing
-    ? note("This message could not be fetched from iCloud. It may have been deleted elsewhere, or the account needs reconnecting.")
+    ? note(t("This message could not be fetched from iCloud. It may have been deleted elsewhere, or the account needs reconnecting."))
     : current.body.empty
     ? note(
-        "This message has no readable text" +
-          ((current.body.attachments || []).length ? " — only the attachments below." : ".")
+        (current.body.attachments || []).length
+          ? t("This message has no readable text — only the attachments below.")
+          : t("This message has no readable text.")
       )
     : load
     ? unblockImages(current.body.html)
@@ -5070,24 +5071,27 @@ function renderScope() {
   chip.setAttribute("aria-pressed", String(on));
   // Says what the chip governs as well as what it is set to. "All 4" alone
   // did not say all four of what, or that it was about the buttons below.
-  $("#rScopeLbl").textContent = on ? `Actions: all ${currentThread ? currentThread.n : 0} messages` : "Actions: this message";
+  $("#rScopeLbl").textContent = on
+    ? t("{n, plural, one {Actions: all # messages} other {Actions: all # messages}}", { n: currentThread ? currentThread.n : 0 })
+    : t("Actions: this message");
   chip.title = on
-    ? "Archive, Delete and Move will act on every message in this conversation. Tap for just this one."
-    : "Archive, Delete and Move will act on this message alone. Tap for the whole conversation.";
+    ? t("Archive, Delete and Move will act on every message in this conversation. Tap for just this one.")
+    : t("Archive, Delete and Move will act on this message alone. Tap for the whole conversation.");
   $("#moreScope").textContent = on
-    ? "These act on the whole conversation."
-    : "These act on the message you are reading.";
+    ? t("These act on the whole conversation.")
+    : t("These act on the message you are reading.");
   for (const id of ["rArchive", "rDelete", "rMove", "rNotSpam"]) {
     const b = $("#" + id);
     if (b) b.dataset.scope = on ? "thread" : "one";
-    if (b) b.title = (b.getAttribute("aria-label") || id) + (on ? " — whole conversation" : "");
+    const action = b && (b.getAttribute("aria-label") || id);
+    if (b) b.title = on ? t("{action} — whole conversation", { action }) : action;
   }
 }
 $("#rScope").addEventListener("click", () => {
   if (!currentThread) return;
   currentThread.whole = currentThread.whole === false;
   renderScope();
-  say(currentThread.whole ? "Actions now cover the conversation" : "Actions now cover this message only");
+  say(currentThread.whole ? t("Actions now cover the conversation") : t("Actions now cover this message only"));
 });
 
 /**
@@ -5111,7 +5115,7 @@ async function openMsg(id, threadRow = null) {
   try {
     const res = await api(`/api/messages/${id}`, { signal: abort.signal });
     if (seq !== openSeq) return;
-    if (!res.ok) { toast("Could not open this message"); return; }
+    if (!res.ok) { toast(t("Could not open this message")); return; }
     got = await res.json();
   } catch { return; }
   if (seq !== openSeq) return;
@@ -5130,7 +5134,7 @@ async function openMsg(id, threadRow = null) {
   markReadLocally(id);
 
   const m = current.message;
-  $("#rSubj").textContent = m.subject || "(no subject)";
+  $("#rSubj").textContent = m.subject || t("(no subject)");
   if (summaryFor !== m.id) $("#rSummary").hidden = true;
   renderInvite(current);
   renderSenderWarning(m);
@@ -5140,8 +5144,8 @@ async function openMsg(id, threadRow = null) {
   // hides the one that can. Sender first, so it is the part that survives
   // when the line has to wrap on a phone.
   const who = m.from_name
-    ? `<b>${esc(m.from_name)}</b> <span class="addr">${esc(m.from_email || "no address")}</span>`
-    : `<b>${esc(m.from_email || "Unknown sender")}</b>`;
+    ? `<b>${esc(m.from_name)}</b> <span class="addr">${esc(m.from_email || t("no address"))}</span>`
+    : `<b>${esc(m.from_email || t("Unknown sender"))}</b>`;
   // On your own mail — a draft, or anything in Sent — the sender is you, and
   // everything the sender sheet offers is nonsense pointed at yourself: adding
   // yourself to your contacts, or blocking your own address, which the server
@@ -5153,17 +5157,17 @@ async function openMsg(id, threadRow = null) {
   // should say, and reading that off the To line alone gets it wrong — a Cc
   // you cannot see is one you will forget to keep.
   const also =
-    (m.cc_line ? ` · cc ${esc(m.cc_line)}` : "") +
+    (m.cc_line ? ` · ${t("cc {list}", { list: esc(m.cc_line) })}` : "") +
     // Only ever present on your own copies: a draft, and what you have sent.
-    (m.bcc_line ? ` · bcc ${esc(m.bcc_line)}` : "");
+    (m.bcc_line ? ` · ${t("bcc {list}", { list: esc(m.bcc_line) })}` : "");
   // Three pieces the stylesheet arranges by the room there is: who, when, and
   // who else. The last is cut to one line and opens on a tap; its title
   // carries the whole of it for a mouse. The exact time, seconds and zone
   // included, is the title of the date.
-  const rcpt = `to ${esc(m.to_line || "me")}${also}`;
+  const rcpt = t("to {list}", { list: esc(m.to_line || t("me")) }) + also;
   $("#rMeta").innerHTML =
     `<div class="rm1">` +
-    (mine ? `<span class="who">${who}</span>` : `<button class="who" data-sender="1" title="About this sender">${who}</button>`) +
+    (mine ? `<span class="who">${who}</span>` : `<button class="who" data-sender="1" title="${t("About this sender")}">${who}</button>`) +
     `</div><span class="rwhen" title="${esc(new Date(m.date).toLocaleString(LOCALE, { dateStyle: "full", timeStyle: "long" }))}">${esc(fmtFull(m.date))} ·</span>` +
     `<div class="rto" role="button" tabindex="0" aria-expanded="false" title="${rcpt}">${rcpt}</div>`;
   // Two different failures, said in our own voice rather than spliced into the
@@ -5193,7 +5197,7 @@ async function openMsg(id, threadRow = null) {
   const all =
     atts.length > 1
       ? `<a class="att primary" href="/api/messages/${encodeURIComponent(m.id)}/attachments.zip" download>
-           ${ICON_ZIP}<span class="nm">Download all (${atts.length})</span><span class="sz"></span></a>`
+           ${ICON_ZIP}<span class="nm">${t("Download all ({n})", { n: atts.length })}</span><span class="sz"></span></a>`
       : "";
   $("#rAtts").innerHTML = all + atts
     .map(
