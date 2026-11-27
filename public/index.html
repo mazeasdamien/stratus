@@ -11920,11 +11920,11 @@ addEventListener("keydown", (e) => {
  * same everywhere. `refused: null` is an action that is never taken.
  */
 const SWIPE_ACTIONS = {
-  none: { label: "Nothing", refused: null },
-  archive: { label: "Archive", refused: ["archive", "drafts", "sent", "trash", "spam"] },
-  delete: { label: "Delete", refused: ["drafts", "trash", "spam"] },
-  read: { label: "Mark read", refused: [] },
-  star: { label: "Star", refused: [] },
+  none: { label: t("Nothing"), refused: null },
+  archive: { label: t("Archive"), refused: ["archive", "drafts", "sent", "trash", "spam"] },
+  delete: { label: t("Delete"), refused: ["drafts", "trash", "spam"] },
+  read: { label: t("Mark read"), refused: [] },
+  star: { label: t("Star"), refused: [] },
 };
 
 /** Whether an action may be taken on a row in this folder. */
@@ -11945,18 +11945,18 @@ function swipeFace(action, m) {
   const svg = (d) =>
     `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
   if (action === "delete")
-    return { label: "Delete", icon: svg('<path d="M4 7h16"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>') };
+    return { label: t("Delete"), icon: svg('<path d="M4 7h16"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>') };
   if (action === "star") {
     const on = !!Number(m.starred);
-    return { label: on ? "Unstar" : "Star", icon: svg(`<path d="m12 3.6 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.8l5.9-.9Z"${on ? ' fill="currentColor"' : ""}/>`) };
+    return { label: on ? t("Unstar") : t("Star"), icon: svg(`<path d="m12 3.6 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.8l5.9-.9Z"${on ? ' fill="currentColor"' : ""}/>`) };
   }
   if (action === "read") {
     const unread = Number(m.unread) > 0;
     return unread
-      ? { label: "Mark read", icon: svg('<path d="M3 9.5 12 4l9 5.5V19a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/><path d="m3.5 10 8.5 6 8.5-6"/>') }
-      : { label: "Mark unread", icon: svg('<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m3.5 7.5 8.5 6 8.5-6"/>') };
+      ? { label: t("Mark read"), icon: svg('<path d="M3 9.5 12 4l9 5.5V19a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/><path d="m3.5 10 8.5 6 8.5-6"/>') }
+      : { label: t("Mark unread"), icon: svg('<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m3.5 7.5 8.5 6 8.5-6"/>') };
   }
-  return { label: "Archive", icon: svg('<rect x="3" y="4" width="18" height="5" rx="1.4"/><path d="M5 9v9.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V9"/><path d="M10 13h4"/>') };
+  return { label: t("Archive"), icon: svg('<rect x="3" y="4" width="18" height="5" rx="1.4"/><path d="M5 9v9.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V9"/><path d="M10 13h4"/>') };
 }
 
 /** Moves a row's conversation or message, with the Undo that files it back. */
@@ -12020,15 +12020,15 @@ async function swipeFlag(m, patch, said, oops) {
 
 /** Does what a committed swipe was dragged to do. */
 function swipeRun(action, m) {
-  if (action === "archive") return swipeFile(m, "archive", "Archived");
-  if (action === "delete") return swipeFile(m, "trash", "Deleted");
+  if (action === "archive") return swipeFile(m, "archive", t("Archived"));
+  if (action === "delete") return swipeFile(m, "trash", t("Deleted"));
   if (action === "star") {
     const on = !Number(m.starred);
-    return swipeFlag(m, { starred: on }, on ? "Starred" : "Unstarred", on ? "Could not star this message" : "Could not remove the star");
+    return swipeFlag(m, { starred: on }, on ? t("Starred") : t("Unstarred"), on ? t("Could not star this message") : t("Could not remove the star"));
   }
   if (action === "read") {
     const unread = Number(m.unread) > 0;
-    return swipeFlag(m, { unread: !unread }, unread ? "Marked read" : "Marked unread", unread ? "Could not mark it read" : "Could not mark it unread");
+    return swipeFlag(m, { unread: !unread }, unread ? t("Marked read") : t("Marked unread"), unread ? t("Could not mark it read") : t("Could not mark it unread"));
   }
 }
 
@@ -12209,7 +12209,7 @@ const threadMove = (key, a, b, ids) =>
 async function dropMove(rows, target, fromSelection) {
   const todo = rows.filter((m) => String(m.folder || "inbox") !== target);
   if (!todo.length) return;
-  const said = `Moved to ${folderLabel(target)}`;
+  const said = t("Moved to {folder}", { folder: folderLabel(target) });
   if (fromSelection) exitSelmode();
   if (todo.length === 1) return swipeFile(todo[0], target, said);
 
@@ -12235,7 +12235,7 @@ async function dropMove(rows, target, fromSelection) {
   if (done.length < todo.length) loadList();
   if (!done.length) return;
   const n = done.reduce((a, r) => a + r.n, 0);
-  toast(n > 1 ? `${said} — ${n} messages` : said, async () => {
+  toast(n > 1 ? t("Moved {n} messages to {folder}", { n, folder: folderLabel(target) }) : said, async () => {
     await Promise.all(done.map((r) => (r.key ? threadMove(r.key, target, r.from, r.ids) : fileMessage(r.id, r.from))));
     await Promise.all([loadList(), refreshCounts()]);
   });
@@ -12276,7 +12276,7 @@ async function dropMove(rows, target, fromSelection) {
     if (rows.length > 1 && e.dataTransfer.setDragImage) {
       const ghost = document.createElement("div");
       ghost.className = "dragghost";
-      ghost.textContent = `${rows.length} messages`;
+      ghost.textContent = t("{n, plural, one {# message} other {# messages}}", { n: rows.length });
       document.body.appendChild(ghost);
       e.dataTransfer.setDragImage(ghost, 14, 14);
       setTimeout(() => ghost.remove());
@@ -12284,7 +12284,7 @@ async function dropMove(rows, target, fromSelection) {
     drag = { rows, fromSelection, at: Date.now() };
     const targets = dropTargets(rows, folders);
     strip.innerHTML =
-      `<div class="hint">${rows.length > 1 ? `Drop ${rows.length} messages on a folder` : "Drop on a folder to move it"} · Esc cancels</div>` +
+      `<div class="hint">${rows.length > 1 ? t("Drop {n} messages on a folder · Esc cancels", { n: rows.length }) : t("Drop on a folder to move it · Esc cancels")}</div>` +
       targets.map((f) => `<div class="dt" data-folder="${esc(f.folder)}" title="${esc(folderPath(f.folder))}">${esc(folderLabel(f.folder))}</div>`).join("");
     // After the browser has taken its picture of the row, so the strip is not
     // in it and nothing moves under the pointer before the drag has begun.
@@ -12328,7 +12328,7 @@ function enterSelmode() {
   document.body.classList.add("selmode");
   $("#bulkbar").hidden = false;
   requestAnimationFrame(() => $("#bulkbar").classList.add("up"));
-  $("#bulkCount").textContent = `${picked.size} selected`;
+  $("#bulkCount").textContent = t("{n, plural, one {# selected} other {# selected}}", { n: picked.size });
 }
 function exitSelmode() {
   picked.clear();
@@ -12355,11 +12355,11 @@ function togglePick(wrap) {
   wrap.classList.toggle("picked", picked.has(id));
   const box = wrap.querySelector(".selbox");
   if (box) box.setAttribute("aria-pressed", String(picked.has(id)));
-  $("#bulkCount").textContent = `${picked.size} selected`;
-  say(`${picked.size} selected`);
+  $("#bulkCount").textContent = t("{n, plural, one {# selected} other {# selected}}", { n: picked.size });
+  say(t("{n, plural, one {# selected} other {# selected}}", { n: picked.size }));
 }
 /** Files every picked row at once. One message if one went, a count if many. */
-function bulkApply(target, said) {
+function bulkApply(target, said, saidMany) {
   const ids = [...picked];
   if (!ids.length) return;
   // The rows as listed, read before they leave the list. A row that stands
@@ -12385,21 +12385,21 @@ function bulkApply(target, said) {
     // Whatever did not move is still where it was; show it again.
     if (counts.includes(0)) loadList();
     if (!ok) return;
-    toast(ok > 1 ? `${said} — ${ok} messages` : said);
-    say(ok > 1 ? `${said} ${ok} messages` : said);
+    toast(ok > 1 ? saidMany(ok) : said);
+    say(ok > 1 ? saidMany(ok) : said);
     refreshCounts();
   });
 }
-$("#bulkArchive").addEventListener("click", () => bulkApply("archive", "Archived"));
+$("#bulkArchive").addEventListener("click", () => bulkApply("archive", t("Archived"), (n) => t("{n} messages archived", { n })));
 $("#bulkDelete").addEventListener("click", async () => {
   const n = picked.size;
   if (!n) return;
   if (!(await ask(
-    n > 1 ? `Delete these ${n} messages?` : "Delete this message?",
-    "They are moved to Trash at iCloud. Undo is offered on the next single action, not on a batch.",
-    { ok: "Delete", danger: true }
+    n > 1 ? t("Delete these {n} messages?", { n }) : t("Delete this message?"),
+    t("They are moved to Trash at iCloud. Undo is offered on the next single action, not on a batch."),
+    { ok: t("Delete"), danger: true }
   ))) return;
-  bulkApply("trash", "Deleted");
+  bulkApply("trash", t("Deleted"), (n) => t("{n} messages deleted", { n }));
 });
 $("#bulkMove").addEventListener("click", () => {
   if (!picked.size) return;
@@ -12407,7 +12407,7 @@ $("#bulkMove").addEventListener("click", () => {
   $("#moveList").innerHTML = folders
     .map((f) => `<button class="mi" data-move="${esc(f.folder)}"><span class="grow">${esc(folderPath(f.folder))}</span><span class="side num">${f.n}</span></button>`)
     .join("");
-  $("#moveSub").textContent = "Filed at the provider, not just here.";
+  $("#moveSub").textContent = t("Filed at the provider, not just here.");
   openSheet("#moveSheet");
 });
 $("#bulkDone").addEventListener("click", exitSelmode);
