@@ -302,6 +302,12 @@ function cardToContact(props) {
     }
   }
   for (const l of lists) c[l.kind].push({ type: l.type || (l.group && labels[l.group]) || "", value: l.value });
+  // A card with no name still has to carry an FN, so programs (this one among
+  // them) fill it with the first thing they have: the company, an address, a
+  // number. That is a stand-in, not somebody's name, and keeping it would turn
+  // a nameless card into one named after its address.
+  const standIn = [c.org, ...lists.map((l) => l.value)].map((v) => v.toLowerCase());
+  if (!c.given && !c.family && standIn.includes(c.name.trim().toLowerCase())) c.name = "";
   if (!c.name) c.name = nameParts;
   return c;
 }

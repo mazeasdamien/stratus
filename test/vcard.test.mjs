@@ -200,6 +200,9 @@ eq(parseVcard(bytes("a,b,c\n1,2,3\n")).contacts, [], "a CSV");
 
   const nameless = { uid: "", name: "", given: "", family: "", org: "", title: "", emails: [{ type: "", value: "a@b.example" }], phones: [], address: "", birthday: "", notes: "" };
   ok(writeCard(nameless).includes("FN:a@b.example"), "a card with no name is still given the FN that 3.0 requires");
+  eq(parseVcard(writeCard(nameless)).contacts[0].name, "", "and that stand-in is not read back as the person's name");
+  eq(parseVcard("BEGIN:VCARD\nFN:Boulangerie Dupuis\nORG:Boulangerie Dupuis\nEND:VCARD").contacts[0].name, "", "nor is a company name Google repeated in FN");
+  eq(parseVcard("BEGIN:VCARD\nFN:Jo\nN:;Jo;;;\nEMAIL:jo@x.example\nEND:VCARD").contacts[0].name, "Jo", "but a real name is kept");
   eq(writeVcard([c, c]).split("BEGIN:VCARD").length - 1, 2, "several contacts are several cards in one file");
   eq(parseVcard(writeVcard([c, { ...c, uid: "uid-2", name: "Samir Haddad", given: "Samir", family: "Haddad" }])).contacts.map((x) => x.uid), ["uid-1", "uid-2"], "a whole file round-trips");
 }
