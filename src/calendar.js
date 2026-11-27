@@ -25,7 +25,7 @@
 
 import { seal, open } from "./crypto.js";
 import { CalendarTooLarge, parseCalendar, writeCalendar, httpsUrl } from "./ics.js";
-import { expand, formatRule, instantOf, occurrences, parseRule, wallOf } from "./rrule.js";
+import { expand, formatRule, instantOf, occurrences, parseRule, settles, wallOf } from "./rrule.js";
 import { clearReminder, setReminder } from "./reminders.js";
 import { json } from "./util.js";
 
@@ -42,6 +42,7 @@ export const LIM = {
   importReminders: 300,
   windowDays: 400,
   windowOut: 5000,
+  windowWork: 2_000_000,
 };
 
 const COLORS = ["#1f6fd0", "#d9534f", "#2e9e5b", "#e0892b", "#8a5cc7", "#17a2b8", "#c2569d", "#6b7280"];
@@ -231,11 +232,21 @@ function cyrb53(str) {
   return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
 }
 
-/** Rule text kept as a normalised rule, or "" when it cannot be expanded here. */
-const keepRule = (text) => {
-  const r = parseRule(text);
-  return r ? formatRule(r) : "";
+/**
+ * An event's rule kept as a normalised rule, or "" when it cannot be expanded
+ * here, or not within bounds (src/rrule.js settles). Checked once, as the file
+ * is stored, so no read of a window ever pays for such a rule again; the
+ * event is then kept as its one start.
+ */
+const keepRule = (ev, budget) => {
+  const r = parseRule(ev.rrule);
+  if (!r) return "";
+  const series = { startMs: ev.startMs, endMs: ev.endMs, allDay: ev.allDay, tzid: ev.tzid, rule: r, exdates: ev.exdates };
+  return settles(series, budget) ? formatRule(r) : "";
 };
+
+/** How much checking one file's rules may cost, in src/rrule.js budget units. */
+const SETTLE_WORK = 2_000_000;
 
 const COLUMNS = [
   "id", "calendar_id", "uid", "summary", "location", "description", "url", "start_ms", "end_ms",
@@ -268,6 +279,7 @@ function insertEvents(env, rows) {
 function rowsFrom(calendarId, events, { uidFor, idFor, reminders, now }) {
   const seen = new Set();
   const rows = [];
+  const budget = { left: SETTLE_WORK };
   for (const ev of events) {
     const uid = ev.uid || uidFor(ev);
     let id = idFor(uid, ev.recurrenceId);
@@ -285,7 +297,7 @@ function rowsFrom(calendarId, events, { uidFor, idFor, reminders, now }) {
       end_ms: ev.endMs,
       all_day: ev.allDay ? 1 : 0,
       tzid: ev.tzid,
-      rrule: ev.recurrenceId === null ? keepRule(ev.rrule) : "",
+      rrule: ev.recurrenceId === null ? keepRule(ev, budget) : "",
       exdates: ev.recurrenceId === null ? ev.exdates.slice(0, 1000).join(",") : "",
       reminder_min: reminders && ev.recurrenceId === null ? ev.reminderMin : null,
       recurrence_id: ev.recurrenceId,
@@ -295,6 +307,9 @@ function rowsFrom(calendarId, events, { uidFor, idFor, reminders, now }) {
   }
   return rows;
 }
+
+/** Series whose rule was not kept, parsed events and their rows side by side. */
+const droppedRulesOf = (events, rows) => events.filter((e, i) => e.rrule && e.recurrenceId === null && !rows[i].rrule).length;
 
 /**
  * Fetches a subscription and replaces its events as a whole.
@@ -326,19 +341,20 @@ export async function refreshCalendar(env, cal, now = Date.now()) {
       now,
     });
     const note = parsed.skipped && rows.length >= LIM.feedEvents ? `Showing the first ${LIM.feedEvents} events` : "";
+    const droppedRules = droppedRulesOf(parsed.events, rows);
     const fingerprint = cyrb53(
       JSON.stringify(rows.map((r) => COLUMNS.filter((c) => !/_at$/.test(c)).map((c) => r[c])).sort())
     );
     if (fingerprint === cal.hash) {
       await env.DB.prepare(`UPDATE calendars SET fetched_at=?, last_error=?, ${FINISHED} WHERE id=?`).bind(now, note, cal.id).run();
-      return { ok: true, changed: false, events: rows.length };
+      return { ok: true, changed: false, events: rows.length, droppedRules };
     }
     await env.DB.batch([
       env.DB.prepare("DELETE FROM cal_events WHERE calendar_id=?").bind(cal.id),
       ...insertEvents(env, rows),
       env.DB.prepare(`UPDATE calendars SET fetched_at=?, last_error=?, hash=?, ${FINISHED} WHERE id=?`).bind(now, note, fingerprint, cal.id),
     ]);
-    return { ok: true, changed: true, events: rows.length };
+    return { ok: true, changed: true, events: rows.length, droppedRules };
   } catch (e) {
     const told = e instanceof FeedError || e instanceof CalendarTooLarge;
     if (!told) console.log(`calendar ${cal.id}: ${e && e.stack ? e.stack : e}`);
@@ -430,11 +446,17 @@ const occurrenceOf = (r, startMs, endMs, recurrenceId, recurring) => ({
 });
 
 /**
- * The occurrences that touch [from, to), invitations among them.
+ * The occurrences that touch [from, to), invitations among them, as
+ * { events, incomplete }.
  *
  * An all-day date or an hour with no zone has no instant, so the window is
  * widened by a day and a half for those and the page places each by the day
  * it is written on. A timed event is held to the window exactly.
+ *
+ * Every series is expanded out of one budget (LIM.windowWork, in src/rrule.js
+ * units), so no calendar of rules that each look legal can take the request
+ * past its CPU. A window that spent it is `incomplete`: some series' later
+ * occurrences are missing from it, and the page should say so.
  */
 export async function readWindow(env, from, to) {
   const M = 1.5 * DAY;
@@ -475,10 +497,11 @@ export async function readWindow(env, from, to) {
     const k = `${o.calendar_id}|${o.uid}`;
     overrides.set(k, [...(overrides.get(k) ?? []), { ...o, recurrenceId: o.recurrence_id, startMs: o.start_ms, endMs: o.end_ms }]);
   }
+  const budget = { left: LIM.windowWork, hit: false };
   for (const m of masters ?? []) {
     const series = { startMs: m.start_ms, endMs: m.end_ms, allDay: !!m.all_day, tzid: m.tzid, rule: m.rrule, exdates: exdatesOf(m) };
     const [lo, hi] = wallType(m) ? [from - M, to + M] : [from, to];
-    for (const o of occurrences(series, overrides.get(`${m.calendar_id}|${m.uid}`) ?? [], lo, hi)) {
+    for (const o of occurrences(series, overrides.get(`${m.calendar_id}|${m.uid}`) ?? [], lo, hi, { budget })) {
       push(occurrenceOf(o.override ?? m, o.startMs, o.endMs, o.recurrenceId, true));
     }
   }
@@ -515,7 +538,7 @@ export async function readWindow(env, from, to) {
   }
 
   out.sort((a, b) => a.start - b.start || a.end - b.end || (a.id < b.id ? -1 : 1));
-  return out.slice(0, LIM.windowOut);
+  return { events: out.slice(0, LIM.windowOut), incomplete: budget.hit };
 }
 
 // ── events: writing ────────────────────────────────────────
@@ -1013,7 +1036,8 @@ async function api(request, env, path) {
       const to = whole(u.searchParams.get("to"));
       if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return bad("Say which days, with from and to in milliseconds");
       if (to - from > LIM.windowDays * DAY) return bad(`Ask for at most ${LIM.windowDays} days at a time`);
-      return json({ from, to, events: await readWindow(env, from, to) });
+      const { events, incomplete } = await readWindow(env, from, to);
+      return json({ from, to, events, ...(incomplete ? { incomplete } : {}) });
     }
     if (method === "POST") return createEvent(env, await request.json().catch(() => ({})));
     return null;

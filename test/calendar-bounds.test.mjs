@@ -15,7 +15,8 @@ register("../scripts/sync-harness/hooks.mjs", import.meta.url);
 const { makeD1 } = await import("../scripts/sync-harness/fake.mjs");
 const { SCHEMA } = await import("../src/schema.js");
 const { handleApi } = await import("../src/api.js");
-const { calendarModule } = await import("../src/calendar.js");
+const { calendarModule, LIM } = await import("../src/calendar.js");
+const { expand, occurrences } = await import("../src/rrule.js");
 const { parseCalendar, CalendarTooLarge, PARSE } = await import("../src/ics.js");
 
 const MB = 1_000_000;
@@ -197,6 +198,65 @@ try {
   await calendarModule.cron(env);
   eq(fetched.length, 1, "two hours later it is fetched");
   eq([calRow(team.id).last_error, calRow(team.id).stalled, calRow(team.id).refresh_started], ["", 0, null], "and one that finishes clears the error and the wait");
+
+  // ── rules that step for ever and yield nothing ────────────
+
+  // DTSTART in year 1 (1901, as Date.UTC reads it) and a COUNT that is never
+  // reached: every read stepped from the start to the step cap, about 9 ms a series.
+  const never = "FREQ=DAILY;COUNT=5;BYMONTH=2;BYMONTHDAY=30";
+  const neverFile = (n) => ["BEGIN:VCALENDAR", ...Array.from({ length: n }, (_, i) => [
+    "BEGIN:VEVENT", `UID:n${i}`, "DTSTART:00010101T090000Z", "DTEND:00010101T100000Z", `RRULE:${never}`, `SUMMARY:Never ${i}`, "END:VEVENT",
+  ]).flat(), "END:VCALENDAR"].join("\r\n") + "\r\n";
+  web = async () => new Response(neverFile(2000), { status: 200 });
+  const nev = (await call("POST", "/api/calendar/calendars", { name: "Never", color: "#e0892b", url: "https://example.com/never.ics" })).body.calendar;
+  let t = performance.now();
+  const refreshed = await call("POST", `/api/calendar/calendars/${nev.id}/refresh`);
+  const storeMs = performance.now() - t;
+  eq([refreshed.body.events, refreshed.body.droppedRules], [2000, 2000], "a feed of 2000 rules that never yield keeps 2000 events, every rule dropped and counted");
+  eq(DB.raw.prepare("SELECT COUNT(*) AS n FROM cal_events WHERE calendar_id=? AND rrule<>''").get(nev.id).n, 0, "so each is stored as its one start");
+  ok(storeMs < 2000, `checking them when stored is bounded (${Math.round(storeMs)} ms for the whole refresh)`);
+  const imp2 = await call("POST", `/api/calendar/calendars/${local}/import`, undefined, neverFile(50));
+  eq([imp2.status, imp2.body.imported, imp2.body.droppedRules], [200, 50, 50], "an import drops and counts them the same way");
+  DB.raw.prepare("DELETE FROM cal_events WHERE calendar_id=?").run(local);
+
+  // Rows stored before that check still hold such rules: one budget covers the whole read.
+  const ins = DB.raw.prepare("INSERT INTO cal_events (id, calendar_id, uid, summary, start_ms, end_ms, all_day, tzid, rrule, exdates, created_at, updated_at) VALUES (?,?,?,?,?,?,0,'UTC',?,'',0,0)");
+  for (let i = 0; i < 2000; i++) ins.run(`old${i}`, local, `old${i}`, "Old", Date.UTC(1, 0, 1, 9), Date.UTC(1, 0, 1, 10), never);
+  const from = Date.UTC(2026, 3, 1);
+  const to = from + LIM.windowDays * DAY;
+  t = performance.now();
+  const view = await call("GET", `/api/calendar/events?from=${from}&to=${to}`);
+  const readMs = performance.now() - t;
+  eq([view.status, view.body.incomplete], [200, true], "a window that spends its budget says it is incomplete");
+  ok(readMs < 1500, `2000 such series cost a bounded time per request (${Math.round(readMs)} ms; 17 s before)`);
+  DB.raw.prepare("DELETE FROM cal_events WHERE calendar_id=?").run(local);
+
+  // A calendar people keep is read whole, and as it was.
+  const paris = { startMs: Date.UTC(2026, 0, 5, 8), endMs: Date.UTC(2026, 0, 5, 9), allDay: false, tzid: "Europe/Paris" };
+  const normal = [
+    { ...paris, rule: "FREQ=DAILY" },
+    { ...paris, rule: "FREQ=WEEKLY;BYDAY=MO,WE,FR", exdates: [Date.UTC(2026, 3, 1, 7)] },
+    { ...paris, rule: "FREQ=MONTHLY;BYDAY=-1FR" },
+    { ...paris, rule: "FREQ=WEEKLY;INTERVAL=2;COUNT=40" },
+    { startMs: Date.UTC(2026, 6, 14), endMs: Date.UTC(2026, 6, 15), allDay: true, tzid: "", rule: "FREQ=YEARLY" },
+    { startMs: Date.UTC(2026, 0, 1, 19), endMs: Date.UTC(2026, 0, 1, 20), allDay: false, tzid: "", rule: "FREQ=MONTHLY;BYMONTHDAY=1,15;COUNT=30" },
+  ];
+  // The window the route reads each in: a date or an hour with no zone is widened by a day and a half.
+  const span = (sr) => (sr.allDay || !sr.tzid ? [from - 1.5 * DAY, to + 1.5 * DAY] : [from, to]);
+  const budget = { left: LIM.windowWork };
+  const shared = normal.map((sr) => expand(sr, ...span(sr), { budget }));
+  eq(shared, normal.map((sr) => expand(sr, ...span(sr))), "a normal calendar's occurrences are the same read out of the budget");
+  ok(!budget.hit && shared.flat().length > 500, `and it does not come near spending it (${LIM.windowWork - budget.left} of ${LIM.windowWork})`);
+  for (const [i, sr] of normal.entries()) {
+    ins.run(`ok${i}`, local, `ok${i}`, "Kept", sr.startMs, sr.endMs, sr.rule);
+    DB.raw.prepare("UPDATE cal_events SET all_day=?, tzid=?, exdates=? WHERE id=?").run(sr.allDay ? 1 : 0, sr.tzid, (sr.exdates || []).join(","), `ok${i}`);
+  }
+  const kept = await call("GET", `/api/calendar/events?from=${from}&to=${to}`);
+  eq([kept.body.incomplete, kept.body.events.filter((o) => o.calendarId === local).length], [undefined, shared.flat().length], "and through the route nothing is flagged and nothing is missing");
+  const zs = { ...paris, rule: "FREQ=DAILY" };
+  t = performance.now();
+  for (let i = 0; i < 20; i++) occurrences(zs, [], from, to);
+  console.log(`  a zoned daily series over ${LIM.windowDays} days: ${((performance.now() - t) / 20).toFixed(1)} ms (it was 50 ms)`);
 } finally {
   Date.now = realNow;
   globalThis.fetch = realFetch;

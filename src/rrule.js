@@ -170,10 +170,10 @@ export function wallOf(e, ms) {
  * comes out an hour later, and the repeated hour of autumn comes out once.
  */
 export function instantOf(e, wall) {
-  if (!zoned(e)) return wall;
-  const first = zoneOffset(e.tzid, wall);
-  return wall - zoneOffset(e.tzid, wall - first);
+  return zoned(e) ? zonedInstant(e.tzid, wall) : wall;
 }
+
+const zonedInstant = (tz, wall) => wall - zoneOffset(tz, wall - zoneOffset(tz, wall));
 
 // ── candidate days ─────────────────────────────────────────
 
@@ -304,7 +304,15 @@ function firstPeriod(rule, base, lo) {
  *   series  { startMs, endMs, allDay, tzid, rule, exdates }
  *           `rule` is rule text or a parsed rule; none means one occurrence.
  *           `exdates` are start times (ms) that are not held.
- *   opts    { limit }  stop after this many
+ *   opts    { limit, budget, stats }
+ *           limit   stop after this many
+ *           budget  { left }, shared by every expansion one request makes.
+ *                   Each period stepped through costs what periodCost says
+ *                   and each occurrence taken costs OCCURRENCE_COST; once it
+ *                   is spent the expansion stops and `budget.hit` is set.
+ *           stats   an object `ended` is written on: why the expansion
+ *                   stopped ("window", "limit", "count", "until", "steps",
+ *                   "budget").
  *
  * An occurrence keeps the series' length in elapsed time; for all-day events
  * that is a whole number of days. The rule's own COUNT counts before
@@ -315,7 +323,13 @@ export function expand(series, from, to, opts = {}) {
   const dur = Math.max(0, series.endMs - series.startMs);
   const skip = new Set(series.exdates || []);
   const max = Math.min(opts.limit ?? Infinity, LIMITS.out);
+  const { budget, stats } = opts;
   const out = [];
+  const end = (why) => {
+    if (stats) stats.ended = why;
+    if (why === "budget") budget.hit = true;
+    return out;
+  };
   const overlaps = (s) => s < to && (s + dur > from || s >= from);
   const take = (s) => {
     if (overlaps(s) && !skip.has(s)) out.push({ startMs: s, endMs: s + dur });
@@ -324,9 +338,13 @@ export function expand(series, from, to, opts = {}) {
 
   const rule = typeof series.rule === "string" ? parseRule(series.rule) : series.rule;
   if (!rule) {
-    take(series.startMs);
-    return out;
+    return end(take(series.startMs) ? "limit" : "window");
   }
+  const stepCost = periodCost(rule);
+  // Asked once here rather than for every occurrence, as instantOf would.
+  const inZone = zoned(series);
+  const toInstant = inZone ? (wall) => zonedInstant(series.tzid, wall) : (wall) => wall;
+  const occurrenceCost = inZone ? OCCURRENCE_COST.zoned : OCCURRENCE_COST.wall;
 
   const startWall = wallOf(series, series.startMs);
   const sd = new Date(startWall);
@@ -347,18 +365,64 @@ export function expand(series, from, to, opts = {}) {
   let k = rule.count ? 0 : firstPeriod(rule, base, lo);
   let counted = 0;
   for (let step = 0; step < LIMITS.steps; step++, k++) {
-    if (periodStart(rule, base, k) > hi) break;
+    if (periodStart(rule, base, k) > hi) return end("window");
+    if (budget && (budget.left -= stepCost) < 0) return end("budget");
     for (const day of periodDays(rule, base, k)) {
       const wall = day + base.tod;
       if (wall < startWall) continue;
-      if (until !== null && wall > until) return out;
-      if (rule.count && ++counted > rule.count) return out;
-      if (wall > hi) return out;
+      if (until !== null && wall > until) return end("until");
+      if (rule.count && ++counted > rule.count) return end("count");
+      if (wall > hi) return end("window");
       if (wall < lo) continue;
-      if (take(instantOf(series, wall))) return out;
+      if (budget && (budget.left -= occurrenceCost) < 0) return end("budget");
+      if (take(toInstant(wall))) return end("limit");
     }
   }
-  return out;
+  return end("steps");
+}
+
+/**
+ * What one period costs to step through, in budget units: about the number
+ * of days periodDays looks at for it. Over-counted rather than under, since
+ * this is what keeps a request of rules from anywhere within its CPU.
+ */
+function periodCost(rule) {
+  const days = rule.byday.length && !rule.bymonthday.length ? 31 : 1 + rule.bymonthday.length;
+  switch (rule.freq) {
+    case "DAILY": return 1;
+    case "WEEKLY": return 7;
+    case "MONTHLY": return days;
+    default:
+      if (rule.byday.some((e) => e.n) && !rule.bymonth.length && !rule.bymonthday.length) return 366;
+      return (rule.bymonth.length || (rule.bymonthday.length || rule.byday.length ? 12 : 1)) * days;
+  }
+}
+
+/** An occurrence's cost: turning a wall time into an instant asks Intl twice in a zone. */
+export const OCCURRENCE_COST = { zoned: 60, wall: 1 };
+
+/** Far enough ahead that every window lies before it, and still a valid Date. */
+const FAR = 8e15;
+
+/**
+ * Whether a series can be stored with its rule: its first occurrence comes
+ * within LIMITS.steps periods of its start, and a rule with a COUNT reaches
+ * its last within them too. A rule that fails either cannot be read for any
+ * window without stepping through the whole cap, and a feed may hold
+ * thousands of them; it is better kept as its one start.
+ *
+ * `budget` is shared by every series of one file, so checking them is bounded
+ * too; once it is spent, no further rule is kept.
+ */
+export function settles(series, budget) {
+  const rule = typeof series.rule === "string" ? parseRule(series.rule) : series.rule;
+  if (!rule) return true;
+  if (budget.hit) return false;
+  if (!expand({ ...series, exdates: [] }, series.startMs, Infinity, { limit: 1, budget }).length) return false;
+  if (!rule.count) return true;
+  const last = {};
+  expand(series, FAR, FAR + 1, { budget, stats: last });
+  return last.ended === "count" || last.ended === "until";
 }
 
 /**
