@@ -903,7 +903,7 @@ textarea.field{width:100%;padding:11px 12px;font-size:14.5px;line-height:1.45;mi
 .cal-more:hover{color:var(--acc)}
 
 /* Agenda: the Timeline's cards, with the calendar's colour on the edge. */
-.cal-agenda{padding:6px 16px 40px;display:flex;flex-direction:column;gap:16px}
+.cal-agenda{padding:6px 16px 40px;display:flex;flex-direction:column;gap:16px;max-width:820px;margin:0 auto}
 .cal-agenda .tl-card{border-left:3px solid var(--c,var(--acc))}
 .cal-agenda .tl-card.past{opacity:.62}
 .cal-agenda .tl-meta .dot{width:8px;height:8px;border-radius:50%;background:var(--c,var(--acc));flex:none}
@@ -935,6 +935,7 @@ textarea.field.cal-notes{min-height:84px}
 .cal-cname small.err{color:var(--red)}
 .cal-sw{width:12px;height:12px;border-radius:50%;background:var(--c,var(--acc));flex:none}
 .cal-manage{padding:6px 0 12px;border-bottom:1px solid var(--line)}
+.cal-manage input.field{width:100%}
 .cal-swatches{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 8px}
 .cal-swatches button{width:30px;height:30px;border-radius:50%;background:var(--c);border:2px solid transparent}
 .cal-swatches button[aria-pressed="true"]{box-shadow:0 0 0 2px var(--sheet),0 0 0 4px var(--c)}
