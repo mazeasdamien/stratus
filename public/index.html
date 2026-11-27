@@ -1665,6 +1665,38 @@ body.composing #peopleCard{display:none}
   .pp-row.sel:hover{background:color-mix(in srgb,var(--acc) 30%,transparent)}
   a.pc-line:hover,.pc-wr:hover,.pc-find:hover{background:var(--press2)}
 }
+/* ── follow-up ──
+   A message to come back to, and sent mail that wants an answer. The button
+   beside the star, the strip under the reader's header, the chip on a list
+   row, the composer's option and the sheet. Overdue is never colour alone:
+   it is also a word, a heavier edge and a different icon. */
+#rFollowUp.on{color:var(--acc)}
+#rFollowUp.over{color:var(--red);border-color:color-mix(in srgb,var(--red) 55%,transparent)}
+.fu-banner{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin-top:8px;padding:6px 6px 6px 10px;
+  border:1px solid var(--line-strong);border-radius:var(--r-s);font-size:12.5px;line-height:1.4;color:var(--t2)}
+.fu-banner[hidden]{display:none}
+.fu-banner svg{flex:none}
+.fu-banner .grow{flex:1 1 120px;min-width:0}
+.fu-banner b{color:var(--t1);font-weight:600}
+.fu-banner.over{border-color:color-mix(in srgb,var(--red) 55%,transparent);border-left-width:4px;color:var(--t1)}
+.fu-banner.over svg,.fu-banner.over b{color:var(--red)}
+.fu-banner .ghost{min-height:30px;background:color-mix(in srgb,var(--t1) 9%,transparent);color:var(--t1)}
+.fu-line{margin-top:4px}
+.fu-chip{display:inline-flex;align-items:center;gap:4px;max-width:100%;height:19px;padding:0 8px;border-radius:999px;
+  font-size:11px;font-weight:550;color:var(--t2);border:1px solid var(--line-strong);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fu-chip svg{flex:none}
+.fu-chip.over{color:var(--red);font-weight:650;border-width:2px;border-color:color-mix(in srgb,var(--red) 60%,transparent)}
+.fu-days{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
+.fu-days .ghost{min-height:36px;padding:0 13px;background:var(--elev2);color:var(--t1);border:1px solid var(--line-strong)}
+.fu-h{font-size:12px;font-weight:600;letter-spacing:.02em;color:var(--t3);margin:12px 0 6px;text-transform:uppercase}
+#fuSheet .cta+.cta{margin-top:8px}
+#fuSheet .cta.alt{background:var(--elev2);color:var(--t1)}
+.fu-comp{flex-wrap:wrap;column-gap:8px;min-height:40px}
+.fu-comp svg{flex:none;color:var(--t2)}
+.fu-comp .fu-l{flex:1 1 auto;font-size:13px;color:var(--t2);min-width:0}
+.fu-comp select{flex:0 1 auto;width:auto;max-width:48%;font-size:13px;height:40px;color:var(--t1)}
+.fu-comp input{flex:1 1 100%;height:38px}
+.fu-comp input[hidden]{display:none}
 </style>
 </head>
 <body>
@@ -2083,6 +2115,26 @@ body.composing #peopleCard{display:none}
   <button class="cta" id="snoozeGo">Snooze</button>
 </div>
 
+<!-- ── follow-up ── The sheet from the reader's Follow up button. The button, the
+     strip under the header and the composer's option are put in place by the
+     script block of the same name, beside the things they belong to. -->
+<div class="sheet" id="fuSheet" tabindex="-1">
+  <div class="grab"></div>
+  <div class="sh-t">Follow up</div>
+  <div class="sh-s" id="fuSub">Starred on every device, and a reminder when the time comes.</div>
+  <div class="fu-h">Remind me</div>
+  <div id="fuList"></div>
+  <div id="fuNoWrap" hidden>
+    <div class="fu-h">If nobody replies in&hellip;</div>
+    <div class="fu-days" id="fuDays" role="group" aria-label="Remind me if nobody replies after"></div>
+  </div>
+  <div class="fu-h">Or pick a date and time</div>
+  <div class="field"><input id="fuAt" type="datetime-local" aria-label="Date and time"></div>
+  <button class="cta" id="fuGo" type="button">Remind me then</button>
+  <button class="cta alt" id="fuNoGo" type="button" hidden>Remind me then if nobody has replied</button>
+  <button class="cta alt" id="fuDone" type="button" hidden>Mark complete</button>
+</div>
+
 <div class="sheet" id="outboxSheet">
   <div class="grab"></div>
   <div class="sh-t">Scheduled</div>
@@ -2139,6 +2191,7 @@ body.composing #peopleCard{display:none}
     <dt><kbd>is:unread</kbd> <kbd>is:read</kbd></dt><dd>Read or not</dd>
     <dt><kbd>is:flagged</kbd></dt><dd>Starred (<kbd>is:starred</kbd> is the same)</dd>
     <dt><kbd>category:</kbd></dt><dd>Has the category of that name, as in <kbd>category:red</kbd> or <kbd>category:"Project X"</kbd></dd>
+    <dt><kbd>is:followup</kbd></dt><dd>Has an open follow-up: flagged to come back to, or waiting for a reply</dd>
     <dt><kbd>is:pinned</kbd></dt><dd>In a pinned conversation</dd>
     <dt><kbd>is:important</kbd> <kbd>importance:</kbd></dt><dd>Marked high importance; <kbd>importance:high</kbd>, <kbd>normal</kbd> or <kbd>low</kbd> picks one</dd>
     <dt><kbd>after:</kbd> <kbd>before:</kbd> <kbd>on:</kbd></dt><dd>A day such as 2026-10-01, in your time zone. <b>after:</b> counts that day, <b>before:</b> stops short of it</dd>
@@ -3269,6 +3322,7 @@ function rowHtml(m, sub = false) {
     pinned ? "Pinned" : "",
     high ? "High importance" : "",
     cats.length ? `Categories: ${cats.map((c) => c.name).join(", ")}` : "",
+    fuLabel(m, sub),
     m.from_name || m.from_email || "Unknown sender",
     m.subject ? `— ${m.subject}` : "",
     m.snippet || "",
@@ -3335,6 +3389,7 @@ function rowHtml(m, sub = false) {
       ${sub ? "" : `<div class="subj tr">${esc(m.subject || "(no subject)")}</div>`}
       <div class="snip tr">${esc(m.snippet || "")}</div>
       ${cats.length ? `<div class="cats">${cats.slice(0, 3).map(catChip).join("")}${cats.length > 3 ? `<span class="more">+${cats.length - 3}</span>` : ""}</div>` : ""}
+      ${fuRow(m, sub)}
     </div>
   </div>
   <div class="swipe-act" aria-hidden="true">
@@ -4317,6 +4372,7 @@ function paintReaderTags() {
   if (pinned) chips.push(`<span class="tagchip">Pinned</span>`);
   $("#rCats").innerHTML = chips.join("");
   $("#rCats").hidden = !chips.length;
+  paintFollow();
   if ($("#catPop").classList.contains("up")) renderCatPop();
 }
 
@@ -6357,6 +6413,7 @@ function openCompose(opts = {}) {
   for (const [btn, wrap, , , name] of CC_TOGGLES) markToggle(btn, wrap, name);
   $("#cSubj").value = opts.subject || "";
   $("#cImp").value = String(Number(opts.importance) || 0);
+  fuReset();
   $("#cImpWrap").classList.toggle("hi", Number(opts.importance) === 1);
   $("#cBody").innerHTML = withSignature(cleanHtml(opts.html));
   // Nothing to answer in a message that is not a reply to anything.
@@ -7425,6 +7482,8 @@ function outgoing() {
     err.classList.add("show");
     return null;
   }
+  const fu = fuCompose();
+  if (!fu) return null;
   return {
     account_id: composeAcct,
     from: composeFrom || undefined,
@@ -7439,6 +7498,7 @@ function outgoing() {
     html,
     reply_to: replyTo || undefined,
     importance: Number($("#cImp").value) || undefined,
+    ...fu,
   };
 }
 
@@ -7596,7 +7656,7 @@ $("#cSend").addEventListener("click", () => {
         // It went, and it is in your Sent folder here. What failed is the copy
         // at Apple, so the reason travels with the message.
         ? `Sent — Apple would not keep a copy: ${d.filedError || "unknown reason"}`
-        : "Sent"
+        : "Sent" + fuNote(d)
     );
     // The copy is filed by now, so Sent and its counts are already stale.
     refreshAll();
@@ -7892,7 +7952,7 @@ async function resumeDraft(id) {
 
 async function refreshAll(spin = false) {
   if (spin) $("#syncBtn").classList.add("busy");
-  await Promise.all([loadAccounts(), loadFolders(), loadList(false, { keep: true }), loadOutbox(), loadTimeline(), loadReminders()]);
+  await Promise.all([loadAccounts(), loadFolders(), loadList(false, { keep: true }), loadOutbox(), loadTimeline(), loadReminders(), loadFollowups()]);
   if (spin) $("#syncBtn").classList.remove("busy");
 
   // Tell the Chrome extension, if it is installed, that the count just moved.
@@ -9997,6 +10057,231 @@ rTask.addEventListener("click", async () => {
     loadTasks();
   });
 });
+/* ── follow-up ──
+ *
+ * Messages to come back to, and sent mail that wants an answer (src/followup.js).
+ * What the server holds is the list of open ones, GET /api/followups; it rides
+ * refreshAll, so a reply that cancels one is noticed within the minute.
+ *
+ * Everything here is put beside what it belongs to by this block alone: the
+ * button next to the star, the strip under the reader's header, the option in
+ * the composer. The sheet is the markup block of the same name. Ids made here
+ * are reached with fuEl(), because the markup check only knows the static ones.
+ */
+const fuEl = (id) => document.getElementById(id);
+const FU_CLOCK = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`;
+const FU_ALERT = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5 2.8 19.5h18.4Z"/><path d="M12 10v4.5M12 17.4v.1"/></svg>`;
+const FU_DAY = 86_400_000;
+
+let followups = [];
+let fuById = new Map();
+let fuByThread = new Map();
+async function loadFollowups() {
+  const res = await api("/api/followups").catch(() => null);
+  const d = res && res.ok ? await res.json().catch(() => null) : null;
+  // A failed read keeps what is shown.
+  if (!d) return;
+  const next = d.followups || [];
+  if (JSON.stringify(next) === JSON.stringify(followups)) return;
+  followups = next;
+  fuById = new Map(next.map((f) => [f.message_id, f]));
+  // Soonest first, so a conversation shows its nearest one.
+  fuByThread = new Map();
+  for (const f of next) if (f.thread_key && !fuByThread.has(f.thread_key)) fuByThread.set(f.thread_key, f);
+  renderList();
+  paintFollow();
+}
+/** The follow-up a list row stands for: its own message's, or one in its conversation. */
+const fuFor = (m, sub = false) => (m && (fuById.get(m.id) || (!sub && m.thread_key && fuByThread.get(m.thread_key)))) || null;
+const fuOver = (f) => f.due <= Date.now();
+const fuWhen = (f) => (f.kind === "noreply" ? "No reply by " : "") + fmtFull(f.due);
+
+/** The chip under a list row's snippet; what rowHtml shows of a follow-up. */
+function fuRow(m, sub) {
+  const f = fuFor(m, sub);
+  if (!f) return "";
+  const over = fuOver(f);
+  const text = over ? `Overdue · ${fmtWhen(f.due)}` : f.kind === "noreply" ? `No reply by ${fmtWhen(f.due)}` : `Follow up · ${fmtWhen(f.due)}`;
+  return `<div class="fu-line"><span class="fu-chip${over ? " over" : ""}" title="${esc(fuWhen(f))}">${over ? FU_ALERT : FU_CLOCK}${esc(text)}</span></div>`;
+}
+/** What a screen reader hears for the same thing. */
+function fuLabel(m, sub) {
+  const f = fuFor(m, sub);
+  return !f ? "" : fuOver(f) ? "Follow-up overdue" : f.kind === "noreply" ? `Waiting for a reply until ${fmtWhen(f.due)}` : `Follow up ${fmtWhen(f.due)}`;
+}
+
+/** Whether a message is one you sent, so it can wait for an answer. */
+function fuIsMine(m) {
+  if (m.folder === "sent") return true;
+  const a = acctById(m.account_id);
+  const own = [a && a.email, ...((a && a.aliases) || [])].filter(Boolean).map((x) => String(x).toLowerCase());
+  return own.includes(String(m.from_email || "").toLowerCase());
+}
+
+/* The button beside the star, and the strip under the header. */
+fuEl("rStar").insertAdjacentHTML(
+  "afterend",
+  `<button class="rbtn ico overflowable" id="rFollowUp" type="button" aria-label="Follow up" aria-haspopup="dialog" title="Follow up: be reminded about this message">${FU_CLOCK.replace('width="13" height="13"', 'width="16" height="16"')}</button>`
+);
+fuEl("rCats").insertAdjacentHTML("afterend", `<div class="fu-banner" id="rFollow" role="group" aria-label="Follow-up" hidden></div>`);
+OVERFLOW_IDS.push("#rFollowUp");
+
+function paintFollow() {
+  const btn = fuEl("rFollowUp");
+  const box = fuEl("rFollow");
+  const m = current && current.message;
+  const f = m ? fuById.get(m.id) : null;
+  const over = !!f && fuOver(f);
+  btn.classList.toggle("on", !!f && !over);
+  btn.classList.toggle("over", over);
+  btn.setAttribute("aria-label", !f ? "Follow up" : over ? `Follow up, overdue since ${fmtFull(f.due)}` : `Follow up, ${fuWhen(f)}`);
+  box.hidden = !f;
+  box.classList.toggle("over", over);
+  if (!f) return;
+  const said = f.kind === "noreply"
+    ? over
+      ? `<b>Overdue.</b> Nobody has replied since you sent this. The reminder was due ${esc(fmtFull(f.due))}.`
+      : `<b>Waiting for a reply.</b> You will be reminded ${esc(fmtFull(f.due))} if nobody has answered by then.`
+    : over
+    ? `<b>Overdue.</b> You wanted to follow up on this ${esc(fmtFull(f.due))}.`
+    : `<b>Follow up</b> ${esc(fmtFull(f.due))}`;
+  box.innerHTML = `${over ? FU_ALERT : FU_CLOCK}<span class="grow">${said}</span>` +
+    `<button class="ghost" type="button" data-fu="change">Change</button><button class="ghost" type="button" data-fu="done">Mark complete</button>`;
+}
+fuEl("rFollow").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-fu]");
+  if (!b || !current) return;
+  if (b.dataset.fu === "done") completeFollow(current.message.id);
+  else openFollow();
+});
+
+/* The sheet. */
+function fuChoices(now = new Date()) {
+  const at = (days, h) => {
+    const d = new Date(now);
+    d.setDate(d.getDate() + days);
+    d.setHours(h, 0, 0, 0);
+    return d;
+  };
+  const out = [];
+  const later = new Date(now.getTime() + 3 * 3600_000);
+  later.setMinutes(0, 0, 0);
+  if (later.toDateString() === now.toDateString() && later.getHours() <= 21) out.push(["Later today", later]);
+  out.push(["Tomorrow morning", at(1, 8)]);
+  // The Monday after tomorrow, so it never repeats the line above.
+  const toMonday = (8 - now.getDay()) % 7 || 7;
+  out.push(["Next week", at(toMonday < 2 ? toMonday + 7 : toMonday, 8)]);
+  return out;
+}
+const fuInput = (ms) => new Date(ms - new Date(ms).getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+function openFollow() {
+  if (!current) return;
+  const m = current.message;
+  const f = fuById.get(m.id);
+  const mine = fuIsMine(m);
+  fuEl("fuSub").textContent = f ? `Now: ${fuWhen(f)}${fuOver(f) ? " (overdue)" : ""}.` : "Starred on every device, and a reminder when the time comes.";
+  $("#fuList").innerHTML = fuChoices()
+    .map(([label, d]) => `<button class="mi" data-fu-at="${d.getTime()}"><span class="grow">${esc(label)}</span><span class="side">${esc(whenText(d))}</span></button>`)
+    .join("");
+  $("#fuNoWrap").hidden = !mine;
+  $("#fuDays").innerHTML = [1, 2, 3, 5, 7]
+    .map((n) => `<button class="ghost" type="button" data-fu-days="${n}" title="${esc(whenText(Date.now() + n * FU_DAY))}">${n} day${n > 1 ? "s" : ""}</button>`)
+    .join("");
+  const soon = new Date(Date.now() + 3 * 3600_000);
+  soon.setMinutes(0, 0, 0);
+  $("#fuAt").value = fuInput(soon.getTime());
+  $("#fuNoGo").hidden = !mine;
+  $("#fuDone").hidden = !f;
+  openSheet("#fuSheet");
+}
+fuEl("rFollowUp").addEventListener("click", openFollow);
+
+async function setFollow(kind, due) {
+  if (!current) return;
+  if (!(due > Date.now() + 60_000)) { toast("Pick a time at least a minute from now"); return; }
+  const id = current.message.id;
+  closeSheets();
+  const res = await api("/api/followups", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message_id: id, kind, due: Math.round(due) }),
+  }).catch(() => null);
+  const d = res ? await res.json().catch(() => ({})) : {};
+  if (!res || !res.ok) { toast(d.error || "Could not set the follow-up"); return; }
+  if (kind === "flag") {
+    // The server starred it at iCloud; the page shows the star it now has.
+    for (const r of [messages, threadRows, [current.message]]) {
+      const hit = r.find((x) => x.id === id);
+      if (hit) hit.starred = 1;
+    }
+    $("#rStar").classList.add("on");
+    $("#rStar").setAttribute("aria-pressed", "true");
+  }
+  toast(kind === "flag" ? `Follow up ${whenText(due)}` : `Reminder ${whenText(due)}, unless somebody replies`);
+  await loadFollowups();
+  renderList();
+  paintFollow();
+}
+async function completeFollow(id) {
+  const res = await api(`/api/followups/${id}/complete`, { method: "POST" }).catch(() => null);
+  if (!res || !res.ok) { toast("Could not mark it complete"); return; }
+  closeSheets();
+  toast("Marked complete");
+  await loadFollowups();
+  renderList();
+  paintFollow();
+}
+$("#fuList").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-fu-at]");
+  if (b) setFollow("flag", Number(b.dataset.fuAt));
+});
+$("#fuDays").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-fu-days]");
+  if (b) setFollow("noreply", Date.now() + Number(b.dataset.fuDays) * FU_DAY);
+});
+$("#fuGo").addEventListener("click", () => setFollow("flag", new Date($("#fuAt").value).getTime()));
+$("#fuNoGo").addEventListener("click", () => setFollow("noreply", new Date($("#fuAt").value).getTime()));
+$("#fuDone").addEventListener("click", () => current && completeFollow(current.message.id));
+// Taking the star off ends a follow-up, and the server has just done it.
+$("#rStar").addEventListener("click", () => setTimeout(loadFollowups, 900));
+reminderOpeners.followup = (ref) => openMsg(ref);
+
+/* The composer's "Remind me if nobody replies". It travels with the message
+   (followup_days, or followup_at for a date) through every way it can leave:
+   the server attaches it to the Sent copy only once the message has gone. */
+fuEl("cSubjWrap").insertAdjacentHTML(
+  "afterend",
+  `<div class="field fu-comp" id="cFuRow">${FU_CLOCK.replace('width="13" height="13"', 'width="15" height="15"')}` +
+    `<label class="fu-l" for="cFu">Remind me if nobody replies</label>` +
+    `<select id="cFu"><option value="">No</option><option value="1">After 1 day</option><option value="2">After 2 days</option>` +
+    `<option value="3">After 3 days</option><option value="5">After 5 days</option><option value="7">After 7 days</option><option value="date">On a date&hellip;</option></select>` +
+    `<input id="cFuAt" type="datetime-local" aria-label="Date and time to be reminded if nobody has replied" hidden></div>`
+);
+fuEl("cFu").addEventListener("change", () => {
+  const date = fuEl("cFu").value === "date";
+  fuEl("cFuAt").hidden = !date;
+  if (date && !fuEl("cFuAt").value) fuEl("cFuAt").value = fuInput(Date.now() + 3 * FU_DAY);
+});
+/** The fields to send with the message; null, with the reason shown, when the date is unusable. */
+function fuCompose() {
+  const v = fuEl("cFu").value;
+  if (!v) return {};
+  if (v !== "date") return { followup_days: Number(v) };
+  const at = new Date(fuEl("cFuAt").value).getTime();
+  if (!(at > Date.now() + 60_000)) {
+    $("#cErr").textContent = "Pick a reminder time that is still ahead";
+    $("#cErr").classList.add("show");
+    return null;
+  }
+  return { followup_at: at };
+}
+function fuReset() {
+  fuEl("cFu").value = "";
+  fuEl("cFuAt").hidden = true;
+  fuEl("cFuAt").value = "";
+}
+/** Said after "Sent" when the reminder asked for could not be set. */
+const fuNote = (d) => (d && d.followup === false ? ", but the reminder could not be set" : "");
 
 /* ── init ── */
 (async function init() {

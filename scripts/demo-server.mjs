@@ -60,6 +60,21 @@ const messages = [
     subject: "Cette semaine : trois lectures", snippet: "Trois articles à lire avec un café…",
     date: now - 26 * 3600000, unread: 0, starred: 0, n: 1,
   },
+  {
+    id: "m6", account_id: "a1", mid: "<m6@demo>", pid: "m6", thread_key: "t6", folder: "sent",
+    from_name: "You", from_email: "you@icloud.com",
+    to_line: "marc@garage-dupont.fr", cc_line: "", bcc_line: "",
+    subject: "Devis pour la rénovation", snippet: "Pouvez-vous me confirmer le devis avant jeudi ?",
+    date: now - 20 * 3600000, unread: 0, starred: 0, n: 1,
+  },
+];
+
+// Follow-ups, as src/followup.js lists them: one due later, one overdue, and a
+// sent message waiting for a reply.
+let followups = [
+  { message_id: "m1", account_id: "a1", thread_key: "t1", kind: "flag", due: now + 20 * 3600000, state: "waiting" },
+  { message_id: "m3", account_id: "a1", thread_key: "t3", kind: "flag", due: now - 26 * 3600000, state: "reminded" },
+  { message_id: "m6", account_id: "a1", thread_key: "t6", kind: "noreply", due: now + 2 * 86400000, state: "waiting" },
 ];
 
 // Categories, as the Worker keeps them (src/categories.js): five to begin with,
@@ -159,6 +174,15 @@ async function demoTasks(req, res, p, url) {
   return json(res, req.method === "DELETE" ? { ok: true } : { task: taskOut(t) });
 }
 
+for (const m of messages.slice(2)) {
+  if (m.id === "m3" || m.id === "m6") {
+    bodies[m.id] = {
+      message: m, account: accounts[0],
+      body: { html: `<p>Bonjour,</p><p>${m.snippet}</p>`, attachments: [], blocked: 0, empty: false, missing: false },
+    };
+  }
+}
+
 const MIME = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -186,6 +210,21 @@ createServer(async (req, res) => {
     }
     if (await demoContacts(req, res, p)) return;
     if (p.startsWith("/api/tasks")) return demoTasks(req, res, p, url);
+    if (p === "/api/followups" && req.method === "GET") return json(res, { followups });
+    if (p === "/api/followups") {
+      const b = await readBody(req);
+      const m = messages.find((x) => x.id === b.message_id);
+      followups = followups.filter((f) => f.message_id !== b.message_id);
+      followups.push({ message_id: b.message_id, account_id: "a1", thread_key: m.thread_key, kind: b.kind, due: b.due, state: "waiting" });
+      followups.sort((a, c) => a.due - c.due);
+      if (b.kind === "flag") m.starred = 1;
+      return json(res, { ok: true });
+    }
+    const fuDone = p.match(/^\/api\/followups\/([^/]+)\/complete$/);
+    if (fuDone) {
+      followups = followups.filter((f) => f.message_id !== fuDone[1]);
+      return json(res, { ok: true });
+    }
     if (p === "/api/accounts") return json(res, { accounts });
     if (p === "/api/folders") return json(res, { folders });
     if (p === "/api/messages") {
