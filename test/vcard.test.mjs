@@ -206,3 +206,21 @@ eq(parseVcard(bytes("a,b,c\n1,2,3\n")).contacts, [], "a CSV");
   eq(writeVcard([c, c]).split("BEGIN:VCARD").length - 1, 2, "several contacts are several cards in one file");
   eq(parseVcard(writeVcard([c, { ...c, uid: "uid-2", name: "Samir Haddad", given: "Samir", family: "Haddad" }])).contacts.map((x) => x.uid), ["uid-1", "uid-2"], "a whole file round-trips");
 }
+
+// ── a long quoted-printable value costs its length, not its square ──
+{
+  // A value continued over many soft line breaks: 400 KB took 3.3 s, and the
+  // 5 MB the import route allows never finished.
+  const flood = (kb) => `BEGIN:VCARD\nFN:a\nNOTE;ENCODING=QUOTED-PRINTABLE:${"=41=\n".repeat(Math.floor((kb * 1024) / 5))}x\nEND:VCARD\n`;
+  const joined = (kb) => `BEGIN:VCARD\nFN:a\nNOTE;ENCODING=QUOTED-PRINTABLE:${"=41".repeat(Math.floor((kb * 1024) / 5))}x\nEND:VCARD\n`;
+  const ms = {};
+  for (const kb of [100, 1024, 5 * 1024 - 1]) {
+    const t = performance.now();
+    const card = parseVcard(bytes(flood(kb)));
+    ms[kb] = performance.now() - t;
+    eq(card, parseVcard(bytes(joined(kb))), `${kb} KB of soft line breaks reads as the same card as the value on one line`);
+  }
+  ok(ms[5 * 1024 - 1] < 2000, `5 MB of them reads in ${Math.round(ms[5 * 1024 - 1])} ms`);
+  // Five times the size is five times the time when it grows with the size, and 25 when with its square.
+  ok(ms[5 * 1024 - 1] < 12 * Math.max(ms[1024], 5), `and the time grows with the size (${Object.values(ms).map((x) => Math.round(x)).join(", ")} ms for 100 KB, 1 MB, 5 MB)`);
+}

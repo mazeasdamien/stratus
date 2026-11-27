@@ -337,9 +337,17 @@ export function parseVcard(input, { maxCards = 2000 } = {}) {
       let l = lines[i];
       if (!l.trim()) continue;
       const head = l.slice(0, Math.max(l.indexOf(":"), 0));
-      // A quoted-printable value continues on the next line while this one ends in "=".
-      if (/QUOTED-PRINTABLE/i.test(head)) {
-        while (l.endsWith("=") && i + 1 < lines.length) l = l.slice(0, -1) + lines[++i];
+      // A quoted-printable value continues on the next line while this one ends
+      // in "=". The pieces are joined once: rebuilding the line for each one
+      // made a long value cost the square of its length.
+      if (/QUOTED-PRINTABLE/i.test(head) && l.endsWith("=")) {
+        const parts = [];
+        while (l.endsWith("=") && i + 1 < lines.length) {
+          parts.push(l.slice(0, -1));
+          l = lines[++i];
+        }
+        parts.push(l);
+        l = parts.join("");
       }
       const marker = /^\s*(BEGIN|END)\s*:\s*VCARD\s*$/i.exec(l);
       if (marker) {
