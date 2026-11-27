@@ -11,14 +11,18 @@
  * in one table, NEXT, rather than flags tested wherever they are needed:
  *
  *   waiting --fire--> reminded
+ *   waiting --ring--> rang         a noreply reminded whose star did not take
  *   waiting --reply--> (gone)      the conversation has a message from someone else
  *   waiting --clear--> (gone)      Mark complete, or the message was deleted
- *   reminded --clear--> (gone)
- *   either --unstar--> (gone)      the star was taken off, here or on another device
+ *   reminded, rang --clear--> (gone)
+ *   waiting, reminded --unstar--> (gone)   the star was taken off, here or on another device
+ *
+ * A rang follow-up has no star of its own, so a message with none is not one
+ * whose star was taken off, and only clearing it ends it.
  *
  * "Gone" means the row is deleted together with its reminder: a follow-up that
  * is over leaves nothing behind to be listed or searched. The state column
- * holds only the two live states.
+ * holds only the three live states.
  *
  *   GET  /api/followups                    the open ones
  *   POST /api/followups { message_id, kind, due }   set one (again: it moves)
@@ -47,8 +51,9 @@ const DAY_MS = 86_400_000;
  * else moves a follow-up, so an event a state does not list is a no-op.
  */
 const NEXT = {
-  waiting: { fire: "reminded", reply: null, clear: null, unstar: null },
+  waiting: { fire: "reminded", ring: "rang", reply: null, clear: null, unstar: null },
   reminded: { clear: null, unstar: null },
+  rang: { clear: null },
 };
 
 /** The states `event` may be applied from. */
@@ -162,11 +167,13 @@ export async function sweep(env, now = Date.now()) {
         continue;
       }
       if (f.due > now) continue;
+      let event = "fire";
       if (f.kind === "noreply") {
-        // Star and remind first, then claim: both are idempotent, so a second
-        // sweep that gets here too does no harm, and a failed star leaves it
-        // waiting to be tried again rather than reminded and unstarred.
-        await deps.star(env, f.message_id, true);
+        // Remind, then star, then claim: both are idempotent, so a second
+        // sweep that gets here too does no harm. The reminder is the point
+        // and the star a courtesy, tried once. A Sent copy that never reached
+        // iCloud has nothing there to star, and a star retried every minute
+        // was an iCloud login every minute and a reminder never set.
         await setReminder(env, {
           kind: KIND,
           ref: f.message_id,
@@ -174,8 +181,14 @@ export async function sweep(env, now = Date.now()) {
           body: f.to_line ? `Nobody has replied to your message to ${f.to_line}` : "Nobody has replied to your message",
           at: now,
         });
+        try {
+          await deps.star(env, f.message_id, true);
+        } catch (e) {
+          console.log(`followup: ${f.message_id} reminded without its star: ${e && e.message ? e.message : e}`);
+          event = "ring";
+        }
       }
-      if (await move(env, "fire", f.message_id)) fired++;
+      if (await move(env, event, f.message_id)) fired++;
     } catch (e) {
       console.log(`followup: ${f.message_id} ${e && e.message ? e.message : e}`);
     }

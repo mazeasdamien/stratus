@@ -264,7 +264,7 @@ CREATE TABLE IF NOT EXISTS followups (
   thread_key  TEXT NOT NULL DEFAULT '',
   kind        TEXT NOT NULL,                 -- flag: remind me at due | noreply: remind me at due if nobody has replied
   due         INTEGER NOT NULL,              -- ms
-  state       TEXT NOT NULL DEFAULT 'waiting', -- waiting | reminded
+  state       TEXT NOT NULL DEFAULT 'waiting', -- waiting | reminded | rang (reminded, its star never set)
   created_at  INTEGER NOT NULL
 );
 

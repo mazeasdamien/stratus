@@ -161,23 +161,38 @@ try {
     reset();
   }
 
-  /* ── a failed star leaves it waiting to be tried again ── */
+  /* ── a star that cannot be set does not stop the reminder ── */
   {
-    const s = sent("<t3@x>");
-    await call("POST", "/api/followups", { message_id: s, kind: "noreply", due: clock + MIN });
-    clock += 2 * MIN;
+    // What a Sent copy that never reached iCloud gives: no message there to star.
+    const s = sent("<t3@x>", { subject: "Invoice" });
+    const due = clock + DAY;
+    eq(await followupForSent(env, s, { followup_days: 1 }), true, "a send asks to be reminded if nobody replies");
     const ok1 = deps.star;
-    deps.star = async () => { throw new Error("iCloud is down"); };
+    let tries = 0;
+    deps.star = async () => {
+      tries++;
+      throw new Error("message not found in any mailbox");
+    };
     const lines = [];
     const logSave = console.log;
     console.log = (x) => lines.push(x);
-    await cron();
+    clock = due - 5 * MIN;
+    for (let m = 0; m < 30; m++) {
+      await cron();
+      clock += MIN;
+    }
     console.log = logSave;
-    eq([open()[0].state, reminder(s)], ["waiting", undefined], "iCloud refusing the star keeps it waiting, not reminded unstarred");
-    ok(lines.some((l) => /iCloud is down/.test(l)), "and the reason is logged");
+    const r = reminder(s);
+    ok(r && r.fired_at !== null && /No reply yet: Invoice/.test(r.title), "the follow-up reminds at its time though the star failed");
+    eq(r?.at, due, "at exactly its time");
+    eq(tries, 1, "the star is tried once across thirty minutes, not once a minute");
+    eq(DB.raw.prepare("SELECT COUNT(*) AS n FROM reminders WHERE fired_at IS NOT NULL").get().n, 1, "and one reminder rings");
+    ok(lines.some((l) => /reminded without its star: message not found/.test(l)), "the failed star is logged");
+    eq(open().map((f) => [f.message_id, f.state]), [[s, "rang"]], "the follow-up has moved on, without a star to take off");
+    eq(starred(s), 0, "the message is still not starred, and that does not end it");
     deps.star = ok1;
-    await cron();
-    eq(open()[0].state, "reminded", "the next minute it goes through");
+    await call("POST", `/api/followups/${s}/complete`);
+    eq([open(), reminder(s)], [[], undefined], "Mark complete ends it");
     reset();
   }
 
