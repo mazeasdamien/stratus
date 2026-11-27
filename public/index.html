@@ -613,6 +613,16 @@ body.composing:not(.overlay) #scrim{opacity:0;pointer-events:none}
 #rSummary[hidden]{display:none}
 #rSummary .sumtxt{flex:1;min-width:0;font-size:var(--t-m);line-height:1.45;color:var(--t1);white-space:pre-wrap;overflow-wrap:anywhere}
 #rSummary .ghost{flex:none;min-height:28px;padding:0 8px}
+/* A sender warning: the red the app already uses for what needs a look, tinted
+   rather than solid so it reads as a notice and not as an error. */
+#rWarn{flex:none;display:flex;gap:10px;align-items:flex-start;padding:10px 16px;border-bottom:1px solid var(--line);
+  border-left:3px solid var(--red);background:color-mix(in srgb,var(--red) 9%,var(--bg))}
+#rWarn[hidden]{display:none}
+#rWarn svg{flex:none;color:var(--red);margin-top:1px}
+#rWarn .wtxt{flex:1;min-width:0;font-size:var(--t-m);line-height:1.45;color:var(--t1);overflow-wrap:anywhere}
+#rWarn .wtxt p{margin:0}
+#rWarn .wtxt p + p{margin-top:4px}
+#rWarn .wtxt b{font-weight:650}
 .obox{display:flex;flex-direction:column;gap:6px;padding:10px 0;border-bottom:1px solid var(--line)}
 .obox .grow{display:flex;flex-direction:column;gap:2px;min-width:0}
 .obox .grow span{font-size:var(--t-s,12px);color:var(--t2);overflow-wrap:anywhere}
@@ -2160,6 +2170,12 @@ body.selmode .xf-chip{bottom:calc(var(--sab) + 92px)}
     <div class="sumtxt" id="rSummaryText"></div>
     <button class="ghost" id="rSummaryClose" aria-label="Hide the summary" title="Hide the summary">&times;</button>
   </div>
+  <!-- Said in words, above the message and not over it: a sender posing as a
+       brand, or at a look-alike domain. See "sender warnings" in the script. -->
+  <div id="rWarn" role="alert" hidden>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5 2.8 19.5a1 1 0 0 0 .9 1.5h16.6a1 1 0 0 0 .9-1.5Z"/><path d="M12 10v4.5"/><circle cx="12" cy="17.6" r=".6" fill="currentColor"/></svg>
+    <div class="wtxt" id="rWarnText"></div>
+  </div>
   <div id="rbody">
     <!-- Filled in by renderEmptyReader(): what is waiting in this folder,
          and the one thing worth doing about it. -->
@@ -2991,6 +3007,7 @@ body.selmode .xf-chip{bottom:calc(var(--sab) + 92px)}
 
 <!-- The pure checks the page runs before a send; test/ imports the same files. -->
 <script type="module" src="/sendguard.js"></script>
+<script type="module" src="/senderguard.js"></script>
 <script>
 "use strict";
 
@@ -5052,6 +5069,7 @@ async function openMsg(id, threadRow = null) {
   $("#rSubj").textContent = m.subject || "(no subject)";
   if (summaryFor !== m.id) $("#rSummary").hidden = true;
   renderInvite(current);
+  renderSenderWarning(m);
   // The address, not just the display name. A display name is whatever the
   // sender typed — "Cap Singapour" costs nothing to write — so a header that
   // shows only the name tells you the one thing that cannot be trusted and
@@ -10110,6 +10128,41 @@ $("#cSend").addEventListener("click", async () => {
   };
   pendingSend = { timer: setTimeout(fire, 5000), fire, body, which };
 });
+
+/* ── sender warnings ──
+   A bar above a message when its sender poses as a brand, sits at a look-alike
+   of a brand's domain, or has an address for a name that is not its own. What
+   counts is public/senderguard.js (window.SenderGuard); this is the showing.
+   Mail from somebody in your address book, or from one of your own addresses,
+   is never warned about: they are who they say they are as far as you are
+   concerned, and a warning about a friend is how a bar gets ignored. */
+
+/** True while the open message carries the bar. Reactions are not offered then. */
+let senderWarned = false;
+
+/** The warnings for a message, or none for a saved contact or yourself. */
+function senderWarningsFor(m) {
+  const G = window.SenderGuard;
+  const email = String(m.from_email || "").toLowerCase();
+  if (!G || !email) return [];
+  if (accounts.some((a) => identitiesOf(a).includes(email))) return [];
+  if (contacts.some((c) => c.added && String(c.email).toLowerCase() === email)) return [];
+  return G.senderWarnings(m.from_name, email);
+}
+
+async function renderSenderWarning(m) {
+  $("#rWarn").hidden = true;
+  senderWarned = false;
+  // Waits for the address book, so a saved contact is never flashed as a
+  // stranger while it loads.
+  await loadContacts();
+  if (!current || current.message.id !== m.id) return;
+  const found = senderWarningsFor(m);
+  senderWarned = found.length > 0;
+  $("#rWarnText").innerHTML = found.map((w) => `<p>${esc(w.text)}</p>`).join("") +
+    (found.length ? `<p><b>Be careful with links and attachments in this message.</b></p>` : "");
+  $("#rWarn").hidden = !found.length;
+}
 
 /* ── before sending ──
    Two questions asked ahead of the undo hold, and ahead of a scheduled send at

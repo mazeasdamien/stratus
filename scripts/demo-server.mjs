@@ -82,6 +82,14 @@ const messages = [
     subject: "Devis pour la rénovation", snippet: "Pouvez-vous me confirmer le devis avant jeudi ?",
     date: now - 20 * 3600000, unread: 0, starred: 0, n: 1,
   },
+  // A sender posing as a brand, for the reader's warning bar.
+  {
+    id: "m7", account_id: "a1", mid: "<m7@demo>", pid: "m7", thread_key: "t7", folder: "inbox",
+    from_name: "PayPal Security", from_email: "security@paypa1.com",
+    to_line: "you@icloud.com", cc_line: "", bcc_line: "",
+    subject: "Your account is limited", snippet: "Confirm your details within 24 hours…",
+    date: now - 30 * 3600000, unread: 1, starred: 0, n: 1,
+  },
 ];
 
 // Follow-ups, as src/followup.js lists them: one due later, one overdue, and a
@@ -216,7 +224,7 @@ async function demoTasks(req, res, p, url) {
 }
 
 for (const m of messages.slice(2)) {
-  if (m.id === "m3" || m.id === "m6") {
+  if (m.id === "m3" || m.id === "m6" || m.id === "m7") {
     bodies[m.id] = {
       message: m, account: accounts[0],
       body: { html: `<p>Bonjour,</p><p>${m.snippet}</p>`, attachments: [], blocked: 0, empty: false, missing: false },
