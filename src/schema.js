@@ -200,6 +200,23 @@ export const SCHEMA = [
   last_at    INTEGER,                      -- ms, when it last matched
   created_at INTEGER NOT NULL
 )`,
+  // Rules that act on mail as it arrives (src/rules.js, src/sorting.js).
+  // conditions and actions are JSON lists, read back defensively: a row from
+  // another build may name a field or an action this one does not know.
+  `CREATE TABLE IF NOT EXISTS rules (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  name       TEXT NOT NULL DEFAULT '',
+  enabled    INTEGER NOT NULL DEFAULT 1,
+  position   INTEGER NOT NULL DEFAULT 0,    -- the order rules are tried in
+  "match"    TEXT NOT NULL DEFAULT 'all',   -- all | any of the conditions
+  conditions TEXT NOT NULL DEFAULT '[]',    -- [{ field, op, value }]
+  actions    TEXT NOT NULL DEFAULT '[]',    -- [{ type, value }]
+  stop       INTEGER NOT NULL DEFAULT 0,    -- 1: no later rule is tried after this one matches
+  n          INTEGER NOT NULL DEFAULT 0,    -- messages it has acted on
+  last_at    INTEGER,                       -- ms, when it last acted
+  last_error TEXT,                          -- what went wrong at iCloud the last time, until it next works
+  created_at INTEGER NOT NULL
+)`,
   // Senders whose remote images load as their mail opens.
   //
   // Images are held back by default, because a remote image is how a sender
