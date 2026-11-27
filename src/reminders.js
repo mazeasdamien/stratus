@@ -25,7 +25,7 @@
  */
 
 import { pushAll } from "./push.js";
-import { json } from "./util.js";
+import { json, ui } from "./util.js";
 
 /** The row filter that means each state; the only place a timestamp is read as one. */
 const IN = {
@@ -146,7 +146,7 @@ async function api(request, env, path) {
   if (m[2] === "snooze") {
     const b = await request.json().catch(() => ({}));
     arg = Number(b.until);
-    if (!Number.isFinite(arg) || arg <= Date.now()) return json({ error: "Pick a time in the future" }, 400);
+    if (!Number.isFinite(arg) || arg <= Date.now()) return json({ error: ui("Pick a time in the future") }, 400);
   }
   const moved = await move(env, m[2], Math.round(arg), "id=?", [id]);
   if (moved) return json({ ok: true });
@@ -154,9 +154,9 @@ async function api(request, env, path) {
   // Nothing moved: no such reminder, or one that is not waiting on the user.
   // Dismissing what is already dismissed is the answer the user wanted.
   const row = await env.DB.prepare("SELECT id, fired_at, dismissed_at FROM reminders WHERE id=?").bind(id).first();
-  if (!row) return json({ error: "No such reminder" }, 404);
+  if (!row) return json({ error: ui("No such reminder") }, 404);
   if (m[2] === "dismiss" && row.dismissed_at) return json({ ok: true });
-  return json({ error: "That reminder is not waiting" }, 409);
+  return json({ error: ui("That reminder is not waiting") }, 409);
 }
 
 export const remindersModule = {

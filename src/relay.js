@@ -11,6 +11,7 @@
  */
 
 import { importanceLines } from "./importance.js";
+import { ui } from "./util.js";
 
 /** The domains that leave through Cloudflare, lowercased. */
 export function relayDomains(env) {
@@ -79,7 +80,8 @@ export async function relaySend(env, message) {
     res = await env.EMAIL.send(message);
   } catch (e) {
     const code = e?.code ? ` (${e.code})` : "";
-    throw new Error(`Cloudflare Email Sending refused it${code}: ${String(e?.message || e).slice(0, 200)}`);
+    const why = String(e?.message || e).slice(0, 200);
+    throw new Error(ui(`Cloudflare Email Sending refused it${code}: ${why}`));
   }
   const id = String(res?.messageId || "").trim().replace(/^<|>$/g, "");
   return id.includes("@") ? `<${id}>` : "";

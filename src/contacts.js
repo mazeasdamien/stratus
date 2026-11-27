@@ -19,7 +19,7 @@
 
 import { parseAddressList } from "./mime.js";
 import { cleanContact, hasContent, isEmail, parseVcard, writeCard, writeVcard } from "./vcard.js";
-import { json } from "./util.js";
+import { json, ui } from "./util.js";
 
 /** A file is somebody else's bytes: this many, and this many cards in them. */
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
@@ -81,14 +81,15 @@ const emailsOf = (c) => c.emails.map((e) => e.value);
 /** An editor's JSON as a contact, or the reason it is not one. */
 function fromBody(b) {
   for (const key of ["emails", "phones"]) {
-    if (b[key] !== undefined && !Array.isArray(b[key])) return { error: "Not a list" };
+    if (b[key] !== undefined && !Array.isArray(b[key])) return { error: ui("Not a list") };
   }
   for (const e of b.emails || []) {
     const v = String((e && typeof e === "object" ? e.value : e) ?? "").trim();
-    if (v && !isEmail(v)) return { error: `${v.slice(0, 80)} is not an email address` };
+    const address = v.slice(0, 80);
+    if (v && !isEmail(v)) return { error: ui(`${address} is not an email address`) };
   }
   const c = cleanContact(b);
-  if (!hasContent(c)) return { error: "Give this contact a name, an address or a number" };
+  if (!hasContent(c)) return { error: ui("Give this contact a name, an address or a number") };
   return { contact: c };
 }
 
@@ -131,12 +132,12 @@ const same = (a, b) => FIELDS.every((f) => JSON.stringify(a[f]) === JSON.stringi
 /** POST /api/contacts/import */
 async function importFile(request, env) {
   const declared = Number(request.headers.get("Content-Length") || 0);
-  if (declared > MAX_FILE_BYTES) return json({ error: "That file is too large (5 MB at most)" }, 413);
+  if (declared > MAX_FILE_BYTES) return json({ error: ui("That file is too large (5 MB at most)") }, 413);
   const bytes = new Uint8Array(await request.arrayBuffer());
-  if (bytes.length > MAX_FILE_BYTES) return json({ error: "That file is too large (5 MB at most)" }, 413);
+  if (bytes.length > MAX_FILE_BYTES) return json({ error: ui("That file is too large (5 MB at most)") }, 413);
 
   const { contacts: cards, empty, tooMany } = parseVcard(bytes, { maxCards: MAX_CARDS });
-  if (tooMany) return json({ error: `That file holds more than ${MAX_CARDS} contacts` }, 413);
+  if (tooMany) return json({ error: ui(`That file holds more than ${MAX_CARDS} contacts`) }, 413);
 
   const held = await allCards(env);
   const byUid = new Map();
@@ -231,7 +232,7 @@ async function route(request, env, path) {
   if (path === "/api/contacts/hide" && method === "POST") {
     const b = await request.json().catch(() => ({}));
     const email = String(b.email || "").trim().toLowerCase().slice(0, 200);
-    if (!isEmail(email)) return json({ error: "Not an address" }, 400);
+    if (!isEmail(email)) return json({ error: ui("Not an address") }, 400);
     await env.DB.prepare("INSERT OR IGNORE INTO contacts_hidden (email, created_at) VALUES (?,?)").bind(email, Date.now()).run();
     return json({ ok: true });
   }
@@ -240,7 +241,7 @@ async function route(request, env, path) {
 
   if (path === "/api/contacts" && method === "POST") {
     const b = await request.json().catch(() => null);
-    if (!b || typeof b !== "object") return json({ error: "Not a contact" }, 400);
+    if (!b || typeof b !== "object") return json({ error: ui("Not a contact") }, 400);
     const { contact, error } = fromBody(b);
     if (error) return json({ error }, 400);
     const id = newId();
@@ -256,7 +257,7 @@ async function route(request, env, path) {
   if (!one) return null;
   const id = one[1];
   const row = await env.DB.prepare("SELECT * FROM contacts WHERE id=?").bind(id).first();
-  if (!row) return json({ error: "No such contact" }, 404);
+  if (!row) return json({ error: ui("No such contact") }, 404);
   const have = fromRow(row);
 
   if (one[2]) {
@@ -266,7 +267,7 @@ async function route(request, env, path) {
 
   if (method === "PUT") {
     const b = await request.json().catch(() => null);
-    if (!b || typeof b !== "object") return json({ error: "Not a contact" }, 400);
+    if (!b || typeof b !== "object") return json({ error: ui("Not a contact") }, 400);
     const { contact, error } = fromBody(b);
     if (error) return json({ error }, 400);
     const next = { ...contact, uid: have.uid };
@@ -295,7 +296,7 @@ export const contacts = {
       // A file or a body is untrusted, and a database error is not the
       // client's business: either way the route answers, it does not throw.
       console.log(`contacts: ${e && e.stack ? e.stack : e}`);
-      return json({ error: "Could not do that with your contacts" }, 500);
+      return json({ error: ui("Could not do that with your contacts") }, 500);
     }
   },
 };

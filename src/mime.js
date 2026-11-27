@@ -395,6 +395,7 @@ export function fold(line) {
 function fileParam(key, filename) {
   const name = String(filename);
   const plain = needsEncoding(name) ? encodeHeader(name) : name;
+  // i18n-ok: a header parameter; the quote in the regex reads to the check as markup
   const quoted = `${key}="${plain.replace(/(["\\])/g, "\\$1")}"`;
   if (!needsEncoding(name) && !/["\\]/.test(name)) return quoted;
   const pct = Array.from(new TextEncoder().encode(name), (b) =>

@@ -14,7 +14,7 @@
  */
 
 import { decodeEntities, sanitizeHtml } from "./mime.js";
-import { json, ownHost } from "./util.js";
+import { json, ownHost, ui } from "./util.js";
 
 const NAME_MAX = 60;
 const HTML_MAX = 20_000;
@@ -102,7 +102,7 @@ const nameOf = (v) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, NAME_
 async function create(request, env) {
   const b = await request.json().catch(() => ({}));
   const name = nameOf(b.name);
-  if (!name) return json({ error: "A signature needs a name" }, 400);
+  if (!name) return json({ error: ui("A signature needs a name") }, 400);
   const now = Date.now();
   const id = crypto.randomUUID();
   const { n } = (await env.DB.prepare("SELECT COALESCE(MAX(position), -1) + 1 AS n FROM signatures").first()) ?? { n: 0 };
@@ -115,10 +115,10 @@ async function create(request, env) {
 
 async function update(request, env, id) {
   const row = await env.DB.prepare("SELECT * FROM signatures WHERE id=?").bind(id).first();
-  if (!row) return json({ error: "No such signature" }, 404);
+  if (!row) return json({ error: ui("No such signature") }, 404);
   const b = await request.json().catch(() => ({}));
   const name = "name" in b ? nameOf(b.name) : row.name;
-  if (!name) return json({ error: "A signature needs a name" }, 400);
+  if (!name) return json({ error: ui("A signature needs a name") }, 400);
   const html = "html" in b ? cleanSignature(b.html) : row.html;
   await env.DB.prepare("UPDATE signatures SET name=?, html=?, updated_at=? WHERE id=?").bind(name, html, Date.now(), id).run();
   return json({ signature: shape({ ...row, name, html }) });
@@ -126,7 +126,7 @@ async function update(request, env, id) {
 
 async function remove(env, id) {
   const r = await env.DB.prepare("DELETE FROM signatures WHERE id=?").bind(id).run();
-  if (!(r.meta?.changes ?? 0)) return json({ error: "No such signature" }, 404);
+  if (!(r.meta?.changes ?? 0)) return json({ error: ui("No such signature") }, 404);
   // No address keeps pointing at one that is gone: it signs with nothing.
   await env.DB.prepare("UPDATE signature_use SET new_id=NULL WHERE new_id=?").bind(id).run();
   await env.DB.prepare("UPDATE signature_use SET reply_id=NULL WHERE reply_id=?").bind(id).run();
@@ -138,7 +138,7 @@ async function setUse(request, env) {
   const b = await request.json().catch(() => ({}));
   const address = String(b.address ?? "").trim().toLowerCase();
   if ((address !== ANY && !/^[^\s@]+@[^\s@]+$/.test(address)) || address.length > 254) {
-    return json({ error: "That is not an address" }, 400);
+    return json({ error: ui("That is not an address") }, 400);
   }
   const cur = (await env.DB.prepare("SELECT * FROM signature_use WHERE address=?").bind(address).first()) ?? { new_id: null, reply_id: null };
   const next = { new_id: cur.new_id, reply_id: cur.reply_id };
@@ -146,7 +146,7 @@ async function setUse(request, env) {
     if (!(k in b)) continue;
     if (b[k] === null || b[k] === "") { next[k] = null; continue; }
     const ok = await env.DB.prepare("SELECT 1 AS x FROM signatures WHERE id=?").bind(String(b[k])).first();
-    if (!ok) return json({ error: "No such signature" }, 400);
+    if (!ok) return json({ error: ui("No such signature") }, 400);
     next[k] = String(b[k]);
   }
   await env.DB.prepare(

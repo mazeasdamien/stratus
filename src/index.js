@@ -24,7 +24,7 @@ import { handleApi } from "./api.js";
 import { moduleCrons } from "./modules.js";
 import { flushOutbox, wakeSnoozed } from "./outgoing.js";
 import { syncAccount } from "./sync.js";
-import { SYNC_PER_RUN, json, keepHost, learnHost, recallHost } from "./util.js";
+import { SYNC_PER_RUN, json, keepHost, learnHost, recallHost, ui } from "./util.js";
 
 /**
  * The client this Worker was deployed alongside.
@@ -62,7 +62,7 @@ async function route(request, env, ctx) {
       const key = String(body.k || body.key || "");
       const tried = await checkBootstrapKey(request, env, key);
       if (tried.retryAfter) return tooManyKeys(tried.retryAfter);
-      if (!tried.ok) return json({ error: "Wrong key" }, 401);
+      if (!tried.ok) return json({ error: ui("Wrong key") }, 401);
       const token = await issueSession(env.AUTH_SECRET, {
         name: String(body.name || "").slice(0, 40) || undefined,
         userAgent: ua,
@@ -101,7 +101,7 @@ async function route(request, env, ctx) {
     const key = String(body.k || body.key || "");
     const tried = await checkBootstrapKey(request, env, key);
     if (tried.retryAfter) return tooManyKeys(tried.retryAfter);
-    if (!tried.ok) return json({ error: "Wrong key" }, 401);
+    if (!tried.ok) return json({ error: ui("Wrong key") }, 401);
     return json({
       // Push-only: the badge is all the extension shows, so the unread count
       // is all its token can read.
@@ -140,10 +140,10 @@ async function route(request, env, ctx) {
   const session = await requestSession(request, env);
   // JSON for the API, which is read by code; the page for anything a person
   // navigated to.
-  if (!session) return path.startsWith("/api/") ? json({ error: "This device is not activated" }, 401) : denied();
+  if (!session) return path.startsWith("/api/") ? json({ error: ui("This device is not activated") }, 401) : denied();
 
   if (path.startsWith("/api/")) {
-    if (!sameOriginWrite(request)) return json({ error: "Cross-site request refused" }, 403);
+    if (!sameOriginWrite(request)) return json({ error: ui("Cross-site request refused") }, 403);
     // The app reaches its API with fetch() and with links it downloads from;
     // nothing of its own loads an /api/ URL as an image, a stylesheet or a
     // font. Something that does is a message body — the print frame shares
@@ -152,7 +152,7 @@ async function route(request, env, ctx) {
     // dropped URLs pointing back at the app still carry them.
     const dest = request.headers.get("Sec-Fetch-Dest");
     if (dest && dest !== "empty" && dest !== "document") {
-      return json({ error: "Not loadable from a page" }, 403);
+      return json({ error: ui("Not loadable from a page") }, 403);
     }
     const res = isVeilleApi(path) ? await proxyVeille(request, env, path) : await handleApi(request, env, path, ctx, session);
     const fresh = await renewedCookie(session, env);
@@ -225,6 +225,7 @@ const SHELL_CSP = "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; f
 const ACTIVATION_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="dark light">
+<script src="/i18n.js"></script>
 <title>Activate this device</title>
 <style>
  :root{--bg:#ffffff;--t1:#111114;--t2:#5b5b63;--line:#d9d9de;--field:#ffffff;--bad:#c62828}
@@ -251,6 +252,12 @@ const ACTIVATION_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf
 </div>
 <script>
 (function(){
+  // The page in the device's language. Without i18n.js (it failed to load)
+  // the English stays, and the form still works.
+  var same=function(s){ return s; };
+  var I=window.StratusI18n||{ t:same, tw:same, apply:same };
+  var t=I.t, tw=I.tw;
+  I.apply(document);
   var f=document.getElementById("f"),k=document.getElementById("k"),msg=document.getElementById("msg");
   // A key in the fragment never reaches the server, which is why the
   // activation link is written that way. Read it here and post it, so the
@@ -270,10 +277,10 @@ const ACTIVATION_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf
       body:JSON.stringify({k:k.value,name:navigator.platform||""})})
       .then(function(r){ return r.json().then(function(j){ return {r:r,j:j}; }); })
       .then(function(x){
-        if(!x.r.ok){ msg.textContent=x.j.error||"That key was not accepted."; msg.setAttribute("data-bad","1"); return; }
+        if(!x.r.ok){ msg.textContent=tw(x.j.error)||t("That key was not accepted."); msg.setAttribute("data-bad","1"); return; }
         location.replace("/");
       })
-      .catch(function(){ msg.textContent="Something went wrong. Try again."; msg.setAttribute("data-bad","1"); });
+      .catch(function(){ msg.textContent=t("Something went wrong. Try again."); msg.setAttribute("data-bad","1"); });
   });
 })();
 </script></body></html>`;
@@ -303,14 +310,14 @@ async function serve(request, env, ctx, away = "") {
     return out;
   } catch (e) {
     if (e instanceof NoRouteError) {
-      if (away) return json({ error: `Could not reach iCloud: ${e.message}` }, 502, { [NO_ROUTE]: "1", [RAN_IN]: away });
+      if (away) return json({ error: ui(`Could not reach iCloud: ${e.message}`) }, 502, { [NO_ROUTE]: "1", [RAN_IN]: away });
       const there = spare && (await runElsewhere(spare, env, e.message));
       if (there) {
         const out = new Response(there.body, there);
         out.headers.delete(NO_ROUTE);
         return out;
       }
-      return json({ error: `Could not reach iCloud: ${e.message}` }, 502);
+      return json({ error: ui(`Could not reach iCloud: ${e.message}`) }, 502);
     }
     console.log(`unhandled: ${e && e.stack ? e.stack : e}`);
     return json({ error: String((e && e.message) || e) }, 500);
@@ -428,8 +435,9 @@ export default {
 
 /** The answer to an address that has sent too many wrong activation keys. */
 function tooManyKeys(seconds) {
+  const minutes = Math.ceil(seconds / 60);
   return json(
-    { error: `Too many wrong keys. Try again in ${Math.ceil(seconds / 60)} min.` },
+    { error: ui(`Too many wrong keys. Try again in ${minutes} min.`) },
     429,
     { "Retry-After": String(seconds) }
   );
@@ -439,6 +447,7 @@ function denied() {
   return new Response(
     `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<script src="/i18n.js"></script>
 <title>Access denied</title>
 <style>
  html,body{height:100%;margin:0}
@@ -451,6 +460,7 @@ function denied() {
 // A device with no session keeps no mail: this is where signing out at /logout
 // lands, and the app page never runs to remove the offline copy itself.
 try{indexedDB.deleteDatabase("stratus-offline");localStorage.removeItem("dmzs-offline")}catch(e){}
+if(window.StratusI18n) StratusI18n.apply(document);
 </script></body></html>`,
     { status: 401, headers: { "Content-Type": "text/html; charset=utf-8" } }
   );

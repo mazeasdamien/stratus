@@ -30,7 +30,7 @@ import { attachCategories } from "./categories.js";
 import { folderNameFor, icloudPassword, resolveMailbox, theAccount } from "./mailbox.js";
 import { ACTIONS, catalog, cleanRule, needsBody, planActions, readRule } from "./rules.js";
 import { htmlToText } from "./mime.js";
-import { bodyKey, FLAG_FLAGGED, FLAG_SEEN, hashHex, json } from "./util.js";
+import { bodyKey, FLAG_FLAGGED, FLAG_SEEN, hashHex, json, ui } from "./util.js";
 
 const BATCH = 20; // messages one "Run rules now" request looks at
 
@@ -80,8 +80,9 @@ async function perform(env, io, row, plan, outcome) {
         await imapFlag(io.im, uid, FLAG_SEEN, true);
         stmts.push(env.DB.prepare("UPDATE messages SET unread=0 WHERE id=?").bind(row.id));
       } else {
-        const dest = resolveMailbox(io.boxes, a.type === "trash" ? "trash" : a.value);
-        if (!dest) throw new Error(`No mailbox matching "${a.type === "trash" ? "trash" : a.value}"`);
+        const folder = a.type === "trash" ? "trash" : a.value;
+        const dest = resolveMailbox(io.boxes, folder);
+        if (!dest) throw new Error(ui(`No mailbox matching "${folder}"`));
         await imapMove(io.im, uid, dest.name);
         // The destination's own name for it, which is what the sync will file it
         // under when it sees it there, so the two agree.
@@ -213,20 +214,21 @@ function providerIo(env, account) {
     async uid(row) {
       io.opening ??= (async () => {
         const pass = await icloudPassword(env, account);
-        if (!pass) throw new Error("This account has no stored credential");
+        if (!pass) throw new Error(ui("This account has no stored credential"));
         io.im = await imapOpen({ user: account.email, pass });
         io.boxes = await imapList(io.im);
       })();
       await io.opening; // a failed open is the same failure for every message
-      const mb = resolveMailbox(io.boxes, row.mailbox || row.folder);
-      if (!mb) throw new Error(`No mailbox matching "${row.mailbox || row.folder}"`);
+      const folder = row.mailbox || row.folder;
+      const mb = resolveMailbox(io.boxes, folder);
+      if (!mb) throw new Error(ui(`No mailbox matching "${folder}"`));
       if (io.selected !== mb.name) {
         await imapSelect(io.im, mb.name);
         io.selected = mb.name;
       }
       const needle = String(row.mid || row.pid).replace(/["\\\r\n]/g, "");
       const uids = await imapSearch(io.im, `HEADER "Message-ID" "${needle}"`);
-      if (!uids.length) throw new Error("The message is not at iCloud any more");
+      if (!uids.length) throw new Error(ui("The message is not at iCloud any more"));
       return uids[uids.length - 1];
     },
     async close() {
@@ -372,7 +374,7 @@ async function api(request, env, path) {
   if (one && m === "PATCH") {
     const id = Number(one[1]);
     const cur = await env.DB.prepare("SELECT * FROM rules WHERE id=?").bind(id).first();
-    if (!cur) return json({ error: "Unknown rule" }, 404);
+    if (!cur) return json({ error: ui("Unknown rule") }, 404);
     const b = await request.json().catch(() => ({}));
     const enabled = b.enabled === undefined ? !!cur.enabled : !!b.enabled;
     // Only the switch: the rest is left alone, so a rule from another build that

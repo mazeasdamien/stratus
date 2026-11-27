@@ -665,7 +665,7 @@ console.log("\n-- en-tête From : nom affiché --------------");
 console.log("\n-- purge : ce qui est deja perdu ----------");
 {
   const worker = workerSource();
-  const thrown = (/throw new Error\("([^"]*not found[^"]*)"\)/.exec(worker) || [])[1] || "";
+  const thrown = (/throw new Error\((?:ui\()?"([^"]*not found[^"]*)"\)/.exec(worker) || [])[1] || "";
   const tolerated = (/if \(!\/([^/]+)\/i\.test\(String\(e\.message/.exec(worker) || [])[1] || "";
   ok(!!thrown, "icloudAct dit toujours qu'il n'a rien trouvé");
   ok(!!tolerated, "purge tolère toujours une de ces phrases");
@@ -1199,7 +1199,7 @@ console.log("\n── transport IMAP, faux socket ──────────
   const src = readFileSync(new URL("./src/imap.js", import.meta.url), "utf8")
     .replace(/^import \{ connect \} from "cloudflare:sockets";$/m, "let connect = null;\nexport const setConnect = (f) => (connect = f);")
     .replace(/^import \{ MailAuthError, NoRouteError \} from "\.\/errors\.js";$/m, "class MailAuthError extends Error {}\nclass NoRouteError extends Error {}")
-    .replace(/from "\.\/(rfc822|mime)\.js";/g, (_m, f) => `from ${JSON.stringify(new URL(`./src/${f}.js`, import.meta.url).href)};`);
+    .replace(/from "\.\/(rfc822|mime|util)\.js";/g, (_m, f) => `from ${JSON.stringify(new URL(`./src/${f}.js`, import.meta.url).href)};`);
   const dir = mkdtempSync(join(tmpdir(), "imap-"));
   writeFileSync(join(dir, "imap.mjs"), src + "\nexport { Imap, NoRouteError, MailAuthError };\n");
   const { Imap, NoRouteError, MailAuthError, imapOpen, setConnect } = await import("file://" + join(dir, "imap.mjs").replace(/\\/g, "/"));

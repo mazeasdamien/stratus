@@ -11,7 +11,7 @@ import { accountById, fileSentCopy, senderFor } from "./filing.js";
 import { icloudAct, icloudPassword, resolveMailbox } from "./mailbox.js";
 import { followupForSent } from "./followup.js";
 import { imapError } from "./store.js";
-import { json } from "./util.js";
+import { json, ui } from "./util.js";
 
 /**
  * Checks one outgoing message and sends it: the Send button, a scheduled
@@ -22,17 +22,17 @@ import { json } from "./util.js";
 export async function deliver(env, b, { dryRun = false } = {}) {
   {
     const acct = await accountById(env, String(b.account_id || ""));
-    if (!acct) return json({ error: "Pick an account to send from" }, 400);
+    if (!acct) return json({ error: ui("Pick an account to send from") }, 400);
 
     const to = parseAddressList(String(b.to || ""));
-    if (!to.length) return json({ error: "No valid recipient" }, 400);
+    if (!to.length) return json({ error: ui("No valid recipient") }, 400);
     const cc = parseAddressList(String(b.cc || ""));
     const bcc = parseAddressList(String(b.bcc || ""));
     const html = String(b.html || "");
     // A rich draft still ships a plain-text twin; htmlToText derives one when
     // the client has not, so no reader ever gets an empty message.
     const text = String(b.text || "") || htmlToText(html);
-    if (!text.trim() && !html.trim()) return json({ error: "Empty message" }, 400);
+    if (!text.trim() && !html.trim()) return json({ error: ui("Empty message") }, 400);
 
     // Refuse, never truncate. One pasted screenshot as a data: URI passes half
     // a megabyte, and silently cutting the body mid-base64 would send a broken
@@ -40,8 +40,9 @@ export async function deliver(env, b, { dryRun = false } = {}) {
     // base64 inflates by a third, so this leaves comfortable headroom.
     const MAX_HTML = 8 * 1024 * 1024;
     if (html.length > MAX_HTML) {
+      const mb = Math.round(html.length / 1048576);
       return json(
-        { error: `Message too large (${Math.round(html.length / 1048576)} MB). Remove or shrink an image.` },
+        { error: ui(`Message too large (${mb} MB). Remove or shrink an image.`) },
         413
       );
     }
@@ -63,9 +64,10 @@ export async function deliver(env, b, { dryRun = false } = {}) {
     const totalBytes = html.length + text.length + attachments.reduce((n, a) => n + a.data.length, 0);
     const MAX_TOTAL = 20 * 1024 * 1024;
     if (totalBytes > MAX_TOTAL) {
+      const mb = (totalBytes / 1048576).toFixed(1);
       return json(
         {
-          error: `Too big to send (${(totalBytes / 1048576).toFixed(1)} MB of an allowed 20 MB). Remove an attachment.`,
+          error: ui(`Too big to send (${mb} MB of an allowed 20 MB). Remove an attachment.`),
         },
         413
       );
@@ -169,7 +171,7 @@ export async function deliver(env, b, { dryRun = false } = {}) {
         }
         if (b.followup_days || b.followup_at) followup = !!sentId && (await followupForSent(env, sentId, b));
       } else {
-        return json({ error: "This account has no stored credential" }, 400);
+        return json({ error: ui("This account has no stored credential") }, 400);
       }
     } catch (e) {
       // The connection failed between the message being handed over and the
@@ -186,7 +188,7 @@ export async function deliver(env, b, { dryRun = false } = {}) {
 /** What is said when a send may or may not have gone through. */
 // Not "check Sent": no copy is filed there when the outcome is unknown, so
 // Sent cannot say either way.
-export const UNCERTAIN = "The message may have been sent: iCloud did not confirm it. Press Send again only if you want to send it once more.";
+export const UNCERTAIN = ui("The message may have been sent: iCloud did not confirm it. Press Send again only if you want to send it once more.");
 
 /**
  * Takes a scheduled message whose delivery ended that way out of the cron's
@@ -224,7 +226,7 @@ export async function wakeSnoozed(env) {
     try {
       await icloudAct(env, acct, msg.mid || msg.pid, msg.folder, async (im, boxes, _here, uid) => {
         const inbox = resolveMailbox(boxes, "inbox");
-        if (!inbox) throw new Error("No inbox");
+        if (!inbox) throw new Error(ui("No inbox"));
         await imapFlag(im, uid, "\\Seen", false);
         await imapMove(im, uid, inbox.name);
       });
@@ -307,7 +309,7 @@ export async function flushOutbox(env) {
       const obj = await env.MAIL.get(`outbox/${row.id}.json`);
       if (!obj) {
         await env.DB.prepare("UPDATE outbox SET last_error=?, tries=5 WHERE id=?")
-          .bind("The scheduled message is missing", row.id)
+          .bind(ui("The scheduled message is missing"), row.id)
           .run();
         continue;
       }

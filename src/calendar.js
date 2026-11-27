@@ -27,7 +27,7 @@ import { seal, open } from "./crypto.js";
 import { parseCalendar, writeCalendar, httpsUrl } from "./ics.js";
 import { expand, formatRule, instantOf, occurrences, parseRule, wallOf } from "./rrule.js";
 import { clearReminder, setReminder } from "./reminders.js";
-import { json } from "./util.js";
+import { json, ui } from "./util.js";
 
 const DAY = 86_400_000;
 
@@ -106,8 +106,8 @@ const shownCalendar = async (env, id) =>
 function nameAndColor(b, base = {}) {
   const name = String(b.name ?? base.name ?? "").trim().slice(0, 80);
   const color = String(b.color ?? base.color ?? COLORS[0]);
-  if (!name) return { error: "Give the calendar a name" };
-  if (!COLOR.test(color)) return { error: "Pick a colour" };
+  if (!name) return { error: ui("Give the calendar a name") };
+  if (!COLOR.test(color)) return { error: ui("Pick a colour") };
   return { name, color: color.toLowerCase() };
 }
 
@@ -132,28 +132,29 @@ class FeedError extends Error {}
  */
 export function feedUrl(input) {
   const s = String(input || "").trim().replace(/^webcals?:\/\//i, "https://");
-  if (!s || s.length > 2000) return { error: "Enter the calendar's address" };
+  if (!s || s.length > 2000) return { error: ui("Enter the calendar's address") };
   let u;
   try {
     u = new URL(s);
   } catch {
-    return { error: "That is not a web address" };
+    return { error: ui("That is not a web address") };
   }
-  if (u.protocol !== "https:") return { error: "Only https:// and webcal:// addresses can be subscribed to" };
-  if (u.username || u.password) return { error: "An address with a user name or password is not supported" };
-  if (u.port && u.port !== "443") return { error: "Only the standard port is supported" };
+  if (u.protocol !== "https:") return { error: ui("Only https:// and webcal:// addresses can be subscribed to") };
+  if (u.username || u.password) return { error: ui("An address with a user name or password is not supported") };
+  if (u.port && u.port !== "443") return { error: ui("Only the standard port is supported") };
   const host = u.hostname.toLowerCase().replace(/\.$/, "");
   const bare = !host.includes(".");
   const literal = host.includes(":") || /^\d+(\.\d+){0,3}$/.test(host) || /\.\d+$/.test(host);
   const own = host === "localhost" || /\.(localhost|local|internal|lan|home\.arpa)$/.test(host);
-  if (literal) return { error: "Use the calendar's name, not an IP address" };
-  if (bare || own) return { error: "That address is not on the public web" };
+  if (literal) return { error: ui("Use the calendar's name, not an IP address") };
+  if (bare || own) return { error: ui("That address is not on the public web") };
   return { url: u.href };
 }
 
 /** The body of a response as text, refusing one past the size limit without reading it all. */
 async function readCapped(res) {
-  const tooBig = new FeedError(`That calendar is too large (over ${Math.round(LIM.feedBytes / 1_000_000)} MB)`);
+  const mb = Math.round(LIM.feedBytes / 1_000_000);
+  const tooBig = new FeedError(ui(`That calendar is too large (over ${mb} MB)`));
   if (Number(res.headers.get("content-length")) > LIM.feedBytes) throw tooBig;
   const reader = res.body?.getReader();
   if (!reader) {
@@ -187,7 +188,7 @@ async function fetchFeed(start) {
   let address = start;
   for (let hop = 0; hop <= LIM.feedRedirects; hop++) {
     const checked = feedUrl(address);
-    if (checked.error) throw new FeedError(hop ? `The calendar moved somewhere it cannot follow. ${checked.error}` : checked.error);
+    if (checked.error) throw new FeedError(hop ? ui(`The calendar moved somewhere it cannot follow. ${checked.error}`) : checked.error);
     let res;
     try {
       res = await fetch(checked.url, {
@@ -196,26 +197,26 @@ async function fetchFeed(start) {
         headers: { Accept: "text/calendar, text/plain;q=0.8, */*;q=0.5", "User-Agent": "Stratus calendar" },
       });
     } catch (e) {
-      throw new FeedError(e?.name === "TimeoutError" || e?.name === "AbortError" ? "The server took too long to answer" : "Could not reach the server");
+      throw new FeedError(e?.name === "TimeoutError" || e?.name === "AbortError" ? ui("The server took too long to answer") : ui("Could not reach the server"));
     }
     if (res.status >= 300 && res.status < 400) {
       const to = res.headers.get("location");
       try {
         address = new URL(to, checked.url).href;
       } catch {
-        throw new FeedError("The server redirected somewhere that makes no sense");
+        throw new FeedError(ui("The server redirected somewhere that makes no sense"));
       }
       continue;
     }
-    if (!res.ok) throw new FeedError(`The server answered ${res.status}`);
+    if (!res.ok) throw new FeedError(ui(`The server answered ${res.status}`));
     try {
       return await readCapped(res);
     } catch (e) {
       if (e instanceof FeedError) throw e;
-      throw new FeedError(e?.name === "TimeoutError" || e?.name === "AbortError" ? "The server took too long to send it" : "The connection dropped while it was being read");
+      throw new FeedError(e?.name === "TimeoutError" || e?.name === "AbortError" ? ui("The server took too long to send it") : ui("The connection dropped while it was being read"));
     }
   }
-  throw new FeedError("Too many redirects");
+  throw new FeedError(ui("Too many redirects"));
 }
 
 /** A short stable hash of a string, for ids and change detection (not for secrets). */
@@ -312,9 +313,9 @@ export async function refreshCalendar(env, cal, now = Date.now()) {
   };
   try {
     const sealed = cal.url_sealed ? await open(env.ENC_KEY, cal.url_sealed) : null;
-    if (!sealed?.url) return settle("The saved address cannot be read. Subscribe again.");
+    if (!sealed?.url) return settle(ui("The saved address cannot be read. Subscribe again."));
     const text = await fetchFeed(sealed.url);
-    if (!/BEGIN:VCALENDAR/i.test(text)) return settle("That address did not return a calendar");
+    if (!/BEGIN:VCALENDAR/i.test(text)) return settle(ui("That address did not return a calendar"));
     const parsed = parseCalendar(text, { max: LIM.feedEvents });
     const rows = rowsFrom(cal.id, parsed.events, {
       uidFor: (ev) => `nouid-${cyrb53([ev.summary, ev.startMs, ev.endMs, ev.rrule, ev.recurrenceId].join("|"))}`,
@@ -322,7 +323,7 @@ export async function refreshCalendar(env, cal, now = Date.now()) {
       reminders: false, // a feed's alarms are its author's, not this person's
       now,
     });
-    const note = parsed.skipped && rows.length >= LIM.feedEvents ? `Showing the first ${LIM.feedEvents} events` : "";
+    const note = parsed.skipped && rows.length >= LIM.feedEvents ? ui(`Showing the first ${LIM.feedEvents} events`) : "";
     const fingerprint = cyrb53(
       JSON.stringify(rows.map((r) => COLUMNS.filter((c) => !/_at$/.test(c)).map((c) => r[c])).sort())
     );
@@ -338,7 +339,7 @@ export async function refreshCalendar(env, cal, now = Date.now()) {
     return { ok: true, changed: true, events: rows.length };
   } catch (e) {
     if (!(e instanceof FeedError)) console.log(`calendar ${cal.id}: ${e && e.stack ? e.stack : e}`);
-    return settle(e instanceof FeedError ? e.message : "Could not read that calendar");
+    return settle(e instanceof FeedError ? e.message : ui("Could not read that calendar"));
   }
 }
 
@@ -525,19 +526,19 @@ function readEvent(b, base) {
   row.all_day = allDay ? 1 : 0;
 
   let tzid = b.tzid !== undefined ? String(b.tzid) : base ? base.tzid : "UTC";
-  if (tzid && !knownZone(tzid)) return { error: "That time zone is not known" };
+  if (tzid && !knownZone(tzid)) return { error: ui("That time zone is not known") };
   row.tzid = tzid;
 
   if (b.start !== undefined || b.end !== undefined || !base) {
     let s = whole(b.start ?? base?.start_ms);
     let e = whole(b.end ?? base?.end_ms);
-    if (!Number.isFinite(s)) return { error: "Give the event a start" };
+    if (!Number.isFinite(s)) return { error: ui("Give the event a start") };
     if (!Number.isFinite(e)) e = s + (allDay ? DAY : 3600_000);
     if (allDay) {
       s = midnight(s);
       e = Math.max(midnight(e), s + DAY);
     }
-    if (e < s) return { error: "The event cannot end before it starts" };
+    if (e < s) return { error: ui("The event cannot end before it starts") };
     row.start_ms = s;
     row.end_ms = e;
   }
@@ -545,7 +546,7 @@ function readEvent(b, base) {
     if (b.reminderMin === null || b.reminderMin === "") row.reminder_min = null;
     else {
       const n = whole(b.reminderMin);
-      if (!(n >= -1440 && n <= 40_320)) return { error: "That reminder is not one that can be set" };
+      if (!(n >= -1440 && n <= 40_320)) return { error: ui("That reminder is not one that can be set") };
       row.reminder_min = n;
     }
   }
@@ -554,7 +555,7 @@ function readEvent(b, base) {
     if (!text) row.rrule = "";
     else {
       const rule = parseRule(text);
-      if (!rule) return { error: "That repeat is not one this calendar can keep" };
+      if (!rule) return { error: ui("That repeat is not one this calendar can keep") };
       row.rrule = formatRule(rule);
     }
   }
@@ -574,17 +575,6 @@ function alignToRule(r) {
 /** The instant a stored start means, for ringing: an all-day or floating one has only a wall time. */
 const instantOfStart = (r, ms) => (wallType(r) ? instantOf({ tzid: r.tzid || "UTC", allDay: false }, ms) : ms);
 
-/** "In 10 minutes", "Tomorrow": what a reminder says about when. */
-function whenText(r) {
-  const m = r.reminder_min;
-  if (r.all_day) return m <= 0 ? "Today" : m <= 1440 ? "Tomorrow" : `In ${Math.ceil(m / 1440)} days`;
-  if (m <= 0) return "Starting now";
-  if (m < 60) return `In ${m} minute${m === 1 ? "" : "s"}`;
-  if (m === 1440) return "Tomorrow";
-  if (m % 1440 === 0) return `In ${m / 1440} days`;
-  if (m % 60 === 0) return `In ${m / 60} hour${m === 60 ? "" : "s"}`;
-  return `In ${m} minutes`;
-}
 
 /**
  * When an event's reminder should next ring, as { at, start } for the first
@@ -611,7 +601,31 @@ export function nextReminder(r, overrides, now = Date.now()) {
   return pick(occurrences(series, edited, from, from + 1500 * DAY, { limit: 24 }).map((o) => o.startMs));
 }
 
-const reminderBody = (r) => [whenText(r), r.location].filter(Boolean).join(" · ");
+/**
+ * "In 10 minutes", "Tomorrow · Room 4": what a reminder says about when, and
+ * where. Each wording is a whole sentence, the place included, so the device
+ * finds it in its dictionary and says it in its own words.
+ */
+function reminderBody(r) {
+  const minutes = r.reminder_min;
+  const location = r.location;
+  const days = Math.ceil(minutes / 1440);
+  const hours = minutes / 60;
+  const said = (plain, placed) => (location ? placed : plain);
+  if (r.all_day) {
+    if (minutes <= 0) return said(ui("Today"), ui(`Today · ${location}`));
+    if (minutes <= 1440) return said(ui("Tomorrow"), ui(`Tomorrow · ${location}`));
+    return said(ui(`In ${days} days`), ui(`In ${days} days · ${location}`));
+  }
+  if (minutes <= 0) return said(ui("Starting now"), ui(`Starting now · ${location}`));
+  if (minutes === 1) return said(ui("In 1 minute"), ui(`In 1 minute · ${location}`));
+  if (minutes < 60) return said(ui(`In ${minutes} minutes`), ui(`In ${minutes} minutes · ${location}`));
+  if (minutes === 1440) return said(ui("Tomorrow"), ui(`Tomorrow · ${location}`));
+  if (minutes % 1440 === 0) return said(ui(`In ${days} days`), ui(`In ${days} days · ${location}`));
+  if (minutes === 60) return said(ui("In 1 hour"), ui(`In 1 hour · ${location}`));
+  if (minutes % 60 === 0) return said(ui(`In ${hours} hours`), ui(`In ${hours} hours · ${location}`));
+  return said(ui(`In ${minutes} minutes`), ui(`In ${minutes} minutes · ${location}`));
+}
 
 async function overridesOf(env, r) {
   const { results } = await env.DB.prepare("SELECT * FROM cal_events WHERE calendar_id=? AND uid=? AND recurrence_id IS NOT NULL")
@@ -625,7 +639,7 @@ export async function armReminder(env, r, now = Date.now()) {
   if (r.recurrence_id !== null) return;
   const next = nextReminder(r, r.rrule ? await overridesOf(env, r) : [], now);
   if (!next) return clearReminder(env, "event", r.id);
-  await setReminder(env, { kind: "event", ref: r.id, title: r.summary || "Event", body: reminderBody(r), at: next.at });
+  await setReminder(env, { kind: "event", ref: r.id, title: r.summary || ui("Event"), body: reminderBody(r), at: next.at });
 }
 
 /**
@@ -660,8 +674,8 @@ async function createEvent(env, b) {
   let cal = b.calendarId
     ? await getCalendar(env, String(b.calendarId))
     : await env.DB.prepare("SELECT * FROM calendars WHERE kind='local' ORDER BY position, created_at LIMIT 1").first();
-  if (!cal) return bad("No such calendar", 404);
-  if (cal.kind !== "local") return bad("That calendar is read-only");
+  if (!cal) return bad(ui("No such calendar"), 404);
+  if (cal.kind !== "local") return bad(ui("That calendar is read-only"));
   const { row, error } = readEvent(b, null);
   if (error) return bad(error);
   const now = Date.now();
@@ -681,7 +695,7 @@ async function createEvent(env, b) {
     updated_at: now,
     ...row,
   });
-  if (!aligned) return bad("That repeat never happens");
+  if (!aligned) return bad(ui("That repeat never happens"));
   await insertEvent(env, aligned).run();
   await armReminder(env, aligned, now);
   return json({ event: eventOf(aligned, cal) }, 201);
@@ -710,7 +724,7 @@ async function editSeries(env, master, b, shownStart) {
     next.end_ms = next.start_ms + length;
   }
   const aligned = alignToRule(next);
-  if (!aligned) return { error: "That repeat never happens" };
+  if (!aligned) return { error: ui("That repeat never happens") };
   const timing = ["start_ms", "end_ms", "all_day", "tzid", "rrule"].some((k) => aligned[k] !== master[k]);
   // New timing makes the one-off edits and removals of the old one meaningless.
   if (timing) aligned.exdates = "";
@@ -719,12 +733,12 @@ async function editSeries(env, master, b, shownStart) {
 
 async function patchEvent(env, id, b) {
   const row = await getEvent(env, id);
-  if (!row) return bad("No such event", 404);
+  if (!row) return bad(ui("No such event"), 404);
   const cal = await getCalendar(env, row.calendar_id);
-  if (!cal || cal.kind !== "local") return bad("That calendar is read-only", 403);
+  if (!cal || cal.kind !== "local") return bad(ui("That calendar is read-only"), 403);
   if (b.calendarId !== undefined && b.calendarId !== row.calendar_id) {
     const to = await getCalendar(env, String(b.calendarId));
-    if (!to || to.kind !== "local") return bad("Move it to one of your own calendars");
+    if (!to || to.kind !== "local") return bad(ui("Move it to one of your own calendars"));
   }
   const scope = b.scope === "one" ? "one" : "all";
   const now = Date.now();
@@ -732,13 +746,13 @@ async function patchEvent(env, id, b) {
   // One occurrence of a series, edited alone.
   if (scope === "one" && (row.rrule || row.recurrence_id !== null)) {
     const master = row.recurrence_id === null ? row : await masterOf(env, row);
-    if (!master) return bad("That series is gone", 404);
+    if (!master) return bad(ui("That series is gone"), 404);
     const rid = row.recurrence_id !== null ? row.recurrence_id : whole(b.occurrence);
-    if (!Number.isFinite(rid)) return bad("Say which occurrence");
+    if (!Number.isFinite(rid)) return bad(ui("Say which occurrence"));
     const mine = row.recurrence_id !== null ? row : (await overridesOf(env, master)).find((o) => o.recurrence_id === rid);
     if (!mine) {
       const series = { startMs: master.start_ms, endMs: master.end_ms, allDay: !!master.all_day, tzid: master.tzid, rule: master.rrule, exdates: exdatesOf(master) };
-      if (expand(series, rid, rid + 1, { limit: 1 })[0]?.startMs !== rid) return bad("The series has no occurrence there");
+      if (expand(series, rid, rid + 1, { limit: 1 })[0]?.startMs !== rid) return bad(ui("The series has no occurrence there"));
     }
     const base = mine ?? { ...master, start_ms: rid, end_ms: rid + (master.end_ms - master.start_ms), reminder_min: null };
     const { row: edit, error } = readEvent({ ...b, rrule: undefined, reminderMin: undefined, tzid: undefined }, base);
@@ -764,7 +778,7 @@ async function patchEvent(env, id, b) {
   // The whole series, from one of its occurrences.
   if (row.rrule || row.recurrence_id !== null) {
     const master = row.recurrence_id === null ? row : await masterOf(env, row);
-    if (!master) return bad("That series is gone", 404);
+    if (!master) return bad(ui("That series is gone"), 404);
     const shown = row.recurrence_id !== null ? row.start_ms : master.start_ms;
     const done = await editSeries(env, master, b, shown);
     if (done.error) return bad(done.error);
@@ -785,7 +799,7 @@ async function patchEvent(env, id, b) {
   const { row: edit, error } = readEvent(b, row);
   if (error) return bad(error);
   const merged = alignToRule({ ...row, ...edit, ...(b.calendarId ? { calendar_id: String(b.calendarId) } : {}), updated_at: now });
-  if (!merged) return bad("That repeat never happens");
+  if (!merged) return bad(ui("That repeat never happens"));
   await insertEvent(env, merged).run();
   await armReminder(env, merged, now);
   return json({ event: eventOf(merged, cal) });
@@ -795,13 +809,13 @@ async function deleteEvent(env, id, scope, occurrence) {
   const row = await getEvent(env, id);
   if (!row) return json({ ok: true }); // gone is what was asked for
   const cal = await getCalendar(env, row.calendar_id);
-  if (!cal || cal.kind !== "local") return bad("That calendar is read-only", 403);
+  if (!cal || cal.kind !== "local") return bad(ui("That calendar is read-only"), 403);
   const isSeries = !!row.rrule || row.recurrence_id !== null;
   const master = !isSeries ? row : row.recurrence_id === null ? row : await masterOf(env, row);
 
   if (scope === "one" && isSeries) {
     const rid = row.recurrence_id !== null ? row.recurrence_id : whole(occurrence);
-    if (!Number.isFinite(rid)) return bad("Say which occurrence");
+    if (!Number.isFinite(rid)) return bad(ui("Say which occurrence"));
     if (!master) return json({ ok: true });
     const ex = [...new Set([...exdatesOf(master), rid])].slice(-1000).join(",");
     await env.DB.batch([
@@ -823,7 +837,7 @@ async function deleteEvent(env, id, scope, occurrence) {
 // ── import and export ──────────────────────────────────────
 
 async function importInto(env, cal, text) {
-  if (!/BEGIN:VCALENDAR/i.test(text)) return bad("That file is not a calendar");
+  if (!/BEGIN:VCALENDAR/i.test(text)) return bad(ui("That file is not a calendar"));
   const parsed = parseCalendar(text, { max: LIM.importEvents });
   const now = Date.now();
   // The rows already here, so an event imported again takes the place of the
@@ -925,7 +939,7 @@ async function patchCalendar(env, cal, b) {
 async function deleteCalendar(env, cal) {
   if (cal.kind === "local") {
     const { n } = await env.DB.prepare("SELECT COUNT(*) AS n FROM calendars WHERE kind='local'").first();
-    if (n <= 1) return bad("Keep at least one calendar of your own");
+    if (n <= 1) return bad(ui("Keep at least one calendar of your own"));
   }
   const { results } = await env.DB.prepare("SELECT id FROM cal_events WHERE calendar_id=? AND reminder_min IS NOT NULL").bind(cal.id).all();
   for (const r of results ?? []) await clearReminder(env, "event", r.id);
@@ -948,15 +962,15 @@ async function api(request, env, path) {
   const one = path.match(/^\/api\/calendar\/calendars\/([^/]+)$/);
   if (one && (method === "PATCH" || method === "DELETE")) {
     const cal = await getCalendar(env, decodeURIComponent(one[1]));
-    if (!cal) return bad("No such calendar", 404);
+    if (!cal) return bad(ui("No such calendar"), 404);
     return method === "DELETE" ? deleteCalendar(env, cal) : patchCalendar(env, cal, await request.json().catch(() => ({})));
   }
 
   const refresh = path.match(/^\/api\/calendar\/calendars\/([^/]+)\/refresh$/);
   if (refresh && method === "POST") {
     const cal = await getCalendar(env, decodeURIComponent(refresh[1]));
-    if (!cal) return bad("No such calendar", 404);
-    if (cal.kind !== "subscription") return bad("Only a subscription can be refreshed");
+    if (!cal) return bad(ui("No such calendar"), 404);
+    if (cal.kind !== "subscription") return bad(ui("Only a subscription can be refreshed"));
     const done = await refreshCalendar(env, cal);
     return json({ ...done, calendar: await shownCalendar(env, cal.id) });
   }
@@ -964,17 +978,17 @@ async function api(request, env, path) {
   const exported = path.match(/^\/api\/calendar\/calendars\/([^/]+)\/export$/);
   if (exported && method === "GET") {
     const cal = await getCalendar(env, decodeURIComponent(exported[1]));
-    return cal ? exportOf(env, cal) : bad("No such calendar", 404);
+    return cal ? exportOf(env, cal) : bad(ui("No such calendar"), 404);
   }
 
   const imported = path.match(/^\/api\/calendar\/calendars\/([^/]+)\/import$/);
   if (imported && method === "POST") {
     const cal = await getCalendar(env, decodeURIComponent(imported[1]));
-    if (!cal) return bad("No such calendar", 404);
-    if (cal.kind !== "local") return bad("Import into one of your own calendars");
-    if (Number(request.headers.get("content-length")) > LIM.importBytes) return bad("That file is too large", 413);
+    if (!cal) return bad(ui("No such calendar"), 404);
+    if (cal.kind !== "local") return bad(ui("Import into one of your own calendars"));
+    if (Number(request.headers.get("content-length")) > LIM.importBytes) return bad(ui("That file is too large"), 413);
     const text = await request.text();
-    if (text.length > LIM.importBytes) return bad("That file is too large", 413);
+    if (text.length > LIM.importBytes) return bad(ui("That file is too large"), 413);
     return importInto(env, cal, text);
   }
 
@@ -983,8 +997,8 @@ async function api(request, env, path) {
       const u = new URL(request.url);
       const from = whole(u.searchParams.get("from"));
       const to = whole(u.searchParams.get("to"));
-      if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return bad("Say which days, with from and to in milliseconds");
-      if (to - from > LIM.windowDays * DAY) return bad(`Ask for at most ${LIM.windowDays} days at a time`);
+      if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return bad(ui("Say which days, with from and to in milliseconds"));
+      if (to - from > LIM.windowDays * DAY) return bad(ui(`Ask for at most ${LIM.windowDays} days at a time`));
       return json({ from, to, events: await readWindow(env, from, to) });
     }
     if (method === "POST") return createEvent(env, await request.json().catch(() => ({})));
@@ -996,7 +1010,7 @@ async function api(request, env, path) {
     const id = decodeURIComponent(ev[1]);
     if (method === "GET") {
       const row = await getEvent(env, id);
-      if (!row) return bad("No such event", 404);
+      if (!row) return bad(ui("No such event"), 404);
       const event = eventOf(row, await getCalendar(env, row.calendar_id));
       // An edited occurrence has no rule of its own; the sheet shows its series'.
       if (row.recurrence_id !== null) event.rrule = (await masterOf(env, row))?.rrule ?? "";

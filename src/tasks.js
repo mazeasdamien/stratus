@@ -24,7 +24,7 @@
  */
 
 import { clearReminder, setReminder } from "./reminders.js";
-import { json } from "./util.js";
+import { json, ui } from "./util.js";
 
 const DAY_MS = 86_400_000;
 /** The most a title, the notes and a reminder's text may hold. */
@@ -35,11 +35,11 @@ const BODY_MAX = 200;
 const DONE_SHOWN = 100;
 
 export const GROUPS = [
-  ["overdue", "Overdue"],
-  ["today", "Today"],
-  ["upcoming", "Upcoming"],
-  ["nodate", "No date"],
-  ["done", "Done"],
+  ["overdue", ui("Overdue")],
+  ["today", ui("Today")],
+  ["upcoming", ui("Upcoming")],
+  ["nodate", ui("No date")],
+  ["done", ui("Done")],
 ];
 
 /** The reader's zone as Date#getTimezoneOffset minutes, read as parseSearch reads it. */
@@ -143,14 +143,14 @@ function parseBody(b, existing, now) {
   const set = {};
   if ("title" in b || !existing) {
     const title = String(b.title ?? "").trim().slice(0, TITLE_MAX);
-    if (!title) return { error: "A task needs a title" };
+    if (!title) return { error: ui("A task needs a title") };
     set.title = title;
   }
   if ("notes" in b) set.notes = String(b.notes ?? "").slice(0, NOTES_MAX);
   if ("important" in b) set.important = b.important ? 1 : 0;
 
   const due = "due" in b ? timeField(b.due) : existing ? existing.due : null;
-  if (Number.isNaN(due)) return { error: "That due date is not a date" };
+  if (Number.isNaN(due)) return { error: ui("That due date is not a date") };
   const allDay = due == null ? 0 : "allDay" in b ? (b.allDay ? 1 : 0) : existing ? existing.due_all_day : 0;
   if ("due" in b || "allDay" in b || !existing) {
     set.due = due == null ? null : allDay ? Math.floor(due / DAY_MS) * DAY_MS : due;
@@ -159,11 +159,11 @@ function parseBody(b, existing, now) {
 
   if ("reminder" in b) {
     const at = timeField(b.reminder);
-    if (Number.isNaN(at)) return { error: "That reminder time is not a time" };
+    if (Number.isNaN(at)) return { error: ui("That reminder time is not a time") };
     // Only a change has to be ahead: saving a task whose reminder has since
     // gone by must not fail on a field the user did not touch.
     if (at != null && at <= now && at !== (existing ? existing.reminder : null)) {
-      return { error: "Pick a reminder time in the future" };
+      return { error: ui("Pick a reminder time in the future") };
     }
     set.reminder = at;
   }
@@ -203,7 +203,7 @@ async function create(request, env) {
 
 async function update(request, env, id) {
   const existing = await rowById(env, id);
-  if (!existing) return json({ error: "No such task" }, 404);
+  if (!existing) return json({ error: ui("No such task") }, 404);
   const b = await request.json().catch(() => ({}));
   const now = Date.now();
   const p = parseBody(b, existing, now);
@@ -226,7 +226,7 @@ async function update(request, env, id) {
  */
 async function setDone(env, id, done) {
   const existing = await rowById(env, id);
-  if (!existing) return json({ error: "No such task" }, 404);
+  if (!existing) return json({ error: ui("No such task") }, 404);
   const now = Date.now();
   const r = await env.DB.prepare(
     done
@@ -243,7 +243,7 @@ async function setDone(env, id, done) {
 async function remove(env, id) {
   await clearReminder(env, "task", id);
   const r = await env.DB.prepare("DELETE FROM tasks WHERE id=?").bind(id).run();
-  return (r.meta?.changes ?? 0) ? json({ ok: true }) : json({ error: "No such task" }, 404);
+  return (r.meta?.changes ?? 0) ? json({ ok: true }) : json({ error: ui("No such task") }, 404);
 }
 
 async function clearCompleted(env) {
@@ -267,7 +267,7 @@ async function api(request, env, path) {
   if (m[2]) return method === "POST" ? setDone(env, id, m[2] === "complete") : null;
   if (method === "GET") {
     const row = await rowById(env, id);
-    return row ? json({ task: shape(row) }) : json({ error: "No such task" }, 404);
+    return row ? json({ task: shape(row) }) : json({ error: ui("No such task") }, 404);
   }
   if (method === "POST") return update(request, env, id);
   if (method === "DELETE") return remove(env, id);

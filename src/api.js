@@ -28,7 +28,7 @@ import { attachCategories, conversationState } from "./categories.js";
 import { flagAccount, forgetMessages, imapError, unfollow, unindex, uncategorize } from "./store.js";
 import { onUnstar } from "./followup.js";
 import { countDestroyed, forgetBlockedLocally, mailboxNames, noteMailbox, purgeBlockedAtProvider, syncAccount } from "./sync.js";
-import { ATTACHMENT_HEADERS, FLAG_FLAGGED, FLAG_SEEN, bodyKey, hashHex, json } from "./util.js";
+import { ATTACHMENT_HEADERS, FLAG_FLAGGED, FLAG_SEEN, bodyKey, hashHex, json, ui } from "./util.js";
 
 // Every message of a pinned conversation, and the pinned messages that have no
 // conversation key. A message is pinned when any message of its conversation is,
@@ -89,7 +89,7 @@ export async function handleApi(request, env, path, ctx, session) {
   const acctId = path.match(/^\/api\/accounts\/([a-f0-9]{8})\/identity$/);
   if (acctId && request.method === "POST") {
     const acct = await accountById(env, acctId[1]);
-    if (!acct) return json({ error: "Unknown account" }, 404);
+    if (!acct) return json({ error: ui("Unknown account") }, 404);
     const b = await request.json().catch(() => ({}));
     const name = String(b.name ?? "").replace(/[\r\n"<>]/g, "").trim().slice(0, 80);
     const list = parseAddressList(String(Array.isArray(b.aliases) ? b.aliases.join(",") : b.aliases || ""))
@@ -114,7 +114,7 @@ export async function handleApi(request, env, path, ctx, session) {
     const b = await request.json().catch(() => ({}));
     const email = String(b.email || "").trim().toLowerCase();
     const password = String(b.password || "").trim();
-    if (!email.includes("@") || !password) return json({ error: "Address and app password required" }, 400);
+    if (!email.includes("@") || !password) return json({ error: ui("Address and app password required") }, 400);
 
     try {
       const im = await imapOpen({ user: email, pass: password });
@@ -124,7 +124,7 @@ export async function handleApi(request, env, path, ctx, session) {
       return json(
         {
           error: isAuthFailure(e)
-            ? "Apple rejected that address or app password"
+            ? ui("Apple rejected that address or app password")
             : String(e.message || e),
         },
         400
@@ -150,9 +150,9 @@ export async function handleApi(request, env, path, ctx, session) {
   const smtpCk = path.match(/^\/api\/accounts\/([a-f0-9]{8})\/smtp-check$/);
   if (smtpCk && request.method === "GET") {
     const acct = await accountById(env, smtpCk[1]);
-    if (!acct || acct.provider !== "icloud") return json({ error: "Not an iCloud account" }, 400);
+    if (!acct || acct.provider !== "icloud") return json({ error: ui("Not an iCloud account") }, 400);
     const pass = await icloudPassword(env, acct);
-    if (!pass) return json({ error: "No stored app password for this account" }, 400);
+    if (!pass) return json({ error: ui("No stored app password for this account") }, 400);
     return json(await smtpCheck({ user: acct.email, pass }));
   }
 
@@ -175,9 +175,9 @@ export async function handleApi(request, env, path, ctx, session) {
   const acctSync = path.match(/^\/api\/accounts\/([a-f0-9]{8})\/sync$/);
   if (acctSync && request.method === "POST") {
     const acct = await accountById(env, acctSync[1]);
-    if (!acct) return json({ error: "Unknown account" }, 404);
+    if (!acct) return json({ error: ui("Unknown account") }, 404);
     if (!acct.secret) {
-      return json({ error: "This account has no stored credential" }, 400);
+      return json({ error: ui("This account has no stored credential") }, 400);
     }
     const r = await syncAccount(env, acct);
     if (r.error) return json({ error: r.error }, r.error === "This account needs reconnecting" ? 409 : 502);
@@ -193,7 +193,7 @@ export async function handleApi(request, env, path, ctx, session) {
   // POST /api/push/subscribe — one row per device.
   if (path === "/api/push/subscribe" && request.method === "POST") {
     const sub = await request.json().catch(() => null);
-    if (!sub?.endpoint) return json({ error: "Not a push subscription" }, 400);
+    if (!sub?.endpoint) return json({ error: ui("Not a push subscription") }, 400);
     // The Worker POSTs to this URL on every new mail, so it has to be a push
     // service and not an arbitrary address: https, and one of the services
     // browsers actually hand out.
@@ -205,7 +205,7 @@ export async function handleApi(request, env, path, ctx, session) {
       /* not a URL */
     }
     const PUSH_HOSTS = /(^|\.)(googleapis\.com|push\.apple\.com|mozilla\.com|mozaws\.net|notify\.windows\.com)$/;
-    if (!PUSH_HOSTS.test(host)) return json({ error: "Not a known push service" }, 400);
+    if (!PUSH_HOSTS.test(host)) return json({ error: ui("Not a known push service") }, 400);
     await env.DB.prepare(
       `INSERT INTO push_subs (endpoint, sub, created_at) VALUES (?,?,?)
        ON CONFLICT(endpoint) DO UPDATE SET sub=excluded.sub`
@@ -265,7 +265,7 @@ export async function handleApi(request, env, path, ctx, session) {
   if (path === "/api/push/only" && request.method === "POST") {
     const b = await request.json().catch(() => ({}));
     const endpoint = String(b.endpoint || "");
-    if (!endpoint) return json({ error: "No subscription to keep" }, 400);
+    if (!endpoint) return json({ error: ui("No subscription to keep") }, 400);
     const before = await env.DB.prepare("SELECT COUNT(*) AS n FROM push_subs").first();
     await env.DB.prepare("DELETE FROM push_subs WHERE endpoint != ?").bind(endpoint).run();
     const after = await env.DB.prepare("SELECT COUNT(*) AS n FROM push_subs").first();
@@ -301,13 +301,13 @@ export async function handleApi(request, env, path, ctx, session) {
   if (path === "/api/folders" && request.method === "POST") {
     const b = await request.json().catch(() => ({}));
     const name = String(b.name || "").trim().slice(0, 120);
-    if (!name) return json({ error: "Give the folder a name" }, 400);
-    if (PROTECTED.has(name.toLowerCase())) return json({ error: `"${name}" is a reserved name` }, 400);
+    if (!name) return json({ error: ui("Give the folder a name") }, 400);
+    if (PROTECTED.has(name.toLowerCase())) return json({ error: ui(`"${name}" is a reserved name`) }, 400);
     // Quotes and control characters break the IMAP command they travel in.
-    if (/["\\\r\n]/.test(name)) return json({ error: "Name cannot contain quotes or line breaks" }, 400);
+    if (/["\\\r\n]/.test(name)) return json({ error: ui("Name cannot contain quotes or line breaks") }, 400);
 
     const acct = await theAccount(env);
-    if (!acct) return json({ error: "No connected account" }, 400);
+    if (!acct) return json({ error: ui("No connected account") }, 400);
     let box;
     try {
       box = await withImap(env, acct, async (im) => {
@@ -322,7 +322,7 @@ export async function handleApi(request, env, path, ctx, session) {
         // proof the thing is selectable rather than merely acknowledged.
         const boxes = await imapList(im);
         const made = resolveMailbox(boxes, wire) || resolveMailbox(boxes, name);
-        if (!made) throw new Error(`The server accepted "${name}" but does not list it`);
+        if (!made) throw new Error(ui(`The server accepted "${name}" but does not list it`));
         return made;
       });
     } catch (e) {
@@ -339,27 +339,30 @@ export async function handleApi(request, env, path, ctx, session) {
     const b = await request.json().catch(() => ({}));
     const from = String(b.from || "").trim();
     const to = String(b.to || "").trim().slice(0, 120);
-    if (!from || !to) return json({ error: "Need both names" }, 400);
+    if (!from || !to) return json({ error: ui("Need both names") }, 400);
     if (PROTECTED.has(from.toLowerCase()) || PROTECTED.has(to.toLowerCase())) {
-      return json({ error: "System folders cannot be renamed" }, 400);
+      return json({ error: ui("System folders cannot be renamed") }, 400);
     }
-    if (/["\\\r\n]/.test(to)) return json({ error: "Name cannot contain quotes or line breaks" }, 400);
+    if (/["\\\r\n]/.test(to)) return json({ error: ui("Name cannot contain quotes or line breaks") }, 400);
 
     const acct = await theAccount(env);
-    if (!acct) return json({ error: "No connected account" }, 400);
+    if (!acct) return json({ error: ui("No connected account") }, 400);
     let moved;
     try {
       moved = await withImap(env, acct, async (im) => {
         const boxes = await imapList(im);
         const box = resolveMailbox(boxes, from);
-        if (!box) throw new Error(`No mailbox matching "${from}". Server has: ${mailboxList(boxes)}`);
+        if (!box) {
+          const folders = mailboxList(boxes);
+          throw new Error(ui(`No mailbox matching "${from}". Server has: ${folders}`));
+        }
         const was = folderNameFor(box);
-        if (PROTECTED.has(was)) throw new Error("That is a system mailbox");
+        if (PROTECTED.has(was)) throw new Error(ui("That is a system mailbox"));
         // `to` is the new leaf, the part the UI shows. Sent as the whole path
         // it moved "INBOX/Receipts" to the root, even when nothing was changed,
         // so the parent is kept here, where the delimiter is known.
         if (box.delim && to.includes(box.delim)) {
-          throw new Error(`Name cannot contain "${box.delim}"`);
+          throw new Error(ui(`Name cannot contain "${box.delim}"`));
         }
         // The parent is already as the server lists it; only the new leaf
         // was typed, and only it needs putting into IMAP's form.
@@ -370,7 +373,7 @@ export async function handleApi(request, env, path, ctx, session) {
         // As with CREATE: RENAME accepted is not RENAME listed, and the app
         // name comes from what the server now calls it, not from what was typed.
         const made = resolveMailbox(await imapList(im), path);
-        if (!made) throw new Error(`The server accepted "${to}" but does not list it`);
+        if (!made) throw new Error(ui(`The server accepted "${to}" but does not list it`));
         const now = folderNameFor(made);
         // The stored cursor is keyed by IMAP name; leaving the old key means
         // the renamed mailbox looks brand new and re-downloads from scratch.
@@ -406,17 +409,20 @@ export async function handleApi(request, env, path, ctx, session) {
     const b = await request.json().catch(() => ({}));
     const which = String(b.folder || "trash").toLowerCase();
     if (which !== "trash" && which !== "spam") {
-      return json({ error: "Only Trash and Spam can be emptied" }, 400);
+      return json({ error: ui("Only Trash and Spam can be emptied") }, 400);
     }
     const acct = await theAccount(env);
-    if (!acct) return json({ error: "No connected account" }, 400);
+    if (!acct) return json({ error: ui("No connected account") }, 400);
 
     let removed = 0;
     try {
       removed = await withImap(env, acct, async (im) => {
         const boxes = await imapList(im);
         const box = resolveMailbox(boxes, which);
-        if (!box) throw new Error(`No ${which} mailbox. Server has: ${mailboxList(boxes)}`);
+        if (!box) {
+          const folders = mailboxList(boxes);
+          throw new Error(ui(`No ${which} mailbox. Server has: ${folders}`));
+        }
         return imapEmpty(im, box.name);
       });
     } catch (e) {
@@ -443,16 +449,19 @@ export async function handleApi(request, env, path, ctx, session) {
   const folderDel = path.match(/^\/api\/folders\/(.+)$/);
   if (folderDel && request.method === "DELETE") {
     const name = decodeURIComponent(folderDel[1]);
-    if (PROTECTED.has(name.toLowerCase())) return json({ error: "System folders cannot be deleted" }, 400);
+    if (PROTECTED.has(name.toLowerCase())) return json({ error: ui("System folders cannot be deleted") }, 400);
 
     const acct = await theAccount(env);
-    if (!acct) return json({ error: "No connected account" }, 400);
+    if (!acct) return json({ error: ui("No connected account") }, 400);
     try {
       await withImap(env, acct, async (im) => {
         const boxes = await imapList(im);
         const box = resolveMailbox(boxes, name);
-        if (!box) throw new Error(`No mailbox matching "${name}". Server has: ${mailboxList(boxes)}`);
-        if (PROTECTED.has(folderNameFor(box))) throw new Error("That is a system mailbox");
+        if (!box) {
+          const folders = mailboxList(boxes);
+          throw new Error(ui(`No mailbox matching "${name}". Server has: ${folders}`));
+        }
+        if (PROTECTED.has(folderNameFor(box))) throw new Error(ui("That is a system mailbox"));
         await imapDelete(im, box.name);
         await renameCursor(env, acct, box.name, null);
       });
@@ -479,7 +488,7 @@ export async function handleApi(request, env, path, ctx, session) {
   // what Apple actually sends so the parser can be fixed against fact.
   if (path === "/api/debug/mailboxes" && request.method === "GET") {
     const acct = await theAccount(env);
-    if (!acct) return json({ error: "No connected account" }, 400);
+    if (!acct) return json({ error: ui("No connected account") }, 400);
     try {
       const [raw, boxes, counts] = await withImap(env, acct, async (im) => {
         const raw = await imapListRaw(im);
@@ -533,9 +542,9 @@ export async function handleApi(request, env, path, ctx, session) {
   // finishes the job.
   if (path === "/api/repair/self-copies" && request.method === "POST") {
     const acct = await theAccount(env);
-    if (!acct) return json({ error: "No connected account" }, 400);
+    if (!acct) return json({ error: ui("No connected account") }, 400);
     const pass = await icloudPassword(env, acct);
-    if (!pass) return json({ error: "This account has no stored password" }, 400);
+    if (!pass) return json({ error: ui("This account has no stored password") }, 400);
 
     const like = `%${acct.email.toLowerCase()}%`;
     const WHERE = `account_id=? AND folder='sent' AND mid<>''
@@ -560,7 +569,10 @@ export async function handleApi(request, env, path, ctx, session) {
     try {
       const boxes = await imapList(im);
       const inbox = boxes.find((mb) => folderNameFor(mb) === "inbox");
-      if (!inbox) return json({ error: `no Inbox — server has: ${mailboxList(boxes)}` }, 502);
+      if (!inbox) {
+        const folders = mailboxList(boxes);
+        return json({ error: ui(`no Inbox — server has: ${folders}`) }, 502);
+      }
       await imapSelect(im, inbox.name);
       for (const r of rows) {
         const uids = await imapSearch(im, `HEADER "Message-ID" "${String(r.mid).replace(/["\\\r\n]/g, "")}"`);
@@ -656,8 +668,8 @@ export async function handleApi(request, env, path, ctx, session) {
     const key = String(b.key || "").slice(0, 300);
     const from = String(b.from || "").slice(0, 100);
     const target = String(b.folder || "").slice(0, 100);
-    if (!key || !from) return json({ error: "Which conversation, and from where?" }, 400);
-    if (!b.purge && !target) return json({ error: "No destination folder" }, 400);
+    if (!key || !from) return json({ error: ui("Which conversation, and from where?") }, 400);
+    if (!b.purge && !target) return json({ error: ui("No destination folder") }, 400);
     if (!b.purge && target === from) return json({ ok: true, n: 0, ids: [] });
 
     const only = Array.isArray(b.ids)
@@ -667,14 +679,17 @@ export async function handleApi(request, env, path, ctx, session) {
     if (!rows.length) return json({ ok: true, n: 0, ids: [] });
 
     const acct = await accountById(env, rows[0].account_id);
-    if (!acct) return json({ error: "Unknown account" }, 404);
+    if (!acct) return json({ error: ui("Unknown account") }, 404);
 
     let acted = [];
     try {
       acted = await threadAct(env, acct, rows, async (im, boxes, uid) => {
         if (b.purge) return imapPurge(im, uid);
         const dest = resolveMailbox(boxes, target);
-        if (!dest) throw new Error(`No mailbox matching "${target}". Server has: ${mailboxList(boxes)}`);
+        if (!dest) {
+          const folders = mailboxList(boxes);
+          throw new Error(ui(`No mailbox matching "${target}". Server has: ${folders}`));
+        }
         await imapMove(im, uid, dest.name);
       });
     } catch (e) {
@@ -699,7 +714,7 @@ export async function handleApi(request, env, path, ctx, session) {
     // to be refiled here all the same, so the app showed it in Trash while
     // iCloud and every other device still had it where it was.
     if (!acted.length) {
-      return json({ error: "iCloud no longer has this in that folder. It may have been moved on another device." }, 404);
+      return json({ error: ui("iCloud no longer has this in that folder. It may have been moved on another device.") }, 404);
     }
     // The folder and nothing else. This also marked every message read, here
     // only: filing an unread conversation showed it read in the app while
@@ -728,7 +743,7 @@ export async function handleApi(request, env, path, ctx, session) {
   if (path === "/api/blocked" && request.method === "POST") {
     const b = await request.json().catch(() => ({}));
     const pattern = String(b.pattern || "").trim().toLowerCase().replace(/^@/, "").slice(0, 200);
-    if (!isBlockPattern(pattern)) return json({ error: "Not an address or a domain" }, 400);
+    if (!isBlockPattern(pattern)) return json({ error: ui("Not an address or a domain") }, 400);
 
     // A rule matching one of your own addresses would expunge your sent mail
     // on the next pass, one mailbox at a time, with nothing to stop it. The
@@ -738,7 +753,7 @@ export async function handleApi(request, env, path, ctx, session) {
     const own = [];
     for (const a of mine) own.push(a.email, ...(await aliasesOf(env, a)));
     if (own.some((e) => blockMatches(e, pattern))) {
-      return json({ error: "That rule would block your own address" }, 400);
+      return json({ error: ui("That rule would block your own address") }, 400);
     }
 
     await env.DB
@@ -789,7 +804,7 @@ export async function handleApi(request, env, path, ctx, session) {
   if (path === "/api/image-senders" && request.method === "POST") {
     const b = await request.json().catch(() => ({}));
     const email = String(b.email || "").trim().toLowerCase().slice(0, 200);
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return json({ error: "Not an address" }, 400);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return json({ error: ui("Not an address") }, 400);
     await env.DB.prepare("INSERT OR IGNORE INTO image_senders (email, created_at) VALUES (?,?)")
       .bind(email, Date.now())
       .run();
@@ -808,7 +823,7 @@ export async function handleApi(request, env, path, ctx, session) {
   // activated again, the extension included. This one gets a fresh cookie,
   // issued after the cut-off, in the same response.
   if (path === "/api/sessions/sign-out-others" && request.method === "POST") {
-    if (!session || session.scope) return json({ error: "Not from this session" }, 403);
+    if (!session || session.scope) return json({ error: ui("Not from this session") }, 403);
     const token = await revokeOthers(session, env);
     return json({ ok: true }, 200, { "Set-Cookie": sessionCookie(token) });
   }
@@ -1005,7 +1020,7 @@ export async function handleApi(request, env, path, ctx, session) {
   const msgGet = path.match(/^\/api\/messages\/([a-f0-9]{16})$/);
   if (msgGet && request.method === "GET") {
     const msg = await env.DB.prepare("SELECT * FROM messages WHERE id=?").bind(msgGet[1]).first();
-    if (!msg) return json({ error: "Unknown message" }, 404);
+    if (!msg) return json({ error: ui("Unknown message") }, 404);
     const acct = await accountById(env, msg.account_id);
 
     // ?peek=1 — fetch a message without marking it read. Saving a whole
@@ -1079,25 +1094,25 @@ export async function handleApi(request, env, path, ctx, session) {
   const attGet = path.match(/^\/api\/messages\/([a-f0-9]{16})\/attachment\/(\d+)$/);
   if (attGet && request.method === "GET") {
     const msg = await env.DB.prepare("SELECT * FROM messages WHERE id=?").bind(attGet[1]).first();
-    if (!msg) return json({ error: "Unknown message" }, 404);
+    if (!msg) return json({ error: ui("Unknown message") }, 404);
     const acct = await accountById(env, msg.account_id);
-    if (!acct) return json({ error: "Unknown account" }, 404);
+    if (!acct) return json({ error: ui("Unknown account") }, 404);
 
     const stored = await env.MAIL.get(bodyKey(msg.id));
     const meta = stored ? JSON.parse(await stored.text()) : {};
     const att = (meta.attachments || [])[Number(attGet[2])];
-    if (!att?.part) return json({ error: "No such attachment" }, 404);
+    if (!att?.part) return json({ error: ui("No such attachment") }, 404);
 
     let encoded = null;
     try {
       const found = await icloudAct(env, acct, msg.mid || msg.pid, msg.folder, async (im, _b, _h, uid) => {
         encoded = await imapFetchPart(im, uid, att.part);
       });
-      if (!found) return json({ error: "This account cannot fetch attachments" }, 400);
+      if (!found) return json({ error: ui("This account cannot fetch attachments") }, 400);
     } catch (e) {
       return imapError(e, acct, env);
     }
-    if (encoded === null) return json({ error: "Apple returned nothing for that part" }, 502);
+    if (encoded === null) return json({ error: ui("Apple returned nothing for that part") }, 502);
 
     const whole = partBytes(encoded, att.encoding);
     // A file inside a winmail.dat: the part just fetched is the container,
@@ -1105,7 +1120,7 @@ export async function handleApi(request, env, path, ctx, session) {
     // container gave when the body was built, so what is served matches what
     // was listed; a container that no longer holds that file is a 404.
     const inner = att.tnef === undefined ? null : parseTnef(whole).files[att.tnef];
-    if (att.tnef !== undefined && !inner) return json({ error: "That file is no longer inside the attachment" }, 404);
+    if (att.tnef !== undefined && !inner) return json({ error: ui("That file is no longer inside the attachment") }, 404);
     return downloadResponse(inner ? inner.data : whole, att.filename, att.type);
   }
 
@@ -1117,17 +1132,17 @@ export async function handleApi(request, env, path, ctx, session) {
   const zipGet = path.match(/^\/api\/messages\/([a-f0-9]{16})\/attachments\.zip$/);
   if (zipGet && request.method === "GET") {
     const msg = await env.DB.prepare("SELECT * FROM messages WHERE id=?").bind(zipGet[1]).first();
-    if (!msg) return json({ error: "Unknown message" }, 404);
+    if (!msg) return json({ error: ui("Unknown message") }, 404);
     const acct = await accountById(env, msg.account_id);
-    if (!acct) return json({ error: "Unknown account" }, 404);
+    if (!acct) return json({ error: ui("Unknown account") }, 404);
 
     const stored = await env.MAIL.get(bodyKey(msg.id));
     const meta = stored ? JSON.parse(await stored.text()) : {};
     const atts = (meta.attachments || []).filter((a) => a.part);
-    if (!atts.length) return json({ error: "Nothing attached to this message" }, 404);
+    if (!atts.length) return json({ error: ui("Nothing attached to this message") }, 404);
 
     const pass = await icloudPassword(env, acct);
-    if (!pass) return json({ error: "This account cannot fetch attachments" }, 400);
+    if (!pass) return json({ error: ui("This account cannot fetch attachments") }, 400);
 
     // One connection for the whole archive rather than one per file: eleven
     // logins to Apple to build one zip would be both slow and rude.
@@ -1154,7 +1169,7 @@ export async function handleApi(request, env, path, ctx, session) {
     }
     if (uid === null) {
       await im.logout();
-      return json({ error: "Message not found on the server" }, 404);
+      return json({ error: ui("Message not found on the server") }, 404);
     }
 
     let held = null;
@@ -1203,11 +1218,11 @@ export async function handleApi(request, env, path, ctx, session) {
   const unsub = path.match(/^\/api\/messages\/([a-f0-9]{16})\/unsubscribe$/);
   if (unsub && request.method === "POST") {
     const msg = await env.DB.prepare("SELECT * FROM messages WHERE id=?").bind(unsub[1]).first();
-    if (!msg) return json({ error: "Unknown message" }, 404);
+    if (!msg) return json({ error: ui("Unknown message") }, 404);
     const stored = await env.MAIL.get(bodyKey(msg.id));
     const meta = stored ? JSON.parse(await stored.text()) : {};
     const header = String(meta.unsubscribe || "");
-    if (!header) return json({ error: "This sender offers no unsubscribe link" }, 404);
+    if (!header) return json({ error: ui("This sender offers no unsubscribe link") }, 404);
 
     // The header is a list of <…> targets: usually one https and one mailto.
     const targets = [...header.matchAll(/<([^>]+)>/g)].map((m) => m[1].trim());
@@ -1222,9 +1237,9 @@ export async function handleApi(request, env, path, ctx, session) {
           body: "List-Unsubscribe=One-Click",
         });
         if (res.ok) return json({ ok: true, method: "one-click" });
-        return json({ ok: false, url: web, error: `Sender replied ${res.status}` });
+        return json({ ok: false, url: web, error: ui(`Sender replied ${res.status}`) });
       } catch {
-        return json({ ok: false, url: web, error: "Could not reach the sender" });
+        return json({ ok: false, url: web, error: ui("Could not reach the sender") });
       }
     }
     // Not one-click: hand back where it goes and let the reader decide.
@@ -1239,9 +1254,9 @@ export async function handleApi(request, env, path, ctx, session) {
   const purge = path.match(/^\/api\/messages\/([a-f0-9]{16})\/purge$/);
   if (purge && request.method === "POST") {
     const msg = await env.DB.prepare("SELECT * FROM messages WHERE id=?").bind(purge[1]).first();
-    if (!msg) return json({ error: "Unknown message" }, 404);
+    if (!msg) return json({ error: ui("Unknown message") }, 404);
     const acct = await accountById(env, msg.account_id);
-    if (!acct) return json({ error: "Unknown account" }, 404);
+    if (!acct) return json({ error: ui("Unknown account") }, 404);
 
     let gone = false;
     try {
@@ -1259,7 +1274,7 @@ export async function handleApi(request, env, path, ctx, session) {
         (im, _b, _h, uid) => imapPurge(im, uid),
         { onlyHint: true }
       );
-      if (!done) return json({ error: "This account cannot delete permanently" }, 400);
+      if (!done) return json({ error: ui("This account cannot delete permanently") }, 400);
     } catch (e) {
       // A message the server does not have is already as deleted as it can be
       // there, and refusing to drop the row over it leaves one that cannot be
@@ -1293,12 +1308,12 @@ export async function handleApi(request, env, path, ctx, session) {
   if (msgMove && request.method === "POST") {
     const b = await request.json().catch(() => ({}));
     const target = String(b.folder || "").slice(0, 100);
-    if (!target) return json({ error: "No destination folder" }, 400);
+    if (!target) return json({ error: ui("No destination folder") }, 400);
 
     const msg = await env.DB.prepare("SELECT * FROM messages WHERE id=?").bind(msgMove[1]).first();
-    if (!msg) return json({ error: "Unknown message" }, 404);
+    if (!msg) return json({ error: ui("Unknown message") }, 404);
     const acct = await accountById(env, msg.account_id);
-    if (!acct) return json({ error: "Unknown account" }, 404);
+    if (!acct) return json({ error: ui("Unknown account") }, 404);
 
     try {
       // Over IMAP, undoing a delete is just another move: out of Trash and
@@ -1317,9 +1332,9 @@ export async function handleApi(request, env, path, ctx, session) {
   if (msgFlag && request.method === "POST") {
     const b = await request.json().catch(() => ({}));
     const msg = await env.DB.prepare("SELECT * FROM messages WHERE id=?").bind(msgFlag[1]).first();
-    if (!msg) return json({ error: "Unknown message" }, 404);
+    if (!msg) return json({ error: ui("Unknown message") }, 404);
     const acct = await accountById(env, msg.account_id);
-    if (!acct) return json({ error: "Unknown account" }, 404);
+    if (!acct) return json({ error: ui("Unknown account") }, 404);
 
     try {
       if (typeof b.starred === "boolean") {
@@ -1374,13 +1389,13 @@ export async function handleApi(request, env, path, ctx, session) {
       return json({ ok: true, stored: false, secret: !!env.ANTHROPIC_API_KEY });
     }
     if (key.length > 300 || /\s/.test(key)) {
-      return json({ error: "That does not look like an API key" }, 400);
+      return json({ error: ui("That does not look like an API key") }, 400);
     }
     // Proved against Anthropic before it is stored, for the same reason the
     // iCloud password is proved against Apple: a bad one otherwise surfaces
     // an hour later, in the composer, with a draft on screen.
     const refused = await keyRefused(key);
-    if (refused) return json({ error: `Anthropic refused this key: ${refused}`.slice(0, 240) }, 400);
+    if (refused) return json({ error: ui(`Anthropic refused this key: ${refused}`).slice(0, 240) }, 400);
     await env.DB.batch([
       env.DB.prepare(
         "INSERT INTO settings (key, value) VALUES ('claude_key', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value"
@@ -1403,16 +1418,16 @@ export async function handleApi(request, env, path, ctx, session) {
       return json({ ok: true, model: env.CLAUDE_MODEL || CLAUDE_DEFAULT });
     }
     if (!/^[a-z0-9][a-z0-9.\-]{2,60}$/i.test(model)) {
-      return json({ error: "That is not a model name" }, 400);
+      return json({ error: ui("That is not a model name") }, 400);
     }
     const key = await aiKey(env);
-    if (!key) return json({ error: "No AI key set" }, 400);
+    if (!key) return json({ error: ui("No AI key set") }, 400);
     // Checked against the key that will have to call it, for the same reason
     // the key itself is checked: the alternative is finding out mid-sentence.
     const list = await usableModels(key);
-    if (list.error) return json({ error: `Anthropic: ${list.error}`.slice(0, 240) }, 502);
+    if (list.error) return json({ error: ui(`Anthropic: ${list.error}`).slice(0, 240) }, 502);
     if (!list.models.includes(model)) {
-      return json({ error: `${model} is not available on this key` }, 400);
+      return json({ error: ui(`${model} is not available on this key`) }, 400);
     }
     await env.DB.prepare(
       "INSERT INTO settings (key, value) VALUES ('claude_model', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value"
@@ -1427,7 +1442,7 @@ export async function handleApi(request, env, path, ctx, session) {
   // source of the list the model picker offers.
   if (path === "/api/ai-check" && request.method === "GET") {
     const key = await aiKey(env);
-    if (!key) return json({ error: "No AI key set" }, 400);
+    if (!key) return json({ error: ui("No AI key set") }, 400);
     const want = await aiModel(env);
     const list = await usableModels(key);
     if (list.error) {
@@ -1459,11 +1474,11 @@ export async function handleApi(request, env, path, ctx, session) {
   if (path === "/api/assist" && request.method === "POST") {
     const key = await aiKey(env);
     if (!key) {
-      return json({ error: "No AI key set — add one under the account button" }, 400);
+      return json({ error: ui("No AI key set — add one under the account button") }, 400);
     }
     const b = await request.json().catch(() => ({}));
     const text = String(b.text || "").slice(0, 12_000);
-    if (!text.trim()) return json({ error: "Nothing to work on" }, 400);
+    if (!text.trim()) return json({ error: ui("Nothing to work on") }, 400);
     const mode = b.mode === "improve" || b.mode === "reply" ? b.mode : "grammar";
     // Both of these come out of your own composer, so they are yours and are
     // followed. The message being answered is not, and is fenced off below.
@@ -1515,7 +1530,7 @@ No invented facts, no commitment to anything the brief does not cover, and no br
       // notes is worth a little more of it.
       effort: { grammar: "low", improve: "low", reply: "medium" }[mode],
     });
-    if (out.error) return json({ error: `AI: ${out.error}`.slice(0, 240) }, 502);
+    if (out.error) return json({ error: ui(`AI: ${out.error}`).slice(0, 240) }, 502);
     return json({ text: out.text });
   }
 
@@ -1527,7 +1542,7 @@ No invented facts, no commitment to anything the brief does not cover, and no br
   if (path === "/api/draft" && request.method === "POST") {
     const b = await request.json().catch(() => ({}));
     const acct = await accountById(env, String(b.account_id || ""));
-    if (!acct) return json({ error: "Pick an account to save from" }, 400);
+    if (!acct) return json({ error: ui("Pick an account to save from") }, 400);
 
     const html = String(b.html || "");
     const text = String(b.text || "") || htmlToText(html);
@@ -1540,10 +1555,10 @@ No invented facts, no commitment to anything the brief does not cover, and no br
     // nothing here insists on a recipient or a body. Only on there being
     // something at all, because an empty composer is not a draft.
     if (!text.trim() && !html.trim() && !subject && !to.length && !cc.length && !bcc.length) {
-      return json({ error: "Nothing to save" }, 400);
+      return json({ error: ui("Nothing to save") }, 400);
     }
     if (html.length > 8 * 1024 * 1024) {
-      return json({ error: "Too large to keep as a draft. Remove or shrink an image." }, 413);
+      return json({ error: ui("Too large to keep as a draft. Remove or shrink an image.") }, 413);
     }
 
     const attachments = (Array.isArray(b.attachments) ? b.attachments : [])
@@ -1556,7 +1571,7 @@ No invented facts, no commitment to anything the brief does not cover, and no br
       }));
 
     const pass = await icloudPassword(env, acct);
-    if (!pass) return json({ error: "This account cannot keep drafts" }, 400);
+    if (!pass) return json({ error: ui("This account cannot keep drafts") }, 400);
 
     const orig = b.reply_to
       ? await env.DB.prepare("SELECT * FROM messages WHERE id=?").bind(String(b.reply_to)).first()
@@ -1693,21 +1708,21 @@ No invented facts, no commitment to anything the brief does not cover, and no br
     const b = await request.json().catch(() => ({}));
     const status = String(b.status || "");
     const msg = await env.DB.prepare("SELECT * FROM messages WHERE id=?").bind(rsvp[1]).first();
-    if (!msg) return json({ error: "Unknown message" }, 404);
+    if (!msg) return json({ error: ui("Unknown message") }, 404);
     const acct = await accountById(env, msg.account_id);
-    if (!acct) return json({ error: "Unknown account" }, 404);
+    if (!acct) return json({ error: ui("Unknown account") }, 404);
     const stored = await env.MAIL.get(bodyKey(msg.id));
     const invite = stored ? parseIcs(JSON.parse(await stored.text()).calendar || "") : null;
     if (!invite || invite.method !== "REQUEST" || !invite.organizer?.email) {
-      return json({ error: "This is not an invitation that can be answered" }, 400);
+      return json({ error: ui("This is not an invitation that can be answered") }, 400);
     }
     const own = [acct.email, ...(await aliasesOf(env, acct))].map((e) => e.toLowerCase());
     const me = invite.attendees.find((a) => own.includes(a.email))?.email || acct.email;
     const ics = icsReply(invite, { email: me, name: acct.label !== acct.email ? acct.label : "", status });
-    if (!ics) return json({ error: "Answer with accepted, tentative or declined" }, 400);
+    if (!ics) return json({ error: ui("Answer with accepted, tentative or declined") }, 400);
     const word = { accepted: "Accepted", tentative: "Tentatively accepted", declined: "Declined" }[status];
     const pass = await icloudPassword(env, acct);
-    if (!pass) return json({ error: "This account has no stored credential" }, 400);
+    if (!pass) return json({ error: ui("This account has no stored credential") }, 400);
     const sender = await senderFor(env, acct, me, msg);
     const raw = buildRfc822({
       from: sender.header,
@@ -1758,9 +1773,9 @@ No invented facts, no commitment to anything the brief does not cover, and no br
   const sumRoute = path.match(/^\/api\/messages\/([a-f0-9]{16})\/summary$/);
   if (sumRoute && request.method === "POST") {
     const key = await aiKey(env);
-    if (!key) return json({ error: "No AI key set — add one under Settings → Writing" }, 400);
+    if (!key) return json({ error: ui("No AI key set — add one under Settings → Writing") }, 400);
     const msg = await env.DB.prepare("SELECT * FROM messages WHERE id=?").bind(sumRoute[1]).first();
-    if (!msg) return json({ error: "Unknown message" }, 404);
+    if (!msg) return json({ error: ui("Unknown message") }, 404);
     const { results } = msg.thread_key
       ? await env.DB.prepare(
           "SELECT * FROM messages WHERE thread_key=? AND account_id=? ORDER BY date DESC LIMIT 12"
@@ -1791,7 +1806,7 @@ No invented facts, no commitment to anything the brief does not cover, and no br
       text: parts.join("\n\n---\n\n").slice(0, 40_000),
       effort: "low",
     });
-    if (out.error) return json({ error: `AI: ${out.error}`.slice(0, 240) }, 502);
+    if (out.error) return json({ error: ui(`AI: ${out.error}`).slice(0, 240) }, 502);
     return json({ text: out.text, n: rows.length });
   }
 
@@ -1800,11 +1815,11 @@ No invented facts, no commitment to anything the brief does not cover, and no br
   if (snz && request.method === "POST") {
     const b = await request.json().catch(() => ({}));
     const until = Math.floor(Number(b.until) || 0);
-    if (until < Date.now() + 60_000) return json({ error: "Pick a time at least a minute from now" }, 400);
+    if (until < Date.now() + 60_000) return json({ error: ui("Pick a time at least a minute from now") }, 400);
     const msg = await env.DB.prepare("SELECT * FROM messages WHERE id=?").bind(snz[1]).first();
-    if (!msg) return json({ error: "Unknown message" }, 404);
+    if (!msg) return json({ error: ui("Unknown message") }, 404);
     const acct = await accountById(env, msg.account_id);
-    if (!acct) return json({ error: "Unknown account" }, 404);
+    if (!acct) return json({ error: ui("Unknown account") }, 404);
     let folder = "Snoozed";
     try {
       const done = await icloudAct(env, acct, msg.mid || msg.pid, msg.folder, async (im, boxes, _here, uid) => {
@@ -1816,7 +1831,7 @@ No invented facts, no commitment to anything the brief does not cover, and no br
         folder = dest.flags ? folderNameFor(dest) : dest.name;
         await imapMove(im, uid, dest.name);
       });
-      if (!done) return json({ error: "This account has no stored credential" }, 400);
+      if (!done) return json({ error: ui("This account has no stored credential") }, 400);
     } catch (e) {
       return imapError(e, acct, env);
     }
@@ -1834,19 +1849,19 @@ No invented facts, no commitment to anything the brief does not cover, and no br
   const emlGet = path.match(/^\/api\/messages\/([a-f0-9]{16})\/eml$/);
   if (emlGet && request.method === "GET") {
     const msg = await env.DB.prepare("SELECT * FROM messages WHERE id=?").bind(emlGet[1]).first();
-    if (!msg) return json({ error: "Unknown message" }, 404);
+    if (!msg) return json({ error: ui("Unknown message") }, 404);
     const acct = await accountById(env, msg.account_id);
-    if (!acct) return json({ error: "Unknown account" }, 404);
+    if (!acct) return json({ error: ui("Unknown account") }, 404);
     let raw = null;
     try {
       const done = await icloudAct(env, acct, msg.mid || msg.pid, msg.folder, async (im, _b, _h, uid) => {
         raw = (await imapFetchRaw(im, uid))?.raw || null;
       });
-      if (!done) return json({ error: "This account has no stored credential" }, 400);
+      if (!done) return json({ error: ui("This account has no stored credential") }, 400);
     } catch (e) {
       return imapError(e, acct, env);
     }
-    if (!raw) return json({ error: "Apple returned nothing for this message" }, 502);
+    if (!raw) return json({ error: ui("Apple returned nothing for this message") }, 502);
     const name = (String(msg.subject || "message").replace(/[\\/:*?"<>|\x00-\x1f]+/g, " ").trim() || "message").slice(0, 80);
     return new Response(latin1ToBytes(raw), {
       headers: {
@@ -1944,14 +1959,14 @@ No invented facts, no commitment to anything the brief does not cover, and no br
   const outAct = path.match(/^\/api\/outbox\/([0-9a-f-]{36})\/(cancel|send)$/);
   if (outAct && request.method === "POST") {
     const [, id, act] = outAct;
-    const gone = () => json({ error: "Already sent or cancelled" }, 404);
+    const gone = () => json({ error: ui("Already sent or cancelled") }, 404);
     if (!(await env.DB.prepare("SELECT 1 FROM outbox WHERE id=?").bind(id).first())) return gone();
     // Both hold the lease the cron holds while it delivers. Without it "Send
     // now" sent a message the cron was sending at that moment a second time,
     // and Edit handed back one that was already on its way out.
     const release = await outboxLease(env, id);
     if (!release) {
-      return json({ error: "This message is being sent right now. Check Sent in a moment." }, 409);
+      return json({ error: ui("This message is being sent right now. Check Sent in a moment.") }, 409);
     }
     try {
       // Read again under the lease: the delivery that held it a moment ago
@@ -1965,7 +1980,7 @@ No invented facts, no commitment to anything the brief does not cover, and no br
         await env.MAIL.delete(`outbox/${id}.json`);
         return json({ ok: true, message: payload });
       }
-      if (!payload) return json({ error: "The scheduled message is missing" }, 410);
+      if (!payload) return json({ error: ui("The scheduled message is missing") }, 410);
       const res = await deliver(env, payload);
       if (res.status === 202) {
         await env.DB.prepare("DELETE FROM outbox WHERE id=?").bind(id).run();
@@ -1981,5 +1996,5 @@ No invented facts, no commitment to anything the brief does not cover, and no br
     }
   }
 
-  return json({ error: "Unknown route" }, 404);
+  return json({ error: ui("Unknown route") }, 404);
 }

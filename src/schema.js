@@ -480,7 +480,7 @@ export const MIGRATIONS = [
   // every address for new mail and for replies, so nobody's mail changes on
   // the day this ships. Its text is escaped and its line breaks made <br>.
   // Nothing happens where there was no signature.
-  ["signatures_default", [
+  ["signatures_default", [ // i18n-ok: SQL, not text
     `INSERT INTO signatures (id, name, html, position, created_at, updated_at)
      SELECT lower(hex(randomblob(8))), 'Default',
             replace(replace(replace(replace(replace(value, char(13), ''), '&', '&amp;'), '<', '&lt;'), '>', '&gt;'), char(10), '<br>'),
