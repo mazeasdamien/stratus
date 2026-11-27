@@ -36,14 +36,7 @@ import { DatabaseSync } from "node:sqlite";
 import { OPERATORS, parseSearch } from "./src/query.js";
 import { SCHEMA } from "./src/schema.js";
 
-let pass = 0;
-let fail = 0;
-const ok = (cond, label) => {
-  if (cond) { pass++; }
-  else { fail++; console.log(`  ✗ ${label}`); }
-};
-const eq = (a, b, label) =>
-  ok(JSON.stringify(a) === JSON.stringify(b), `${label} — reçu ${JSON.stringify(a)}, attendu ${JSON.stringify(b)}`);
+import { counts, eq, ok } from "./test/harness.mjs";
 
 console.log("\n── en-têtes RFC 2047 ───────────────────────");
 eq(decodeWords("=?UTF-8?B?w4l0w6k=?="), "Été", "B-encoding utf-8");
@@ -1656,5 +1649,15 @@ console.log("\n── recherche : opérateurs ───────────�
   eq(parseSearch("on:2026-10-01", { tzOffsetMin: -120 }).values, [Date.UTC(2026, 9, 1) - 120 * 60000, Date.UTC(2026, 9, 1) - 120 * 60000 + 86400000], "on: = minuit local, 24 h");
 }
 
+// Les fichiers de test/*.test.mjs : une fonctionnalité ajoute le sien sans
+// toucher à ce fichier. Chargés ici, après les vérifications ci-dessus, et
+// comptés dans les mêmes totaux.
+const testDir = new URL("./test/", import.meta.url);
+for (const f of readdirSync(testDir).filter((f) => f.endsWith(".test.mjs")).sort()) {
+  console.log(`\n── test/${f} ─────────────────────────────`);
+  await import(new URL(f, testDir).href);
+}
+
+const { pass, fail } = counts();
 console.log(`\n${fail === 0 ? "✓" : "✗"} ${pass} assertions passées, ${fail} échec(s)\n`);
 process.exit(fail ? 1 : 0);
