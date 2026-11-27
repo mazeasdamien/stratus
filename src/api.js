@@ -251,7 +251,12 @@ export async function handleApi(request, env, path, ctx, session) {
       // Reminders that have just fired, for the service worker to show. A
       // push for one of them carries no mail at all. A database the schema
       // pass has not reached yet has no such table; mail must still ring.
-      reminders: await recentReminders(env).catch(() => []),
+      //
+      // Only to a full session. The extension's push-only token may call this
+      // path and no other, and it sits in extension storage, weaker than an
+      // HttpOnly cookie: it gets the badge it was made for, not event titles,
+      // places, subjects and the addresses your mail went to.
+      ...(session && !session.scope ? { reminders: await recentReminders(env).catch(() => []) } : {}),
     });
   }
 

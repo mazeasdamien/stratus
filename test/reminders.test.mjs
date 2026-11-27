@@ -36,7 +36,7 @@ const MIN = 60_000;
 const call = (method, path, body) =>
   handleApi(
     new Request("http://x" + path, { method, body: body ? JSON.stringify(body) : undefined }),
-    env, path, undefined, undefined
+    env, path, undefined, { sub: "this device" } // a full session, as a cookie gives
   );
 const listed = async () => (await call("GET", "/api/reminders")).json();
 const cron = () => remindersModule.cron(env);
