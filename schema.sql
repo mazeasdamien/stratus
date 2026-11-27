@@ -45,9 +45,19 @@ CREATE TABLE IF NOT EXISTS messages (
   date        INTEGER NOT NULL DEFAULT 0,   -- ms
   unread      INTEGER NOT NULL DEFAULT 1,
   starred     INTEGER NOT NULL DEFAULT 0,   -- IMAP \Flagged
-  -- A colour you gave it, 1 to 5 (red, orange, yellow, green, blue), 0 for
-  -- none. Here only: iCloud has no colour that is not also a flag.
+  -- The colour you used to give it, 1 to 5. Nothing reads or writes it now:
+  -- categories carry that (see the categories table), and the "colors_to_categories"
+  -- migration moved every value across. The column stays because dropping one
+  -- on a live mailbox is not worth the risk.
   color       INTEGER NOT NULL DEFAULT 0,
+  -- 1 when the conversation is pinned to the top of its list. Set on every
+  -- message of the conversation, but read as "any message of it": mail that
+  -- arrives later in a pinned conversation is not pinned itself.
+  pinned      INTEGER NOT NULL DEFAULT 0,
+  -- How the sender marked it: 1 high, -1 low, 0 normal. Read from the
+  -- Importance, X-Priority and X-MSMail-Priority headers when the message is
+  -- stored; mail stored before this column existed stays 0.
+  importance  INTEGER NOT NULL DEFAULT 0,
   has_body   INTEGER NOT NULL DEFAULT 0,   -- 1 once the defused body sits in R2
   -- File names of the attachments, one per line, for has:attachment and
   -- attachment:name. NULL is "not looked at yet", which is what every message
@@ -69,6 +79,22 @@ CREATE INDEX IF NOT EXISTS idx_messages_account ON messages(account_id, folder, 
 CREATE INDEX IF NOT EXISTS idx_messages_thread  ON messages(thread_key);
 
 CREATE INDEX IF NOT EXISTS idx_messages_unread  ON messages(folder, date DESC) WHERE unread=1;
+
+CREATE TABLE IF NOT EXISTS categories (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  name       TEXT NOT NULL COLLATE NOCASE UNIQUE,
+  color      INTEGER NOT NULL DEFAULT 0,
+  position   INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS message_categories (
+  message_id  TEXT NOT NULL,                -- messages.id
+  category_id INTEGER NOT NULL,
+  PRIMARY KEY (message_id, category_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_message_categories_cat ON message_categories(category_id);
 
 CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
@@ -184,3 +210,5 @@ CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(at) WHERE fired_at IS 
 CREATE INDEX IF NOT EXISTS idx_messages_uid     ON messages(account_id, mailbox, uid);
 
 CREATE INDEX IF NOT EXISTS idx_messages_att_todo ON messages(account_id) WHERE att_names IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_messages_pinned   ON messages(thread_key) WHERE pinned=1;

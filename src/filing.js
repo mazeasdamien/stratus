@@ -8,7 +8,7 @@ import { open } from "./crypto.js";
 import { imapAppend, imapList, imapMove, imapOpen, imapPurge, imapSearch, imapSelect } from "./imap.js";
 import { formatFrom, htmlToText, parseAddressList } from "./mime.js";
 import { folderNameFor, icloudAct, mailboxList, resolveMailbox } from "./mailbox.js";
-import { indexMessage, storeRows, unindex } from "./store.js";
+import { indexMessage, storeRows, uncategorize, unindex } from "./store.js";
 import { rowFromRaw } from "./sync.js";
 import { FLAG_SEEN, bodyKey, hashHex, json } from "./util.js";
 
@@ -93,6 +93,7 @@ export async function forgetLocal(env, accountId, pid) {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM messages WHERE id=?").bind(id),
     ...(await unindex(env, [id])),
+    ...uncategorize(env, [id]),
   ]);
 }
 

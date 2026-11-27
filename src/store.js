@@ -61,8 +61,8 @@ export async function storeRows(env, accountId, rows) {
         `INSERT INTO messages
            (id, account_id, pid, mid, thread_key, refs, folder, from_name, from_email,
             to_line, cc_line, bcc_line, subject, snippet, date, unread, starred, has_body,
-            mailbox, uid, att_names, created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?)
+            mailbox, uid, att_names, importance, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,?)
          -- Put yourself on the Cc of something you send and the provider keeps
          -- two copies of one message: the one in Sent and the one delivered to
          -- the inbox, sharing a Message-ID and therefore sharing this row.
@@ -80,7 +80,8 @@ export async function storeRows(env, accountId, rows) {
            -- erase the one a sync has already found for the same message.
            mailbox=CASE WHEN excluded.uid > 0 THEN excluded.mailbox ELSE messages.mailbox END,
            uid=CASE WHEN excluded.uid > 0 THEN excluded.uid ELSE messages.uid END,
-           att_names=COALESCE(excluded.att_names, messages.att_names)
+           att_names=COALESCE(excluded.att_names, messages.att_names),
+           importance=excluded.importance
          --
          -- Except over a copy that was thrown away. Bcc yourself and the inbox
          -- copy is the one you delete once you have seen it; the row followed
@@ -111,6 +112,7 @@ export async function storeRows(env, accountId, rows) {
         r.mailbox || "",
         Number(r.uid) || 0,
         r.att_names ?? null,
+        r.importance === 1 || r.importance === -1 ? r.importance : 0,
         now
       )
     );
@@ -170,6 +172,21 @@ export async function unindex(env, ids) {
 }
 
 /**
+ * Statements that take these messages out of message_categories.
+ *
+ * Not part of unindex: indexMessage calls that before every re-index, and a
+ * message being indexed again must keep its categories.
+ */
+export function uncategorize(env, ids) {
+  const out = [];
+  for (let i = 0; i < ids.length; i += 90) {
+    const chunk = ids.slice(i, i + 90);
+    out.push(env.DB.prepare(`DELETE FROM message_categories WHERE message_id IN (${chunk.map(() => "?").join(",")})`).bind(...chunk));
+  }
+  return out;
+}
+
+/**
  * The attachment file names of a message, one per line, as messages.att_names
  * keeps them.
  *
@@ -188,7 +205,7 @@ export function attNames(list) {
 
 /**
  * Forgets everything hanging off a set of message ids: the stored bodies in
- * R2 and the rows in the search index.
+ * R2, the rows in the search index and the categories they carried.
  *
  * Exists because `search` is an FTS5 virtual table, which has no foreign key
  * and therefore no ON DELETE CASCADE. Every bulk delete has to clean it by
@@ -207,6 +224,6 @@ export async function forgetMessages(env, ids) {
   }
   // Chunked: D1 caps the number of bound parameters per statement, and a
   // mailbox being emptied can carry thousands of ids.
-  const stmts = await unindex(env, ids);
+  const stmts = [...(await unindex(env, ids)), ...uncategorize(env, ids)];
   for (let i = 0; i < stmts.length; i += 100) await env.DB.batch(stmts.slice(i, i + 100));
 }

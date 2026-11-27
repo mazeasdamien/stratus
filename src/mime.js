@@ -5,6 +5,8 @@
  * Pure string functions, no Workers API, tested by `node test.mjs`.
  */
 
+import { importanceLines } from "./importance.js";
+
 /* ── bytes and base64 ── */
 
 /**
@@ -471,7 +473,7 @@ const newBoundary = (tag) =>
  */
 export function buildRfc822({
   from, to, cc, draftBcc, subject, text, html, attachments, inReplyTo, references,
-  messageId, date, calendar,
+  messageId, date, calendar, importance,
 }) {
   const lines = [`From: ${from}`, `To: ${to}`];
   if (cc) lines.push(`Cc: ${cc}`);
@@ -487,6 +489,7 @@ export function buildRfc822({
   // how the field survives the composer being closed and reopened. That needs
   // a name no one reaches for by accident.
   if (draftBcc) lines.push(`Bcc: ${draftBcc}`);
+  lines.push(...importanceLines(importance));
   // Date and Message-ID are not optional decoration: a message without them is
   // scored as spam by most receivers, threads nowhere, and — because the local
   // id is derived from the Message-ID — cannot be told apart from every other

@@ -11,6 +11,7 @@ import { decodePart, flattenStructure, parseHeaders, parseMessage, parseSexp } f
 import { SYSTEM_FOLDERS } from "./filing.js";
 import { IMAP_CAP, MAX_BODY_BYTES, folderNameFor, icloudPassword } from "./mailbox.js";
 import { attNames, flagAccount, forgetMessages, indexMessage, storeRows } from "./store.js";
+import { importanceFromHeaders } from "./importance.js";
 import { indexEvent } from "./ics.js";
 import { bodyKey, defuse, hashHex, json } from "./util.js";
 
@@ -63,6 +64,7 @@ export function rowFromRaw({ uid, flags, raw }, folder) {
       unread: /\\Seen/i.test(flags) ? 0 : 1,
       starred: /\\Flagged/i.test(flags) ? 1 : 0,
       att_names: attNames(m.attachments),
+      importance: importanceFromHeaders(h),
     },
     body: bodyFromParts({
       html: defused.html,

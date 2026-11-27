@@ -107,6 +107,7 @@ export async function deliver(env, b, { dryRun = false } = {}) {
             inReplyTo: orig?.mid || undefined,
             references: replyReferences(orig),
             messageId,
+            importance: b.importance,
           });
         let raw;
         if (isRelayed(env, sender.address)) {
@@ -127,6 +128,7 @@ export async function deliver(env, b, { dryRun = false } = {}) {
               attachments,
               inReplyTo: orig?.mid || undefined,
               references: replyReferences(orig),
+              importance: b.importance,
             })
           );
           raw = rfc(id || newMessageId(sender.address));

@@ -60,9 +60,19 @@ export const SCHEMA = [
   date        INTEGER NOT NULL DEFAULT 0,   -- ms
   unread      INTEGER NOT NULL DEFAULT 1,
   starred     INTEGER NOT NULL DEFAULT 0,   -- IMAP \\Flagged
-  -- A colour you gave it, 1 to 5 (red, orange, yellow, green, blue), 0 for
-  -- none. Here only: iCloud has no colour that is not also a flag.
+  -- The colour you used to give it, 1 to 5. Nothing reads or writes it now:
+  -- categories carry that (see the categories table), and the "colors_to_categories"
+  -- migration moved every value across. The column stays because dropping one
+  -- on a live mailbox is not worth the risk.
   color       INTEGER NOT NULL DEFAULT 0,
+  -- 1 when the conversation is pinned to the top of its list. Set on every
+  -- message of the conversation, but read as "any message of it": mail that
+  -- arrives later in a pinned conversation is not pinned itself.
+  pinned      INTEGER NOT NULL DEFAULT 0,
+  -- How the sender marked it: 1 high, -1 low, 0 normal. Read from the
+  -- Importance, X-Priority and X-MSMail-Priority headers when the message is
+  -- stored; mail stored before this column existed stays 0.
+  importance  INTEGER NOT NULL DEFAULT 0,
   has_body   INTEGER NOT NULL DEFAULT 0,   -- 1 once the defused body sits in R2
   -- File names of the attachments, one per line, for has:attachment and
   -- attachment:name. NULL is "not looked at yet", which is what every message
@@ -87,6 +97,26 @@ export const SCHEMA = [
   // Key/value, for the things that are per-install rather than per-account:
   // the VAPID pair the push subscriptions are signed with, and the last unread
   // count a notification was sent for.
+  // Names you give to messages, several to one message. Here only, like the
+  // colour they replace: iCloud has no such thing. `color` is an index into the
+  // palette in the client and in src/categories.js, whose first five are the
+  // five colours a message could carry before categories existed.
+  `CREATE TABLE IF NOT EXISTS categories (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  name       TEXT NOT NULL COLLATE NOCASE UNIQUE,
+  color      INTEGER NOT NULL DEFAULT 0,
+  position   INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+)`,
+  // No foreign key: D1 does not cascade for us, so deleting a message or a
+  // category cleans this by hand (forgetMessages in store.js, the delete route).
+  // A rowid table, not WITHOUT ROWID: the nightly snapshot pages by rowid.
+  `CREATE TABLE IF NOT EXISTS message_categories (
+  message_id  TEXT NOT NULL,                -- messages.id
+  category_id INTEGER NOT NULL,
+  PRIMARY KEY (message_id, category_id)
+)`,
+  `CREATE INDEX IF NOT EXISTS idx_message_categories_cat ON message_categories(category_id)`,
   `CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -244,6 +274,8 @@ export const HEAL_COLUMNS = {
     mailbox: "TEXT NOT NULL DEFAULT ''",
     uid: "INTEGER NOT NULL DEFAULT 0",
     color: "INTEGER NOT NULL DEFAULT 0",
+    pinned: "INTEGER NOT NULL DEFAULT 0",
+    importance: "INTEGER NOT NULL DEFAULT 0",
     att_names: "TEXT",
   },
   accounts: {
@@ -271,6 +303,9 @@ export const AFTER_HEAL = [
   // The messages whose attachments have not been read yet. Holds nothing once
   // the backfill is done, so asking "is there any left" costs no row reads.
   `CREATE INDEX IF NOT EXISTS idx_messages_att_todo ON messages(account_id) WHERE att_names IS NULL`,
+  // The few pinned messages, so a list can find its pinned conversations
+  // without reading the folder.
+  `CREATE INDEX IF NOT EXISTS idx_messages_pinned   ON messages(thread_key) WHERE pinned=1`,
 ];
 
 /**
@@ -278,6 +313,18 @@ export const AFTER_HEAL = [
  * Unlike the DDL they are not cheap to repeat: each walks the whole table.
  */
 export const MIGRATIONS = [
+  // The five colours become five categories, ids 1 to 5, so a message's old
+  // colour n is category n and its palette index is n-1. A migration may be a
+  // list of statements, run in order.
+  ["colors_to_categories", [
+    `INSERT OR IGNORE INTO categories (id, name, color, position, created_at) VALUES
+       (1,'Red',0,0,CAST(strftime('%s','now') AS INTEGER)*1000),
+       (2,'Orange',1,1,CAST(strftime('%s','now') AS INTEGER)*1000),
+       (3,'Yellow',2,2,CAST(strftime('%s','now') AS INTEGER)*1000),
+       (4,'Green',3,3,CAST(strftime('%s','now') AS INTEGER)*1000),
+       (5,'Blue',4,4,CAST(strftime('%s','now') AS INTEGER)*1000)`,
+    `INSERT OR IGNORE INTO message_categories (message_id, category_id) SELECT id, color FROM messages WHERE color BETWEEN 1 AND 5`,
+  ]],
   // Roots used to be keyed on their subject while their replies were keyed on
   // the root's Message-ID, so a conversation never grouped with its own first
   // message. A key that is not an id was a subject; where the row has an id,
@@ -372,7 +419,7 @@ export async function ensureSchema(env) {
   }
   const todo = MIGRATIONS.filter(([name]) => !ran.includes(name));
   for (const [name, sql] of todo) {
-    await env.DB.prepare(sql).run();
+    for (const one of [].concat(sql)) await env.DB.prepare(one).run();
     ran.push(name);
     console.log(`schema: migrated ${name}`);
   }

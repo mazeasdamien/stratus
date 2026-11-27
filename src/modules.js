@@ -31,7 +31,13 @@ import { remindersModule } from "./reminders.js";
  *
  * The array is mutable so a test can add a module and take it out again.
  */
-export const MODULES = [remindersModule];
+import { categoriesModule } from "./categories.js";
+
+// One module to a line, so two branches that each add one do not collide.
+export const MODULES = [
+  remindersModule,
+  categoriesModule,
+];
 
 /** The first Response a module gives for this request, or null. */
 export async function moduleApi(request, env, path, ctx, session) {

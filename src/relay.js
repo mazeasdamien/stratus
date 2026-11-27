@@ -10,6 +10,8 @@
  * the EMAIL binding exists: no binding, no relay, nothing changes.
  */
 
+import { importanceLines } from "./importance.js";
+
 /** The domains that leave through Cloudflare, lowercased. */
 export function relayDomains(env) {
   return String(env?.RELAY_DOMAINS || "")
@@ -33,7 +35,7 @@ export function isRelayed(env, address) {
  * have sent is not an option. Bcc is its own field here and never a header,
  * exactly as with SMTP.
  */
-export function relayMessage({ fromName, from, to, cc, bcc, subject, text, html, attachments, inReplyTo, references }) {
+export function relayMessage({ fromName, from, to, cc, bcc, subject, text, html, attachments, inReplyTo, references, importance }) {
   const msg = {
     from: fromName && fromName.toLowerCase() !== from.toLowerCase() ? { email: from, name: fromName } : from,
     to,
@@ -56,6 +58,11 @@ export function relayMessage({ fromName, from, to, cc, bcc, subject, text, html,
   // from here starts a new conversation at the other end.
   const headers = {};
   if (inReplyTo) headers["In-Reply-To"] = inReplyTo;
+  // Only X-Priority: the allowlist takes any X- header, while Importance and
+  // X-MSMail-Priority are not documented as on it, and a refused header would
+  // refuse the send.
+  const xp = importanceLines(importance).find((l) => l.startsWith("X-Priority: "));
+  if (xp) headers["X-Priority"] = xp.slice(12);
   const chain = (references || []).join(" ");
   if (chain) headers.References = chain.slice(0, 2000);
   if (Object.keys(headers).length) msg.headers = headers;

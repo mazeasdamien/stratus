@@ -1498,6 +1498,15 @@ console.log("\n── recherche : opérateurs ───────────�
     ins.run(id, "a", id, name, email, to, cc, subject, D(at), unread, starred, color, att);
     fts.run(id, subject, `${name} ${email}`, body);
   }
+  // Les catégories : les cinq anciennes couleurs (ids 1 à 5), plus une à nom composé.
+  db.exec(`INSERT INTO categories (id, name, color, position, created_at) VALUES
+    (1,'Red',0,0,0),(2,'Orange',1,1,0),(3,'Yellow',2,2,0),(4,'Green',3,3,0),(5,'Blue',4,4,0),(6,'Project X',5,5,0)`);
+  db.exec(`INSERT INTO message_categories (message_id, category_id) VALUES
+    ('m2',2),('m3',5),('m5',3),('m1',6),('m3',6)`);
+  // m1 et m3 forment une conversation dont m1 est épinglé ; m1 est important, m4 sans importance.
+  db.exec(`UPDATE messages SET thread_key='<t@x>' WHERE id IN ('m1','m3')`);
+  db.exec(`UPDATE messages SET pinned=1, importance=1 WHERE id='m1'`);
+  db.exec(`UPDATE messages SET importance=-1 WHERE id='m4'`);
   const search = (term, tz = 0) => {
     const q = parseSearch(term, { tzOffsetMin: tz });
     ok(q.values.length <= 80, `peu de valeurs liées pour « ${term} » (${q.values.length})`);
@@ -1563,11 +1572,21 @@ console.log("\n── recherche : opérateurs ───────────�
   eq(search("is:read"), ["m2", "m4", "m5"], "is:read");
   eq(search("is:flagged"), ["m2"], "is:flagged");
   eq(search("is:starred"), ["m2"], "is:starred est la même étoile");
-  eq(search("category:orange"), ["m2"], "category:orange = couleur 2");
-  eq(search("category:blue"), ["m3"], "category:blue = couleur 5");
+  eq(search("category:orange"), ["m2"], "category:orange = la catégorie Orange");
+  eq(search("category:blue"), ["m3"], "category:blue = la catégorie Blue");
+  eq(search("category:BLUE"), ["m3"], "category: ne tient pas compte de la casse");
   eq(search("category:yellow is:read"), ["m5"], "category: et is: ensemble");
   eq(search("category:green"), [], "personne n'est vert");
-  eq(search("category:purple"), [], "category: inconnue = mots simples");
+  eq(search("category:purple"), [], "une catégorie inconnue ne trouve rien");
+  eq(search('category:"Project X"'), ["m1", "m3"], "un nom à plusieurs mots entre guillemets");
+  eq(search('category:"project x" category:blue'), ["m3"], "plusieurs catégories se combinent par ET");
+  eq(search("category:project"), [], "le nom entier, pas un morceau");
+  eq(search("is:pinned"), ["m1", "m3"], "is:pinned prend toute la conversation épinglée");
+  eq(search("is:important"), ["m1"], "is:important");
+  eq(search("importance:high"), ["m1"], "importance:high");
+  eq(search("importance:low"), ["m4"], "importance:low");
+  eq(search("importance:normal"), ["m2", "m3", "m5"], "importance:normal");
+  eq(search("importance:urgent"), [], "importance: inconnue = mots simples");
 
   console.log("  after: before: on:, dans le fuseau du lecteur");
   eq(search("after:2026-10-15"), ["m1", "m4", "m5"], "after: inclut le jour même");

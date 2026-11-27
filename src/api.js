@@ -23,9 +23,17 @@ import { accountById, aiKey, aiModel, aliasesOf, fileDraftCopy, forgetLocal, mov
 import { folderNameFor, icloudAct, icloudPassword, mailboxList, renameCursor, resolveMailbox, theAccount, threadAct, threadRowsIn, withImap } from "./mailbox.js";
 import { deliver, outboxLease, parkIfUncertain } from "./outgoing.js";
 import { parseSearch } from "./query.js";
-import { flagAccount, forgetMessages, imapError, unindex } from "./store.js";
+import { attachCategories, conversationState } from "./categories.js";
+import { flagAccount, forgetMessages, imapError, unindex, uncategorize } from "./store.js";
 import { countDestroyed, forgetBlockedLocally, mailboxNames, noteMailbox, purgeBlockedAtProvider, syncAccount } from "./sync.js";
 import { ATTACHMENT_HEADERS, FLAG_FLAGGED, FLAG_SEEN, bodyKey, hashHex, json } from "./util.js";
+
+// Every message of a pinned conversation, and the pinned messages that have no
+// conversation key. A message is pinned when any message of its conversation is,
+// so mail that arrives in a pinned conversation is pinned without being written to.
+const PINNED_IDS = `SELECT id FROM messages WHERE pinned=1
+  UNION SELECT t.id FROM messages t
+         WHERE t.thread_key<>'' AND t.thread_key IN (SELECT thread_key FROM messages WHERE pinned=1 AND thread_key<>'')`;
 
 export async function handleApi(request, env, path, ctx, session) {
   const fromModule = await moduleApi(request, env, path, ctx, session);
@@ -876,14 +884,14 @@ export async function handleApi(request, env, path, ctx, session) {
     if (thread) {
       const { results } = await env.DB.prepare(
         `SELECT id, account_id, thread_key, from_name, from_email, subject, snippet,
-                date, unread, starred, color, folder, has_body
+                date, unread, starred, pinned, importance, folder, has_body
            FROM messages
           WHERE thread_key=? AND thread_key<>'' AND folder<>'trash'
           ORDER BY date ASC LIMIT 100`
       )
         .bind(thread)
         .all();
-      return json({ messages: results ?? [] });
+      return json({ messages: await attachCategories(env, results ?? []) });
     }
 
     // Which messages the list is about: the folder, the account, the star.
@@ -939,7 +947,7 @@ export async function handleApi(request, env, path, ctx, session) {
       cv = [before];
     }
     const COLS =
-      "m.id, m.account_id, m.thread_key, m.from_name, m.from_email, m.subject, m.snippet, m.date, m.unread, m.starred, m.color, m.folder, m.has_body";
+      "m.id, m.account_id, m.thread_key, m.from_name, m.from_email, m.subject, m.snippet, m.date, m.unread, m.starred, m.pinned, m.importance, m.folder, m.has_body";
 
     // Grouped by conversation, except while searching: a search is a question
     // about individual messages, and collapsing the answer hides the one that
@@ -955,7 +963,7 @@ export async function handleApi(request, env, path, ctx, session) {
       vals.push(...q.values);
       sql += `${cursor} ORDER BY m.date DESC, m.id DESC LIMIT ?`;
       const { results } = await env.DB.prepare(sql).bind(...vals, ...cv, limit).all();
-      return json({ messages: results ?? [] });
+      return json({ messages: await attachCategories(env, results ?? []) });
     }
 
     // One row per conversation: its newest message, the highest id deciding
@@ -971,18 +979,44 @@ export async function handleApi(request, env, path, ctx, session) {
     // The cursor runs on the row shown and not on the rest of its
     // conversation: filtering those too would drop a thread's newer half and
     // let the same thread come back on the next page.
-    const { results } = await env.DB.prepare(
-      `SELECT ${COLS} FROM messages m
-        WHERE ${P("m")}${cursor}
-          AND NOT EXISTS (
-            SELECT 1 FROM messages x
-             WHERE m.thread_key<>'' AND x.thread_key=m.thread_key AND ${P("x")}
-               AND (x.date>m.date OR (x.date=m.date AND x.id>m.id)))
-        ORDER BY m.date DESC, m.id DESC LIMIT ?`
-    )
-      .bind(...pv, ...cv, ...pv, limit)
-      .all();
-    const heads = results ?? [];
+    //
+    // Pinned conversations come first. Two queries rather than one ordering
+    // on "is pinned", which no index serves and which would read the whole
+    // folder for every page: the pinned set is small and found through its
+    // own index, so the pinned section is asked for alone and the rest is
+    // everything outside it. A conversation is pinned when any of its
+    // messages is. The cursor then also says which section the last row was
+    // in (`before_pin`), so a page boundary may fall inside either section or
+    // exactly between them without skipping or repeating a row. Search and
+    // Starred keep plain date order.
+    const pinnable = !starredOnly && folder !== "all";
+    const heads = [];
+    const section = async (which, cur, curVals, room) => {
+      const inSet = which === "pinned" ? "IN" : "NOT IN";
+      const { results } = await env.DB.prepare(
+        `SELECT ${COLS} FROM messages m
+          WHERE ${P("m")}${pinnable ? ` AND m.id ${inSet} (${PINNED_IDS})` : ""}${cur}
+            AND NOT EXISTS (
+              SELECT 1 FROM messages x
+               WHERE m.thread_key<>'' AND x.thread_key=m.thread_key AND ${P("x")}
+                 AND (x.date>m.date OR (x.date=m.date AND x.id>m.id)))
+          ORDER BY m.date DESC, m.id DESC LIMIT ?`
+      )
+        .bind(...pv, ...curVals, ...pv, room)
+        .all();
+      return (results ?? []).map((r) => ({ ...r, pin: which === "pinned" ? 1 : 0 }));
+    };
+    const hasCursor = !!(before || beforeId);
+    const afterPinned = p.get("before_pin") === "1";
+    if (!pinnable) {
+      heads.push(...(await section("rest", cursor, cv, limit)));
+    } else {
+      if (!hasCursor || afterPinned) heads.push(...(await section("pinned", afterPinned ? cursor : "", afterPinned ? cv : [], limit)));
+      if (heads.length < limit) {
+        const fresh = !hasCursor || afterPinned;
+        heads.push(...(await section("rest", fresh ? "" : cursor, fresh ? [] : cv, limit - heads.length)));
+      }
+    }
 
     // How many messages each of those conversations holds here, and how many
     // of them are unread or starred: one more query, for this page only. A
@@ -994,7 +1028,7 @@ export async function handleApi(request, env, path, ctx, session) {
       const chunk = keys.slice(i, i + room);
       stmts.push(
         env.DB.prepare(
-          `SELECT x.thread_key, COUNT(*) AS n, SUM(x.unread) AS unread, SUM(x.starred) AS starred, MAX(x.color) AS color
+          `SELECT x.thread_key, COUNT(*) AS n, SUM(x.unread) AS unread, SUM(x.starred) AS starred, MAX(x.pinned) AS pinned
              FROM messages x
             WHERE ${P("x")} AND x.thread_key IN (${chunk.map(() => "?").join(",")})
             GROUP BY x.thread_key`
@@ -1007,12 +1041,12 @@ export async function handleApi(request, env, path, ctx, session) {
         for (const r of out.results ?? []) sums.set(r.thread_key, r);
       }
     }
-    return json({
-      messages: heads.map((r) => {
-        const s = r.thread_key ? sums.get(r.thread_key) : null;
-        return { ...r, unread: s ? s.unread : r.unread, starred: s ? s.starred : r.starred, color: s ? s.color : r.color, n: s ? s.n : 1 };
-      }),
+    const rows = heads.map(({ pin, ...r }) => {
+      const s = r.thread_key ? sums.get(r.thread_key) : null;
+      const pinned = pinnable ? pin : (s ? s.pinned : r.pinned) ? 1 : 0;
+      return { ...r, unread: s ? s.unread : r.unread, starred: s ? s.starred : r.starred, pinned, n: s ? s.n : 1 };
     });
+    return json({ messages: await attachCategories(env, rows, true) });
   }
 
   // GET /api/messages/:id — header + defused body; opening marks as read.
@@ -1073,7 +1107,7 @@ export async function handleApi(request, env, path, ctx, session) {
     }
 
     return json({
-      message: { ...msg, unread: peek ? msg.unread : 0 },
+      message: { ...msg, unread: peek ? msg.unread : 0, ...(await conversationState(env, msg)) },
       account: { id: acct.id, provider: acct.provider, email: acct.email },
       // The invitation, read once here rather than shipped raw for the client
       // to parse, with the answer already given if there was one.
@@ -1305,6 +1339,7 @@ export async function handleApi(request, env, path, ctx, session) {
       env.DB.prepare("DELETE FROM messages WHERE id=?").bind(msg.id),
       env.DB.prepare("DELETE FROM events WHERE id=?").bind(msg.id),
       ...(await unindex(env, [msg.id])),
+      ...uncategorize(env, [msg.id]),
     ]);
     return json({ ok: true, alreadyGone: gone });
   }
@@ -1365,27 +1400,6 @@ export async function handleApi(request, env, path, ctx, session) {
       return imapError(e, acct, env);
     }
     return json({ ok: true });
-  }
-
-  // POST /api/messages/:id/color { color: 0-5, thread? } — 0 takes it off.
-  //
-  // Kept here and nowhere else. iCloud's only colours are the flag colours,
-  // and a flag is the star: colouring a message would have starred it on
-  // every device. With `thread`, every message of the conversation takes the
-  // colour, so its row in the list keeps it when the next reply arrives.
-  const msgColor = path.match(/^\/api\/messages\/([a-f0-9]{16})\/color$/);
-  if (msgColor && request.method === "POST") {
-    const b = await request.json().catch(() => ({}));
-    const color = Number(b.color);
-    if (!Number.isInteger(color) || color < 0 || color > 5) return json({ error: "A colour from 0 to 5" }, 400);
-    const msg = await env.DB.prepare("SELECT id, account_id, thread_key FROM messages WHERE id=?").bind(msgColor[1]).first();
-    if (!msg) return json({ error: "Unknown message" }, 404);
-    const r = b.thread && msg.thread_key
-      ? await env.DB.prepare("UPDATE messages SET color=? WHERE account_id=? AND thread_key=?")
-          .bind(color, msg.account_id, msg.thread_key)
-          .run()
-      : await env.DB.prepare("UPDATE messages SET color=? WHERE id=?").bind(color, msg.id).run();
-    return json({ ok: true, color, n: r.meta?.changes ?? 1 });
   }
 
   // GET /api/signature — what goes under everything you write.
@@ -1653,6 +1667,7 @@ No invented facts, no commitment to anything the brief does not cover, and no br
       inReplyTo: orig?.mid || undefined,
       references: replyReferences(orig),
       messageId,
+      importance: b.importance,
     });
 
     // One secondary-failure policy, shared with send: the message itself is

@@ -54,9 +54,12 @@ const IS = {
   read: flag("m.unread=0"),
   flagged: flag("m.starred=1"),
   starred: flag("m.starred=1"),
+  // A conversation is pinned when any of its messages is (src/categories.js).
+  pinned: flag("(m.pinned=1 OR (m.thread_key<>'' AND m.thread_key IN (SELECT thread_key FROM messages WHERE pinned=1 AND thread_key<>'')))"),
+  important: flag("m.importance=1"),
 };
 
-const COLORS = ["red", "orange", "yellow", "green", "blue"];
+const IMPORTANCE = { high: 1, normal: 0, low: -1 };
 
 /**
  * Midnight of a YYYY-MM-DD day in the reader's zone, as epoch ms; null for
@@ -101,10 +104,13 @@ export const OPERATORS = {
   has: (v) => (v.toLowerCase() === "attachment" ? flag("m.att_names<>''") : null),
   attachment: (v) => ({ where: `m.att_names${LIKE}`, values: [contains(v)] }),
   is: (v) => (Object.hasOwn(IS, v.toLowerCase()) ? IS[v.toLowerCase()] : null),
-  category: (v) => {
-    const i = COLORS.indexOf(v.toLowerCase());
-    return i < 0 ? null : { where: "m.color=?", values: [i + 1] };
-  },
+  // By name, whatever the name is: the table's collation ignores case. A name
+  // no category has finds nothing, as it would for any other value.
+  category: (v) => ({
+    where: "m.id IN (SELECT mc.message_id FROM message_categories mc JOIN categories c ON c.id=mc.category_id WHERE c.name=?)",
+    values: [v],
+  }),
+  importance: (v) => (Object.hasOwn(IMPORTANCE, v.toLowerCase()) ? { where: "m.importance=?", values: [IMPORTANCE[v.toLowerCase()]] } : null),
   // after: includes that day, before: stops short of it, as in most mail
   // clients.
   after: onDate((t) => ({ where: "m.date>=?", values: [t] })),

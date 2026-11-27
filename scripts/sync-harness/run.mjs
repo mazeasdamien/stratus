@@ -559,10 +559,10 @@ const oldList = (folder, { starred = false, account = "" } = {}) => {
   }
   if (starred) sql += " AND starred=1";
   sql += " GROUP BY CASE WHEN thread_key='' THEN id ELSE thread_key END ORDER BY date DESC LIMIT ?";
-  // No colour has been set yet at this point. It is written in rather than
-  // aggregated: a second MAX() would let SQLite take the bare columns from a
-  // different row than the newest.
-  return DB.raw.prepare(sql).all(...vals, 100).map(({ folder, has_body, n, ...head }) => ({ ...head, color: 0, folder, has_body, n }));
+  // Nothing is pinned, important or categorised yet at this point. The fields
+  // are written in rather than aggregated: a second MAX() would let SQLite
+  // take the bare columns from a different row than the newest.
+  return DB.raw.prepare(sql).all(...vals, 100).map(({ folder, has_body, n, ...head }) => ({ ...head, pinned: 0, importance: 0, folder, has_body, n, cats: [] }));
 };
 // The old order between two conversations of the same date was left to chance.
 const newestFirst = (rows) => [...rows].sort((a, b) => b.date - a.date || (a.id < b.id ? 1 : -1));
@@ -584,19 +584,20 @@ for (const [folder, extra, opts] of [
 const pagerRow = (await listOf("folder=inbox&limit=100")).find((m) => m.thread_key === "<p1@x>");
 eq([pagerRow?.id, pagerRow?.n, pagerRow?.unread, pagerRow?.starred], [row("<p3@x>").id, 3, 2, 1], "a conversation shows its newest message, with its count and the sums of its flags");
 
-// Colours: on one message, the conversation's row shows it; on the whole
-// conversation, every message has it; 0 takes it off; nothing else is taken.
-const colorOne = await api("POST", `/api/messages/${row("<p1@x>").id}/color`, { color: 3 });
-eq([colorOne.status, colorOne.body.n], [200, 1], "a colour goes on one message");
-eq((await listOf("folder=inbox&limit=100")).find((m) => m.thread_key === "<p1@x>")?.color, 3, "the conversation's row shows a colour one of its messages has");
-const colorAll = await api("POST", `/api/messages/${row("<p3@x>").id}/color`, { color: 5, thread: true });
-eq([colorAll.status, colorAll.body.n], [200, 3], "with thread, the whole conversation takes it");
-eq(DB.raw.prepare("SELECT DISTINCT color FROM messages WHERE thread_key='<p1@x>'").all().map((r) => r.color), [5], "every message of it");
-await api("POST", `/api/messages/${row("<p3@x>").id}/color`, { color: 0, thread: true });
-eq(DB.raw.prepare("SELECT COUNT(*) AS n FROM messages WHERE color<>0").get().n, 0, "0 takes it off again");
-for (const bad of [6, -1, 2.5, "red"]) {
-  eq((await api("POST", `/api/messages/${row("<p3@x>").id}/color`, { color: bad })).status, 400, `a colour of ${JSON.stringify(bad)} is refused`);
-}
+// Categories: on one message, the conversation's row shows it; on the whole
+// conversation, every message has it; taking it off leaves nothing behind.
+const catOne = await api("POST", `/api/messages/${row("<p1@x>").id}/categories`, { add: [3] });
+eq([catOne.status, catOne.body.cats], [200, [3]], "a category goes on one message");
+eq((await listOf("folder=inbox&limit=100")).find((m) => m.thread_key === "<p1@x>")?.cats, [3], "the conversation's row shows a category one of its messages has");
+const catAll = await api("POST", `/api/messages/${row("<p3@x>").id}/categories`, { add: [5], thread: true });
+eq(catAll.status, 200, "with thread, the whole conversation takes it");
+eq(DB.raw.prepare("SELECT COUNT(*) AS n FROM message_categories WHERE category_id=5").get().n, 3, "every message of it");
+await api("POST", `/api/messages/${row("<p3@x>").id}/categories`, { remove: [3, 5], thread: true });
+eq(DB.raw.prepare("SELECT COUNT(*) AS n FROM message_categories").get().n, 0, "removing takes them off again");
+const pinRes = await api("POST", `/api/messages/${row("<p3@x>").id}/pin`, { pinned: true });
+eq([pinRes.status, pinRes.body.n], [200, 3], "a pin goes on the whole conversation");
+eq((await listOf("folder=inbox&limit=100"))[0].thread_key, "<p1@x>", "and the pinned conversation leads the list");
+await api("POST", `/api/messages/${row("<p3@x>").id}/pin`, { pinned: false });
 // Same date either side of a page boundary: three conversations, and two
 // messages of one conversation.
 const tied = row("<p4@x>").date;
