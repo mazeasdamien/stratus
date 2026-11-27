@@ -786,6 +786,168 @@ textarea.field{width:100%;padding:11px 12px;font-size:14.5px;line-height:1.45;mi
 .tl-empty{padding:48px 16px;text-align:center;color:var(--t2);display:flex;flex-direction:column;align-items:center;gap:10px;font-size:14px}
 .tl-empty svg{color:var(--t3);opacity:.7}
 
+/* ══ calendar ═══════════════════════════════════════════════════════════
+   The Calendar view, its sheets and its dialog. One block, so a branch that
+   adds a view of its own does not meet this one in the middle of a rule. The
+   Timeline's own rules above still style the agenda's cards. */
+
+/* The calendar wants the whole width: on a wide window the reader beside the
+   list is hidden while it is up, and the list column takes its place. */
+@media (min-width:900px){
+  body.calview #app{width:auto;flex:1}
+  body.calview #reader,body.calview #grip{display:none}
+}
+/* A calendar is a pane that scrolls inside itself, under a toolbar that
+   stays, so the pane has the height of the window and does not scroll. */
+#timelineView{padding:0;gap:0;height:100%;overflow:hidden}
+.cal-bar{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;padding:6px 16px 8px}
+.cal-nav,.cal-row2{display:flex;align-items:center;gap:6px}
+.cal-nav{flex:none}
+.cal-new{order:2;flex:none}
+.cal-row2{order:3;flex:1 0 100%}
+.cal-title{flex:1;min-width:0;font-size:15px;font-weight:650;letter-spacing:-.011em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cal-btn{height:36px;min-width:36px;padding:0 12px;border-radius:18px;background:var(--elev);border:1px solid var(--line);
+  color:var(--t1);font-size:13px;font-weight:600;gap:6px;transition:background .12s,transform .08s}
+.cal-btn.ico{padding:0;width:36px}
+.cal-btn:active{background:var(--press2);transform:scale(.96)}
+.cal-btn.acc{background:var(--acc);color:var(--on-acc);border-color:transparent}
+.cal-seg{display:flex;gap:2px;padding:2px;border-radius:18px;background:var(--elev);border:1px solid var(--line);flex:1;min-width:0}
+.cal-seg button{flex:1;height:30px;padding:0 10px;border-radius:15px;color:var(--t2);font-size:12.5px;font-weight:600}
+.cal-seg button[aria-pressed="true"]{background:var(--bg);color:var(--t1);box-shadow:0 1px 3px var(--shadow)}
+@media (min-width:900px){
+  .cal-bar{padding:8px 20px 10px}
+  .cal-row2{flex:none;order:3}
+  .cal-seg{flex:none}
+  .cal-new{order:4}
+  .cal-title{font-size:17px}
+}
+@media (hover:hover) and (pointer:fine){
+  .cal-btn:hover{background:var(--press2)}
+  .cal-btn.acc:hover{background:color-mix(in srgb,var(--acc) 85%,#fff)}
+  .cal-seg button:hover{color:var(--t1)}
+}
+.cal-scroll{flex:1;min-height:0;overflow:auto;position:relative;overscroll-behavior:contain;padding-bottom:max(var(--sab),12px);-webkit-touch-callout:none}
+.cal-msg{padding:48px 16px;text-align:center;color:var(--t2);display:flex;flex-direction:column;align-items:center;gap:10px;font-size:14px}
+
+/* Day and week: a column of hours for each day, events laid over it. */
+.cal-grid{--h:46px;--gut:44px;min-width:0}
+@media (min-width:900px){.cal-grid{--h:52px;--gut:56px}}
+.cal-top{position:sticky;top:0;z-index:6;background:var(--bg);border-bottom:1px solid var(--line-strong)}
+.cal-head,.cal-ad,.cal-times{display:grid;grid-template-columns:var(--gut) repeat(var(--n),minmax(0,1fr))}
+.cal-dh{display:flex;flex-direction:column;align-items:center;gap:1px;padding:4px 0 6px;color:var(--t2);font-size:11px;font-weight:600;
+  text-transform:uppercase;letter-spacing:.04em;border-left:1px solid var(--line);min-width:0}
+.cal-dh .dn{font-size:16px;font-weight:650;color:var(--t1);width:30px;height:30px;line-height:30px;border-radius:50%;text-align:center;
+  text-transform:none;letter-spacing:0}
+.cal-dh.today{color:var(--acc)}
+.cal-dh.today .dn{background:var(--acc);color:var(--on-acc)}
+.cal-ad{grid-auto-rows:21px;gap:2px 0;padding:2px 0;max-height:96px;overflow-y:auto;border-top:1px solid var(--line)}
+.cal-ad .lbl{grid-row:1;grid-column:1;font-size:10px;color:var(--t3);align-self:center;text-align:right;padding-right:6px}
+.cal-times{height:calc(24*var(--h));position:relative}
+.cal-gut{position:relative}
+.cal-hr{position:absolute;right:6px;transform:translateY(-50%);font-size:10.5px;color:var(--t3);font-variant-numeric:tabular-nums;white-space:nowrap}
+.cal-col{position:relative;border-left:1px solid var(--line);
+  background-image:repeating-linear-gradient(to bottom,transparent 0,transparent calc(var(--h) - 1px),var(--line) calc(var(--h) - 1px),var(--line) var(--h))}
+.cal-col.drop,.cal-cell.drop{background-color:color-mix(in srgb,var(--acc) 14%,transparent)}
+/* The working hours are the stretch that is tinted. */
+.cal-work{position:absolute;left:0;right:0;background:color-mix(in srgb,var(--acc) 6%,transparent);pointer-events:none}
+.cal-now{position:absolute;left:0;right:0;height:2px;background:var(--red);z-index:3;pointer-events:none}
+.cal-now::before{content:"";position:absolute;left:-4px;top:-3px;width:8px;height:8px;border-radius:50%;background:var(--red)}
+
+/* An event: a tinted block with the calendar's colour down its left edge. */
+.cal-ev{--c:var(--acc);position:absolute;display:block;text-align:left;padding:2px 5px 2px 6px;border-radius:6px;overflow:hidden;
+  font-size:11.5px;line-height:1.25;color:var(--t1);min-height:18px;
+  background:color-mix(in srgb,var(--c) 20%,var(--bg));border:1px solid color-mix(in srgb,var(--c) 40%,var(--bg));
+  border-left:3px solid var(--c);-webkit-user-select:none;user-select:none}
+.cal-ev .t{display:block;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cal-ev.tall .t{white-space:normal}
+.cal-ev .w{display:block;color:var(--t2);font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cal-ev.inv{border-style:dashed;border-left-style:solid}
+.cal-ev.cancelled .t{text-decoration:line-through}
+.cal-ev.dragging{opacity:.4}
+.cal-ev.bar{position:relative;min-height:0;height:20px;margin:0 2px;padding:0 6px;display:flex;align-items:center;justify-content:flex-start}
+.cal-ev.bar .t{font-size:11.5px}
+.cal-ev.bar.cl{border-top-left-radius:0;border-bottom-left-radius:0}
+.cal-ev.bar.cr{border-top-right-radius:0;border-bottom-right-radius:0}
+.cal-rs{position:absolute;left:0;right:0;height:10px;cursor:ns-resize;touch-action:none;z-index:2}
+.cal-rs.t{top:-3px}.cal-rs.b{bottom:-3px}
+.cal-rs::after{content:"";position:absolute;left:50%;width:20px;height:3px;margin-left:-10px;border-radius:2px;background:var(--c);opacity:0;transition:opacity .12s}
+.cal-rs.t::after{top:3px}.cal-rs.b::after{bottom:3px}
+.cal-ev:hover .cal-rs::after,.cal-ev:focus-visible .cal-rs::after{opacity:.7}
+@media (pointer:coarse){.cal-rs{height:16px}.cal-rs.t{top:-6px}.cal-rs.b{bottom:-6px}.cal-ev .cal-rs::after{opacity:.55}}
+.cal-ghost{position:absolute;z-index:4;pointer-events:none;border-radius:6px;padding:2px 6px;font-size:11px;font-weight:600;color:var(--t1);
+  background:color-mix(in srgb,var(--acc) 28%,transparent);border:1px dashed var(--acc);overflow:hidden;left:2px;right:2px}
+
+/* Month: weeks as rows, bars laid out in lanes over the day cells. */
+.cal-month{display:flex;flex-direction:column;min-height:100%}
+.cal-mh{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));position:sticky;top:0;z-index:6;background:var(--bg);border-bottom:1px solid var(--line-strong)}
+.cal-mh div{text-align:center;font-size:10.5px;font-weight:700;color:var(--t3);padding:6px 0;text-transform:uppercase;letter-spacing:.05em}
+.cal-wk{position:relative;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));grid-template-rows:26px repeat(var(--lanes),19px) auto;
+  flex:1 0 auto;min-height:calc(26px + var(--lanes)*19px + 6px);border-bottom:1px solid var(--line);align-content:start}
+.cal-cell{grid-row:1 / -1;border-left:1px solid var(--line)}
+.cal-cell.out{background:color-mix(in srgb,var(--elev) 60%,transparent)}
+.cal-dn{grid-row:1;z-index:1;justify-self:end;align-self:start;margin:3px 4px 0;min-width:22px;height:22px;padding:0 4px;border-radius:11px;
+  font-size:12px;font-weight:600;color:var(--t1)}
+.cal-dn.out{color:var(--t3)}
+.cal-dn.today{background:var(--acc);color:var(--on-acc)}
+.cal-mev{--c:var(--acc);z-index:1;margin:0 2px;height:17px;padding:0 5px;border-radius:4px;display:flex;align-items:center;justify-content:flex-start;gap:4px;
+  font-size:11px;font-weight:600;color:var(--t1);overflow:hidden;white-space:nowrap;text-align:left;
+  background:color-mix(in srgb,var(--c) 22%,var(--bg));border:0;border-left:3px solid var(--c);-webkit-user-select:none;user-select:none}
+.cal-mev .t{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.cal-mev.timed{background:transparent;border-left:0;padding-left:2px}
+.cal-mev.timed::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--c);flex:none}
+.cal-mev .w{color:var(--t2);font-weight:500;flex:none}
+.cal-mev.cancelled .t{text-decoration:line-through}
+.cal-mev.dragging{opacity:.4}
+.cal-more{grid-row:var(--r);z-index:1;margin:0 2px;height:17px;padding:0 5px;font-size:11px;font-weight:600;color:var(--t2);justify-content:flex-start;border-radius:4px;white-space:nowrap;overflow:hidden}
+@media (max-width:599px){.cal-mev .w{display:none}.cal-more{font-size:10px;padding:0 2px}.cal-mev{padding:0 3px;gap:3px}}
+.cal-more:hover{color:var(--acc)}
+
+/* Agenda: the Timeline's cards, with the calendar's colour on the edge. */
+.cal-agenda{padding:6px 16px 40px;display:flex;flex-direction:column;gap:16px}
+.cal-agenda .tl-card{border-left:3px solid var(--c,var(--acc))}
+.cal-agenda .tl-card.past{opacity:.62}
+.cal-agenda .tl-meta .dot{width:8px;height:8px;border-radius:50%;background:var(--c,var(--acc));flex:none}
+.cal-agenda .tl-more{align-self:center}
+
+/* The event sheet, the calendars list and the options. */
+#calEvTitle,#calEvLoc{width:100%}
+.cal-lbl{display:block;font-size:12px;font-weight:600;color:var(--t3);margin:10px 2px 4px}
+.cal-row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.cal-row > .field{flex:1;min-width:0;margin-bottom:0}
+.cal-row > .field.date{flex:1.4}
+.cal-chk{display:flex;align-items:center;gap:10px;min-height:40px;font-size:14.5px;cursor:pointer}
+.cal-chk input{width:18px;height:18px;accent-color:var(--acc);flex:none}
+.cal-days{display:flex;gap:4px;margin-bottom:8px}
+.cal-days button{flex:1;height:36px;border-radius:18px;background:var(--elev);border:1px solid var(--line);font-size:12px;font-weight:600;color:var(--t2)}
+.cal-days button[aria-pressed="true"]{background:var(--acc);color:var(--on-acc);border-color:transparent}
+.cal-sub{font-size:12px;color:var(--t3);margin:0 2px 8px;line-height:1.4}
+.cal-sub.err{color:var(--red)}
+textarea.field.cal-notes{min-height:84px}
+.cal-ro{font-size:13px;color:var(--t2);background:var(--elev);border-radius:var(--r);padding:10px 12px;margin-bottom:10px;line-height:1.45}
+.cal-acts{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.cal-acts .cta{flex:1 1 140px;margin-top:0}
+.cal-acts .cta.quiet{background:var(--elev2);color:var(--t1)}
+.cal-crow{display:flex;align-items:center;gap:12px;min-height:48px;border-bottom:1px solid var(--line)}
+.cal-crow input[type=checkbox]{width:20px;height:20px;accent-color:var(--c,var(--acc));flex:none}
+.cal-cname{flex:1;min-width:0;display:block;text-align:left;font-size:14.5px;padding:6px 0}
+.cal-cname .cal-nm{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cal-cname small{display:block;font-size:11.5px;color:var(--t3);margin-top:1px}
+.cal-cname small.err{color:var(--red)}
+.cal-sw{width:12px;height:12px;border-radius:50%;background:var(--c,var(--acc));flex:none}
+.cal-manage{padding:6px 0 12px;border-bottom:1px solid var(--line)}
+.cal-swatches{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 8px}
+.cal-swatches button{width:30px;height:30px;border-radius:50%;background:var(--c);border:2px solid transparent}
+.cal-swatches button[aria-pressed="true"]{box-shadow:0 0 0 2px var(--sheet),0 0 0 4px var(--c)}
+.cal-lnk{display:flex;align-items:center;justify-content:center;flex:1 1 140px;height:46px;padding:0 14px;border-radius:var(--r);background:var(--elev2);color:var(--t1);font-size:15px;font-weight:600;text-decoration:none}
+.cal-add{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+.cal-add .cta{flex:1 1 140px;margin-top:0}
+#calScope{position:fixed;inset:0;z-index:120;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45);padding:24px;margin:0;border:0;
+  color:inherit;width:100%;height:100%;max-width:none;max-height:none;box-sizing:border-box}
+#calScope:not([open]){display:none}
+#calScope::backdrop{background:transparent}
+@media (max-width:480px){#calScope .mactions{flex-wrap:wrap}#calScope .mactions .rbtn{flex:1 1 100%}}
+/* ══ end calendar ═══════════════════════════════════════════════════════ */
+
 /* search */
 /* Search and the folder picker share a line: two controls that both narrow
    the same list, and it buys back a whole row of vertical space above the
@@ -1905,7 +2067,7 @@ body.selmode .xf-chip{bottom:calc(var(--sab) + 92px)}
     <!-- The list is a list, and every row in it is reachable from the keyboard
          with a name that carries what sighted users get from the layout. -->
     <div id="list" role="list" aria-label="Messages"></div>
-    <div id="timelineView" role="region" aria-label="Timeline of meetings" hidden></div>
+    <div id="timelineView" role="region" aria-label="Calendar" hidden></div>
   </main>
 </div>
 
@@ -2629,6 +2791,119 @@ body.selmode .xf-chip{bottom:calc(var(--sab) + 92px)}
   <div class="sh-t" id="remindersTitle">Reminders</div>
   <div id="remindersList"></div>
 </div>
+
+<!-- ══ calendar ══════════════════════════════════════════════════════════
+     The event sheet, the calendars list, the options and the question asked
+     before a repeating event is changed. The view itself is built into
+     #timelineView by the calendar script. -->
+<div class="sheet lg" id="calEvSheet" role="dialog" aria-labelledby="calEvHead">
+  <div class="grab"></div>
+  <div class="sh-t" id="calEvHead">New event</div>
+  <div class="cal-ro" id="calEvRo" hidden></div>
+  <input class="field" id="calEvTitle" type="text" placeholder="Title" aria-label="Title" maxlength="300" autocomplete="off">
+  <label class="cal-lbl" for="calEvCal">Calendar</label>
+  <div class="field"><select id="calEvCal"></select></div>
+  <label class="cal-chk"><input type="checkbox" id="calEvAllDay"> All day</label>
+  <span class="cal-lbl" id="calEvSLbl">Starts</span>
+  <div class="cal-row" role="group" aria-labelledby="calEvSLbl">
+    <div class="field date"><input type="date" id="calEvSD" aria-label="Start date"></div>
+    <div class="field" id="calEvSTW"><select id="calEvST" aria-label="Start time"></select></div>
+  </div>
+  <span class="cal-lbl" id="calEvELbl">Ends</span>
+  <div class="cal-row" role="group" aria-labelledby="calEvELbl">
+    <div class="field date"><input type="date" id="calEvED" aria-label="End date"></div>
+    <div class="field" id="calEvETW"><select id="calEvET" aria-label="End time"></select></div>
+  </div>
+  <label class="cal-lbl" for="calEvRepeat">Repeat</label>
+  <div class="field"><select id="calEvRepeat">
+    <option value="none">Does not repeat</option>
+    <option value="daily">Daily</option>
+    <option value="weekly">Weekly</option>
+    <option value="monthly">Monthly</option>
+    <option value="yearly">Yearly</option>
+    <option value="custom" hidden>Custom (kept as it is)</option>
+  </select></div>
+  <div id="calEvRep" hidden>
+    <div class="cal-row" id="calEvIntW">
+      <span class="cal-lbl" style="margin:0" id="calEvIntL">Every</span>
+      <div class="field" style="max-width:90px"><input type="number" id="calEvInt" min="1" max="99" value="1" aria-labelledby="calEvIntL calEvUnit"></div>
+      <span id="calEvUnit" class="cal-sub" style="margin:0"></span>
+    </div>
+    <div class="cal-days" id="calEvDays" role="group" aria-label="Repeat on"></div>
+    <div class="field" id="calEvMonthlyW"><select id="calEvMonthly" aria-label="Repeat monthly on"></select></div>
+    <div class="cal-row">
+      <div class="field"><select id="calEvEnd" aria-label="Repeat ends">
+        <option value="never">Never ends</option>
+        <option value="until">Ends on a date</option>
+        <option value="count">Ends after a number of times</option>
+      </select></div>
+      <div class="field date" id="calEvUntilW"><input type="date" id="calEvUntil" aria-label="Last day of the repeat"></div>
+      <div class="field" id="calEvCountW" style="max-width:110px"><input type="number" id="calEvCount" min="1" max="999" value="10" aria-label="Number of times"></div>
+    </div>
+  </div>
+  <label class="cal-lbl" for="calEvRemind">Reminder</label>
+  <div class="field"><select id="calEvRemind"></select></div>
+  <input class="field" id="calEvLoc" type="text" placeholder="Location" aria-label="Location" maxlength="300" autocomplete="off" style="margin-top:8px">
+  <textarea class="field cal-notes" id="calEvNotes" placeholder="Notes" aria-label="Notes" maxlength="4000"></textarea>
+  <div class="cal-sub" id="calEvLink" hidden></div>
+  <div class="formerr" id="calEvErr" role="alert"></div>
+  <div class="cal-acts">
+    <button class="cta" id="calEvSave">Save</button>
+    <button class="cta quiet" id="calEvCancel">Cancel</button>
+    <button class="cta danger" id="calEvDelete">Delete</button>
+  </div>
+</div>
+
+<div class="sheet" id="calCalsSheet" role="dialog" aria-labelledby="calCalsHead">
+  <div class="grab"></div>
+  <div class="sh-t" id="calCalsHead">Calendars</div>
+  <div class="sh-s">Tick the ones to show. Events you make are kept here, not at iCloud. Invitations from your mail appear read-only.</div>
+  <div id="calCalsList"></div>
+  <div id="calCalsForm"></div>
+  <div class="cal-add">
+    <button class="cta quiet" id="calCalsNew">New calendar</button>
+    <button class="cta quiet" id="calCalsSub">Subscribe</button>
+  </div>
+  <input type="file" id="calFile" accept=".ics,text/calendar" hidden aria-hidden="true" tabindex="-1">
+</div>
+
+<div class="sheet" id="calOptsSheet" role="dialog" aria-labelledby="calOptsHead">
+  <div class="grab"></div>
+  <div class="sh-t" id="calOptsHead">Calendar options</div>
+  <div class="sh-s">Kept on this device.</div>
+  <label class="cal-lbl" for="calOptWeek">Week starts on</label>
+  <div class="field"><select id="calOptWeek">
+    <option value="auto">As my language says</option>
+    <option value="1">Monday</option>
+    <option value="0">Sunday</option>
+    <option value="6">Saturday</option>
+  </select></div>
+  <label class="cal-lbl" for="calOptClock">Clock</label>
+  <div class="field"><select id="calOptClock">
+    <option value="auto">As my language says</option>
+    <option value="12">12-hour</option>
+    <option value="24">24-hour</option>
+  </select></div>
+  <span class="cal-lbl" id="calOptWorkL">Working hours (shaded)</span>
+  <div class="cal-row" role="group" aria-labelledby="calOptWorkL">
+    <div class="field"><select id="calOptFrom" aria-label="Working day starts"></select></div>
+    <div class="field"><select id="calOptTo" aria-label="Working day ends"></select></div>
+  </div>
+  <div class="cal-days" id="calOptDays" role="group" aria-label="Working days"></div>
+</div>
+
+<dialog id="calScope" aria-labelledby="calScopeTitle">
+  <div class="mcard">
+    <div class="mtitle" id="calScopeTitle">This event repeats</div>
+    <div class="mdetail" id="calScopeDetail"></div>
+    <div class="mactions">
+      <button class="rbtn" id="calScopeCancel">Cancel</button>
+      <button class="rbtn" id="calScopeOne">This event</button>
+      <button class="rbtn acc" id="calScopeAll">All events</button>
+    </div>
+  </div>
+</dialog>
+<!-- ══ end calendar ═══════════════════════════════════════════════════ -->
 
 <script>
 "use strict";
@@ -9740,8 +10015,9 @@ function renderInvite(cur) {
       .map((s) => `<button class="ghost" data-rsvp="${s}" aria-pressed="${shown === s}">${{ accepted: "Accept", tentative: "Maybe", declined: "Decline" }[s]}</button>`)
       .join("");
   }
+  actions += `<button class="ghost" data-cal-add>Add to calendar</button>`;
   if (ics >= 0) {
-    actions += `<a class="ghost" href="/api/messages/${encodeURIComponent(m.id)}/attachment/${ics}" download="invite.ics">Add to calendar</a>`;
+    actions += `<a class="ghost" href="/api/messages/${encodeURIComponent(m.id)}/attachment/${ics}" download="invite.ics">Download .ics</a>`;
   }
   const join = meetingLink(inv.url);
   if (join) {
@@ -9920,11 +10196,12 @@ registerView({
 });
 registerView({
   id: "timeline",
-  label: "Timeline",
-  icon: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  label: "Calendar",
+  icon: '<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
   pane: "#timelineView",
   dot: true,
-  onShow: () => loadTimeline(),
+  onShow: () => { loadTimeline(); calShow(); },
+  onHide: () => calHide(),
 });
 
 /* ── timeline: upcoming meetings ── */
@@ -9979,123 +10256,12 @@ function eventDayLabel(start) {
   return d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", ...whenZone(start) });
 }
 
-function eventTimeText(ev) {
-  if (ev.start.allDay) return "All day";
-  const s = new Date(ev.start.ms);
-  const e = ev.end ? new Date(ev.end.ms) : null;
-  const zone = whenZone(ev.start);
-  const t = (d) => d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", ...zone });
-  const day = (d, how) => d.toLocaleDateString(undefined, { ...how, ...zone });
-  if (!e) return t(s);
-  return day(e, { dateStyle: "short" }) === day(s, { dateStyle: "short" })
-    ? `${t(s)} – ${t(e)}`
-    : `${t(s)} – ${day(e, { day: "numeric", month: "short" })} ${t(e)}`;
-}
-
+/** Draws the calendar, which now holds what this tab used to list; the dot is still the timeline's. */
 function renderTimeline() {
   if (!$("#timelineView")) return;
-  const now = Date.now();
-  const upcoming = timelineEvents.filter((e) => (e.end?.ms || e.start.ms) >= now - 2 * 3600_000);
-
-  const hasToday = timelineEvents.some((e) => eventDayLabel(e.start) === "Today");
-  $("#timelineDot").hidden = !hasToday;
-
-  const unknown = timelineFailed && !timelineEvents.length;
-  if (currentTab === "timeline") {
-    $("#hmeta").textContent = unknown
-      ? "Timeline · could not be loaded"
-      : `Timeline · ${upcoming.length} ${upcoming.length === 1 ? "upcoming meeting" : "upcoming meetings"}`;
-  }
-
-  if (!timelineEvents.length) {
-    $("#timelineView").innerHTML =
-      `<div class="tl-empty">` +
-      `<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>` +
-      (unknown
-        ? `<div><b>Could not load your meetings</b></div>` +
-          `<div style="font-size:12.5px;color:var(--t3);max-width:260px">The server did not answer. Check the connection.</div>` +
-          `<button class="ghost" data-tl-retry>Try again</button>`
-        : `<div><b>No meetings yet</b></div>` +
-          `<div style="font-size:12.5px;color:var(--t3);max-width:260px">Calendar invitations received in your mail will appear here in chronological order.</div>`) +
-      `</div>`;
-    return;
-  }
-
-  const groups = new Map();
-  for (const ev of timelineEvents) {
-    const dayKey = eventDayLabel(ev.start);
-    if (!groups.has(dayKey)) groups.set(dayKey, []);
-    groups.get(dayKey).push(ev);
-  }
-
-  let html = "";
-  for (const [day, evs] of groups) {
-    const isToday = day === "Today";
-    html += `<div class="tl-group">`;
-    html += `<div class="tl-date" style="${isToday ? "color:var(--acc)" : ""}">${esc(day)}</div>`;
-    for (const ev of evs) {
-      const isPast = (ev.end?.ms || ev.start.ms) < now - 1800_000;
-      const cancelled = ev.status === "CANCELLED";
-      const who = ev.organizer || (ev.from_name ? `${ev.from_name} <${ev.from_email}>` : ev.from_email);
-      let rsvpPill = "";
-      if (ev.rsvp === "accepted") rsvpPill = `<span class="tl-rsvp accepted">Accepted</span>`;
-      else if (ev.rsvp === "declined") rsvpPill = `<span class="tl-rsvp declined">Declined</span>`;
-      else if (ev.rsvp === "tentative") rsvpPill = `<span class="tl-rsvp">Maybe</span>`;
-      const join = meetingLink(ev.url);
-      // The pill says what the organiser has been told. The button also
-      // lights for an answer still inside its five seconds.
-      const shown = rsvpShown(ev.id, ev.rsvp);
-
-      // The card is a plain box and its title is the button that opens the
-      // message. The card used to be the button itself, with Join, Accept,
-      // Maybe and Decline inside it: a button holding other buttons, which a
-      // screen reader reads out as one control named after the meeting. The
-      // title's button is stretched over the card in CSS, so a click
-      // anywhere on it still opens the message.
-      html +=
-        `<div class="tl-card${isToday ? " today" : ""}${cancelled ? " cancelled" : ""}${isPast ? " past" : ""}" data-ev-id="${esc(ev.id)}">` +
-        `<div class="tl-head">` +
-        `<button class="tl-title" type="button" data-tl-open>${cancelled ? "Cancelled: " : ""}${esc(ev.summary || "Meeting")}</button>` +
-        `<div class="tl-badge">${esc(eventTimeText(ev))}</div>` +
-        `</div>` +
-        (ev.location ? `<div class="tl-meta"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>${esc(ev.location)}</div>` : "") +
-        (who ? `<div class="tl-meta"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>Organised by ${esc(who)}</div>` : "") +
-        `<div class="tl-actions">` +
-        (join ? `<a class="tl-join" href="${esc(join.href)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect width="14" height="14" x="1" y="5" rx="2" ry="2"/></svg>Join · ${esc(join.host)}</a>` : "") +
-        rsvpPill +
-        `<button class="ghost" data-tl-rsvp="accepted" data-eid="${esc(ev.id)}" aria-pressed="${shown === "accepted"}">Accept</button>` +
-        `<button class="ghost" data-tl-rsvp="tentative" data-eid="${esc(ev.id)}" aria-pressed="${shown === "tentative"}">Maybe</button>` +
-        `<button class="ghost" data-tl-rsvp="declined" data-eid="${esc(ev.id)}" aria-pressed="${shown === "declined"}">Decline</button>` +
-        `</div>` +
-        `</div>`;
-    }
-    html += `</div>`;
-  }
-
-  $("#timelineView").innerHTML = html;
+  $("#timelineDot").hidden = !timelineEvents.some((e) => eventDayLabel(e.start) === "Today");
+  calRender();
 }
-
-$("#timelineView").addEventListener("click", (e) => {
-  // "Try again", under "Could not load your meetings".
-  if (e.target.closest("[data-tl-retry]")) { loadTimeline(); return; }
-  const rsvpBtn = e.target.closest("[data-tl-rsvp]");
-  if (rsvpBtn) {
-    e.stopPropagation();
-    const id = rsvpBtn.dataset.eid;
-    const status = rsvpBtn.dataset.tlRsvp;
-    // The same five seconds and the same Undo as the card in the reader.
-    answerInvite(id, status);
-    // The timeline was redrawn; the keyboard stays on the button pressed.
-    const again = [...$("#timelineView").querySelectorAll(`[data-tl-rsvp="${status}"]`)].find((b) => b.dataset.eid === id);
-    if (again) again.focus();
-    return;
-  }
-  // The title is the card's one way in. It is a real button, so Enter and
-  // Space reach here as a click and need no key handler of their own.
-  const open = e.target.closest("[data-tl-open]");
-  const card = open && open.closest("[data-ev-id]");
-  if (card) openMsg(card.dataset.evId);
-});
 
 /* ── summary, snooze, .eml ── */
 let summaryFor = "";
@@ -11995,6 +12161,1353 @@ function fuReset() {
 }
 /** Said after "Sent" when the reminder asked for could not be set. */
 const fuNote = (d) => (d && d.followup === false ? ", but the reminder could not be set" : "");
+
+/* ══ calendar ═══════════════════════════════════════════════════════════
+ *
+ * The Timeline tab, grown into a calendar: Agenda, Day, Week and Month over
+ * the events in src/calendar.js, with your own events made, moved and resized
+ * here, invitations from your mail among them, read-only.
+ *
+ * The page never expands a repeating event itself. GET /api/calendar/events
+ * answers with the occurrences inside the window being drawn, and each one is
+ * drawn where it says it is. What it says is a stored time: an instant, except
+ * that an all-day date or an hour with no zone is its wall time written as
+ * UTC (see whenZone). Each occurrence is therefore turned, once, into `ws` and
+ * `we`, Dates whose *local* fields read as the wall clock of the event. The
+ * views place and compare those, never the stored numbers, and calStored turns
+ * one back when something is moved.
+ *
+ * A pointer drag is one small state machine, `calDrag`: down, then either a
+ * click (nothing moved) or, once it has moved far enough (or been held, for a
+ * finger, which must still be free to scroll), a create, move or resize with a
+ * ghost showing where it will land. Mouse and touch go through the same
+ * pointer events. Everything a drag does is also possible from the event
+ * sheet, which is what a keyboard reaches.
+ */
+const CAL_DAY = 86400000;
+const CAL_SNAP = 15;
+const calSaved = (() => {
+  try { return JSON.parse(localStorage.getItem("dmzs-cal") || "{}") || {}; } catch { return {}; }
+})();
+const cal = {
+  view: ["agenda", "day", "week", "month"].includes(calSaved.view) ? calSaved.view : matchMedia("(min-width:900px)").matches ? "week" : "agenda",
+  day: new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()),
+  calendars: [],
+  occ: [],
+  loaded: false,
+  failed: false,
+  seq: 0,
+  suppress: false,
+  timer: 0,
+  sheet: null,
+  hidden: new Set(Array.isArray(calSaved.hidden) ? calSaved.hidden : []),
+  opts: { weekStart: "auto", clock: "auto", workFrom: 9, workTo: 18, workDays: [1, 2, 3, 4, 5], ...(calSaved.opts || {}) },
+};
+function calSave() {
+  try { localStorage.setItem("dmzs-cal", JSON.stringify({ view: cal.view, hidden: [...cal.hidden], opts: cal.opts })); } catch {}
+}
+
+/* ── dates ── */
+const calTwo = (n) => String(n).padStart(2, "0");
+const calMidnight = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+/** Whole days on the wall clock, so a day with a clock change is still one day. */
+const calAddDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n, d.getHours(), d.getMinutes());
+const calSameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+const calIso = (d) => `${d.getFullYear()}-${calTwo(d.getMonth() + 1)}-${calTwo(d.getDate())}`;
+const calFromIso = (s) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || "");
+  return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null;
+};
+const calDayIdx = (d, first) => Math.round((calMidnight(d).getTime() - first.getTime()) / CAL_DAY);
+function calWeekStart() {
+  if (cal.opts.weekStart !== "auto") return Number(cal.opts.weekStart);
+  try {
+    const loc = new Intl.Locale(navigator.language);
+    const first = (loc.getWeekInfo ? loc.getWeekInfo() : loc.weekInfo)?.firstDay;
+    if (first) return first % 7;
+  } catch {}
+  return 1;
+}
+const calWeekOf = (d) => calAddDays(calMidnight(d), -((d.getDay() - calWeekStart() + 7) % 7));
+function calHour12() {
+  if (cal.opts.clock === "12") return true;
+  if (cal.opts.clock === "24") return false;
+  try { return !!new Intl.DateTimeFormat(undefined, { hour: "numeric" }).resolvedOptions().hour12; } catch { return false; }
+}
+const calClock = (d) => d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", hourCycle: calHour12() ? "h12" : "h23" });
+const calHourLabel = (h) =>
+  calHour12() ? new Date(2000, 0, 1, h).toLocaleTimeString(undefined, { hour: "numeric", hourCycle: "h12" }) : `${calTwo(h)}:00`;
+const calDate = (d, how) => d.toLocaleDateString(undefined, how);
+
+/** An occurrence's wall clock as local Dates, and back. */
+function calWall(ms, o) {
+  if (o.allDay || o.floating) {
+    const d = new Date(ms);
+    return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), d.getUTCHours(), d.getUTCMinutes());
+  }
+  return new Date(ms);
+}
+function calStored(d, o) {
+  if (o.allDay || o.floating) return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes());
+  return d.getTime();
+}
+function calPrep(o) {
+  o.ws = calWall(o.start, o);
+  o.we = calWall(o.end, o);
+  // Drawn at least a quarter of an hour tall, so an event with no length can be seen and pressed.
+  o.de = o.allDay ? o.we : new Date(Math.max(o.we.getTime(), o.ws.getTime() + 15 * 60000));
+  return o;
+}
+/** The last day an occurrence touches. An end at midnight belongs to the day before. */
+function calLast(o) {
+  const e = o.de;
+  if (e.getTime() > o.ws.getTime() && e.getHours() === 0 && e.getMinutes() === 0) return calAddDays(calMidnight(e), -1);
+  return calMidnight(e);
+}
+
+/* ── loading ── */
+const calCalendar = (id) => cal.calendars.find((c) => c.id === id);
+const calColor = (o) => (calCalendar(o.calendarId) || {}).color || "#1f6fd0";
+const calWritable = () => cal.calendars.filter((c) => c.kind === "local");
+
+function calRange() {
+  const d = cal.day;
+  if (cal.view === "day") return [calMidnight(d), calAddDays(calMidnight(d), 1)];
+  if (cal.view === "week") {
+    const s = calWeekOf(d);
+    return [s, calAddDays(s, 7)];
+  }
+  if (cal.view === "month") {
+    const first = new Date(d.getFullYear(), d.getMonth(), 1);
+    const s = calWeekOf(first);
+    const dim = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    const rows = Math.ceil((((first.getDay() - calWeekStart() + 7) % 7) + dim) / 7);
+    return [s, calAddDays(s, rows * 7)];
+  }
+  return [calMidnight(d), calAddDays(calMidnight(d), 30)];
+}
+
+async function calLoad() {
+  const seq = ++cal.seq;
+  const [from, to] = calRange();
+  const [c, e] = await Promise.all([
+    api("/api/calendar/calendars").catch(() => null),
+    api(`/api/calendar/events?from=${from.getTime()}&to=${to.getTime()}`).catch(() => null),
+  ]);
+  if (seq !== cal.seq) return; // a later request is the one that counts
+  const cd = c && c.ok ? await c.json().catch(() => null) : null;
+  const ed = e && e.ok ? await e.json().catch(() => null) : null;
+  // A failed read keeps what is drawn, as the timeline's did.
+  cal.failed = !(cd && ed);
+  if (cd) cal.calendars = cd.calendars || [];
+  if (ed) cal.occ = (ed.events || []).map(calPrep);
+  cal.loaded = true;
+  calRender();
+}
+
+/** What is drawn: not from a hidden calendar, and inside the window by its own wall clock. */
+function calVisible() {
+  const [from, to] = calRange();
+  return cal.occ.filter((o) => !cal.hidden.has(o.calendarId) && o.ws < to && (o.de > from || o.ws >= from));
+}
+
+/* ── the view ── */
+function calBuild() {
+  const seg = ["agenda", "day", "week", "month"]
+    .map((v) => `<button type="button" data-cal-view="${v}" aria-pressed="false">${v[0].toUpperCase()}${v.slice(1)}</button>`)
+    .join("");
+  const ico = (p) => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+  $("#timelineView").innerHTML =
+    `<div class="cal-bar">` +
+    `<div class="cal-nav">` +
+    `<button type="button" class="cal-btn ico" id="calPrev" aria-label="Previous">${ico('<path d="m15 18-6-6 6-6"/>')}</button>` +
+    `<button type="button" class="cal-btn ico" id="calNext" aria-label="Next">${ico('<path d="m9 18 6-6-6-6"/>')}</button>` +
+    `<button type="button" class="cal-btn" id="calToday">Today</button>` +
+    `</div>` +
+    `<h2 class="cal-title" id="calTitle" aria-live="polite"></h2>` +
+    `<button type="button" class="cal-btn acc ico cal-new" id="calNew" aria-label="New event" title="New event">${ico('<path d="M12 5v14M5 12h14"/>')}</button>` +
+    `<div class="cal-row2">` +
+    `<div class="cal-seg" role="group" aria-label="View">${seg}</div>` +
+    `<button type="button" class="cal-btn ico" id="calCals" aria-label="Calendars" aria-haspopup="dialog" title="Calendars">${ico('<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>')}</button>` +
+    `<button type="button" class="cal-btn ico" id="calOpts" aria-label="Calendar options" aria-haspopup="dialog" title="Options">${ico('<path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>')}</button>` +
+    `</div>` +
+    `</div>` +
+    `<div class="cal-scroll" id="calBody" tabindex="-1"></div>`;
+}
+calBuild();
+
+function calTitleText() {
+  const [from, to] = calRange();
+  const last = calAddDays(to, -1);
+  if (cal.view === "day") {
+    const wide = innerWidth >= 600;
+    return calDate(cal.day, { weekday: wide ? "long" : "short", day: "numeric", month: wide ? "long" : "short", year: wide || cal.day.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined });
+  }
+  if (cal.view === "month") return calDate(cal.day, { month: "long", year: "numeric" });
+  const f = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", year: "numeric" });
+  return f.formatRange ? f.formatRange(from, last) : `${f.format(from)} – ${f.format(last)}`;
+}
+
+function calRender(reset = false) {
+  const body = $("#calBody");
+  // Not while another tab is up, and never under a drag in progress, which holds elements of this DOM.
+  if (!body || currentTab !== "timeline" || (calDrag && calDrag.active)) return;
+  $("#calTitle").textContent = calTitleText();
+  for (const b of document.querySelectorAll("[data-cal-view]")) b.setAttribute("aria-pressed", String(b.dataset.calView === cal.view));
+  const keep = document.activeElement && document.activeElement.closest ? document.activeElement.closest("[data-occ]") : null;
+  const keepId = keep && body.contains(keep) ? keep.dataset.occ : "";
+  const top = body.scrollTop;
+  const left = body.scrollLeft;
+
+  if (!cal.loaded) body.innerHTML = `<div class="cal-msg">Loading…</div>`;
+  else if (cal.failed && !cal.occ.length && !cal.calendars.length) {
+    body.innerHTML =
+      `<div class="cal-msg"><div><b>Could not load your calendar</b></div>` +
+      `<div style="font-size:12.5px;color:var(--t3);max-width:260px">The server did not answer. Check the connection.</div>` +
+      `<button type="button" class="ghost" data-cal-retry>Try again</button></div>`;
+  } else body.innerHTML = cal.view === "agenda" ? calAgendaHtml() : cal.view === "month" ? calMonthHtml() : calGridHtml();
+
+  if (reset) cal.wantScroll = true;
+  const grid = body.querySelector(".cal-grid");
+  if (grid && cal.wantScroll) {
+    // First sight of a grid starts at the working day, or an hour before now
+    // when today is on it; after that a redraw leaves it where the reader put it.
+    // Asked for by a change of view or day, and kept until a grid is there to scroll.
+    cal.wantScroll = false;
+    const inView = calVisibleDays().some((d) => calSameDay(d, new Date()));
+    body.scrollTop = Math.max(0, inView ? new Date().getHours() - 1 : cal.opts.workFrom - 1) * calHourPx();
+  } else body.scrollTop = cal.wantScroll && cal.loaded ? 0 : top;
+  if (cal.wantScroll && cal.loaded) cal.wantScroll = false;
+  body.scrollLeft = left;
+  if (keepId) {
+    const again = [...body.querySelectorAll("[data-occ]")].find((x) => x.dataset.occ === keepId);
+    if (again) again.focus({ preventScroll: true });
+  }
+
+  if (currentTab === "timeline") {
+    const n = cal.loaded ? calVisible().length : 0;
+    $("#hmeta").textContent = cal.failed && !cal.occ.length ? "Calendar · could not be loaded" : `Calendar · ${n} ${n === 1 ? "event" : "events"}`;
+  }
+}
+const calHourPx = () => parseFloat(getComputedStyle($("#calBody").querySelector(".cal-grid") || document.body).getPropertyValue("--h")) || 46;
+function calVisibleDays() {
+  const [from, to] = calRange();
+  const out = [];
+  for (let d = from; d < to; d = calAddDays(d, 1)) out.push(d);
+  return out;
+}
+
+/** The event's label for a screen reader: what, when, where, which calendar. */
+function calLabel(o) {
+  const c = calCalendar(o.calendarId);
+  const when = o.allDay
+    ? `${calDate(o.ws, { weekday: "long", day: "numeric", month: "long" })}, all day`
+    : `${calDate(o.ws, { weekday: "long", day: "numeric", month: "long" })}, ${calTimeText(o)}`;
+  return [o.summary || "No title", when, o.location, c ? c.name : "", o.recurring ? "repeats" : "", o.status === "CANCELLED" ? "cancelled" : ""].filter(Boolean).join(", ");
+}
+function calTimeText(o) {
+  if (o.allDay) return "All day";
+  const same = o.we.getTime() === o.ws.getTime();
+  if (same) return calClock(o.ws);
+  if (calSameDay(o.ws, o.we)) return `${calClock(o.ws)} – ${calClock(o.we)}`;
+  return `${calClock(o.ws)} – ${calDate(o.we, { day: "numeric", month: "short" })} ${calClock(o.we)}`;
+}
+const calTitleOf = (o) => (o.status === "CANCELLED" ? "Cancelled: " : "") + (o.summary || "(No title)");
+const calEvAttrs = (o) => `data-occ="${esc(o.id)}" aria-label="${esc(calLabel(o))}"`;
+
+/* ── day and week ── */
+/** Lays segments that overlap side by side. Each gets `col` of `cols`. */
+function calColumns(segs) {
+  segs.sort((a, b) => a.s - b.s || b.e - a.e);
+  let cluster = [];
+  let end = -1;
+  const flush = () => {
+    const cols = [];
+    for (const g of cluster) {
+      let c = cols.findIndex((x) => x <= g.s);
+      if (c < 0) { c = cols.length; cols.push(0); }
+      cols[c] = g.e;
+      g.col = c;
+    }
+    for (const g of cluster) g.cols = cols.length;
+  };
+  for (const g of segs) {
+    if (cluster.length && g.s >= end) { flush(); cluster = []; end = -1; }
+    cluster.push(g);
+    end = Math.max(end, g.e);
+  }
+  if (cluster.length) flush();
+  return segs;
+}
+
+/** An occurrence's piece on one day, in minutes from that day's midnight. */
+function calSegment(o, day) {
+  const next = calAddDays(day, 1);
+  if (!(o.ws < next && o.de > day)) return null;
+  const s = o.ws >= day ? o.ws.getHours() * 60 + o.ws.getMinutes() : 0;
+  const e = o.de < next ? o.de.getHours() * 60 + o.de.getMinutes() : 1440;
+  return { s, e: Math.max(e, s + 15), top: o.ws < day, bottom: o.de > next };
+}
+
+function calGridHtml() {
+  const days = calVisibleDays();
+  const n = days.length;
+  const vis = calVisible();
+  const now = new Date();
+  const first = days[0];
+  const writable = (o) => !o.readOnly;
+
+  let head = `<div class="cal-head"><div></div>`;
+  for (const d of days) {
+    const today = calSameDay(d, now);
+    head +=
+      `<button type="button" class="cal-dh${today ? " today" : ""}" data-cal-day="${d.getTime()}" aria-label="${esc(calDate(d, { weekday: "long", day: "numeric", month: "long" }))}">` +
+      `<span>${esc(calDate(d, { weekday: "short" }))}</span><span class="dn">${d.getDate()}</span></button>`;
+  }
+  head += `</div>`;
+
+  // All-day events, as bars across the days they cover.
+  const bars = [];
+  for (const o of vis) {
+    if (!o.allDay) continue;
+    const c0 = Math.max(0, calDayIdx(o.ws, first));
+    const c1 = Math.min(n - 1, calDayIdx(calLast(o), first));
+    if (c1 >= c0) bars.push({ o, c0, c1 });
+  }
+  bars.sort((a, b) => a.c0 - b.c0 || b.c1 - a.c1);
+  const lanes = [];
+  for (const b of bars) {
+    let l = lanes.findIndex((end) => end < b.c0);
+    if (l < 0) { l = lanes.length; lanes.push(-1); }
+    lanes[l] = b.c1;
+    b.lane = l;
+  }
+  let ad = "";
+  if (bars.length) {
+    ad = `<div class="cal-ad"><span class="lbl">all-day</span>`;
+    for (const b of bars) {
+      const o = b.o;
+      ad +=
+        `<button type="button" class="cal-ev bar${o.readOnly && o.calendarId === "invitations" ? " inv" : ""}${o.status === "CANCELLED" ? " cancelled" : ""}${calDayIdx(o.ws, first) < 0 ? " cl" : ""}" ` +
+        `${calEvAttrs(o)} style="--c:${esc(calColor(o))};grid-column:${b.c0 + 2}/${b.c1 + 3};grid-row:${b.lane + 1}">` +
+        `<span class="t">${esc(calTitleOf(o))}</span></button>`;
+    }
+    ad += `</div>`;
+  }
+
+  let gut = `<div class="cal-gut">`;
+  for (let h = 1; h < 24; h++) gut += `<span class="cal-hr" style="top:calc(var(--h) * ${h})">${esc(calHourLabel(h))}</span>`;
+  gut += `</div>`;
+
+  let cols = "";
+  days.forEach((d, i) => {
+    const segs = [];
+    for (const o of vis) {
+      if (o.allDay) continue;
+      const g = calSegment(o, d);
+      if (g) segs.push({ ...g, o });
+    }
+    calColumns(segs);
+    const work = cal.opts.workDays.includes(d.getDay()) && cal.opts.workTo > cal.opts.workFrom
+      ? `<div class="cal-work" style="top:calc(var(--h) * ${cal.opts.workFrom});height:calc(var(--h) * ${cal.opts.workTo - cal.opts.workFrom})"></div>` : "";
+    let evs = "";
+    for (const g of segs) {
+      const o = g.o;
+      const w = 100 / g.cols;
+      const dur = g.e - g.s;
+      const timeLine = dur >= 40 ? `<span class="w">${esc(calTimeText(o))}</span>` : "";
+      const where = dur >= 70 && o.location ? `<span class="w">${esc(o.location)}</span>` : "";
+      const grip = writable(o) && dur >= 30;
+      evs +=
+        `<button type="button" class="cal-ev${dur >= 45 ? " tall" : ""}${o.calendarId === "invitations" ? " inv" : ""}${o.status === "CANCELLED" ? " cancelled" : ""}" ${calEvAttrs(o)} ` +
+        `style="--c:${esc(calColor(o))};top:calc(var(--h) * ${g.s / 60});height:calc(var(--h) * ${dur / 60});left:calc(${g.col * w}% + 1px);width:calc(${w}% - 3px)">` +
+        (grip && !g.top ? `<span class="cal-rs t" aria-hidden="true"></span>` : "") +
+        `<span class="t">${esc(calTitleOf(o))}</span>${timeLine}${where}` +
+        (grip && !g.bottom ? `<span class="cal-rs b" aria-hidden="true"></span>` : "") +
+        `</button>`;
+    }
+    const nowLine = calSameDay(d, now) ? `<div class="cal-now" style="top:calc(var(--h) * ${(now.getHours() * 60 + now.getMinutes()) / 60})"></div>` : "";
+    cols += `<div class="cal-col" data-t="${d.getTime()}">${work}${evs}${nowLine}</div>`;
+  });
+
+  return `<div class="cal-grid" style="--n:${n}"><div class="cal-top">${head}${ad}</div><div class="cal-times">${gut}${cols}</div></div>`;
+}
+
+/* ── month ── */
+function calMonthLanes() {
+  const rows = Math.round((calRange()[1] - calRange()[0]) / (7 * CAL_DAY));
+  const h = $("#calBody") ? $("#calBody").clientHeight - 30 : 600;
+  return Math.max(1, Math.min(6, Math.floor((h / Math.max(rows, 1) - 30) / 19)));
+}
+function calMonthHtml() {
+  const [from, to] = calRange();
+  const weeks = Math.round((to - from) / (7 * CAL_DAY));
+  const vis = calVisible();
+  const now = new Date();
+  const month = cal.day.getMonth();
+  const maxLanes = calMonthLanes();
+  let html = `<div class="cal-month"><div class="cal-mh">`;
+  for (let i = 0; i < 7; i++) html += `<div>${esc(calDate(calAddDays(from, i), { weekday: "short" }))}</div>`;
+  html += `</div>`;
+  for (let w = 0; w < weeks; w++) {
+    const ws = calAddDays(from, w * 7);
+    const segs = [];
+    for (const o of vis) {
+      const c0 = calDayIdx(o.ws, ws);
+      const c1 = calDayIdx(calLast(o), ws);
+      if (c1 < 0 || c0 > 6) continue;
+      const span = o.allDay || c1 > c0;
+      segs.push({ o, c0: Math.max(0, c0), c1: Math.min(6, c1), cl: c0 < 0, cr: c1 > 6, span });
+    }
+    segs.sort((a, b) => (b.span - a.span) || a.c0 - b.c0 || (b.c1 - b.c0) - (a.c1 - a.c0) || a.o.ws - b.o.ws);
+    const lanes = [];
+    const hidden = [0, 0, 0, 0, 0, 0, 0];
+    for (const g of segs) {
+      let l = lanes.findIndex((end) => end < g.c0);
+      if (l < 0) { l = lanes.length; lanes.push(-1); }
+      lanes[l] = g.c1;
+      g.lane = l;
+      if (l >= maxLanes) for (let c = g.c0; c <= g.c1; c++) hidden[c]++;
+    }
+    const used = Math.min(maxLanes, lanes.length);
+    html += `<div class="cal-wk" style="--lanes:${used}">`;
+    for (let c = 0; c < 7; c++) {
+      const d = calAddDays(ws, c);
+      html += `<div class="cal-cell${d.getMonth() !== month ? " out" : ""}" data-t="${d.getTime()}" style="grid-column:${c + 1}"></div>`;
+    }
+    for (let c = 0; c < 7; c++) {
+      const d = calAddDays(ws, c);
+      const lbl = d.getDate() === 1 ? calDate(d, { day: "numeric", month: "short" }) : String(d.getDate());
+      html +=
+        `<button type="button" class="cal-dn${d.getMonth() !== month ? " out" : ""}${calSameDay(d, now) ? " today" : ""}" data-cal-day="${d.getTime()}" ` +
+        `style="grid-column:${c + 1}" aria-label="${esc(calDate(d, { weekday: "long", day: "numeric", month: "long" }))}">${esc(lbl)}</button>`;
+    }
+    for (const g of segs) {
+      if (g.lane >= maxLanes) continue;
+      const o = g.o;
+      const timed = !g.span;
+      html +=
+        `<button type="button" class="cal-mev${timed ? " timed" : ""}${o.status === "CANCELLED" ? " cancelled" : ""}" ${calEvAttrs(o)} ` +
+        `style="--c:${esc(calColor(o))};--r:${g.lane + 2};grid-row:${g.lane + 2};grid-column:${g.c0 + 1}/${g.c1 + 2}">` +
+        (timed ? `<span class="w">${esc(calClock(o.ws))}</span>` : "") +
+        `<span class="t">${esc(calTitleOf(o))}</span></button>`;
+    }
+    for (let c = 0; c < 7; c++) {
+      if (hidden[c]) {
+        html += `<button type="button" class="cal-more" data-cal-day="${calAddDays(ws, c).getTime()}" style="--r:${used + 2};grid-row:${used + 2};grid-column:${c + 1}">+${hidden[c]} more</button>`;
+      }
+    }
+    html += `</div>`;
+  }
+  return html + `</div>`;
+}
+
+/* ── agenda ── */
+function calDayLabel(d) {
+  const diff = Math.round((calMidnight(d) - calMidnight(new Date())) / CAL_DAY);
+  if (diff === 0) return "Today";
+  if (diff === 1) return "Tomorrow";
+  if (diff === -1) return "Yesterday";
+  return calDate(d, { weekday: "long", day: "numeric", month: "long" });
+}
+function calAgendaHtml() {
+  const [from] = calRange();
+  const vis = calVisible();
+  const now = Date.now();
+  if (!vis.length) {
+    return (
+      `<div class="cal-msg"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:var(--t3);opacity:.7"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>` +
+      `<div><b>Nothing planned</b></div>` +
+      `<div style="font-size:12.5px;color:var(--t3);max-width:280px">Nothing in the next 30 days. Make an event with the + button, or subscribe to a calendar.</div></div>`
+    );
+  }
+  const groups = new Map();
+  for (const o of vis) {
+    const day = o.ws < from ? from : calMidnight(o.ws);
+    const k = day.getTime();
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(o);
+  }
+  let html = `<div class="cal-agenda">`;
+  for (const [k, list] of [...groups].sort((a, b) => a[0] - b[0])) {
+    const day = new Date(k);
+    const today = calSameDay(day, new Date());
+    html += `<div class="tl-group"><div class="tl-date" style="${today ? "color:var(--acc)" : ""}">${esc(calDayLabel(day))}</div>`;
+    for (const o of list) {
+      const inv = o.calendarId === "invitations";
+      const cancelled = o.status === "CANCELLED";
+      const past = o.de.getTime() < now - 1800_000 && (o.allDay ? calLast(o) < calMidnight(new Date()) : true);
+      const c = calCalendar(o.calendarId);
+      const multi = o.allDay && calLast(o) > o.ws ? `${calDate(o.ws, { day: "numeric", month: "short" })} – ${calDate(calLast(o), { day: "numeric", month: "short" })}` : calTimeText(o);
+      let extra = "";
+      if (inv) {
+        const join = meetingLink(o.url);
+        // The answer last sent is kept on timelineEvents, which sendRsvp updates.
+        const known = timelineEvents.find((x) => x.id === o.eventId);
+        const sent = known ? known.rsvp : o.rsvp;
+        const shown = rsvpShown(o.eventId, sent);
+        const pill = { accepted: `<span class="tl-rsvp accepted">Accepted</span>`, declined: `<span class="tl-rsvp declined">Declined</span>`, tentative: `<span class="tl-rsvp">Maybe</span>` }[sent] || "";
+        extra =
+          `<div class="tl-actions">` +
+          (join ? `<a class="tl-join" href="${esc(join.href)}" target="_blank" rel="noopener noreferrer">Join · ${esc(join.host)}</a>` : "") +
+          pill +
+          ["accepted", "tentative", "declined"]
+            .map((s) => `<button type="button" class="ghost" data-tl-rsvp="${s}" data-eid="${esc(o.eventId)}" aria-pressed="${shown === s}">${{ accepted: "Accept", tentative: "Maybe", declined: "Decline" }[s]}</button>`)
+            .join("") +
+          `</div>`;
+      }
+      html +=
+        `<div class="tl-card${today ? " today" : ""}${cancelled ? " cancelled" : ""}${past ? " past" : ""}" data-occ="${esc(o.id)}" style="--c:${esc(calColor(o))}">` +
+        `<div class="tl-head"><button type="button" class="tl-title" data-cal-${inv ? "msg" : "open"} aria-label="${esc(calLabel(o))}">${esc(calTitleOf(o))}</button>` +
+        `<div class="tl-badge">${esc(multi)}</div></div>` +
+        `<div class="tl-meta"><span class="dot"></span>${esc(c ? c.name : "")}${o.recurring ? " · repeats" : ""}</div>` +
+        (o.location ? `<div class="tl-meta">${esc(o.location)}</div>` : "") +
+        (inv && o.organizer ? `<div class="tl-meta">Organised by ${esc(o.organizer)}</div>` : "") +
+        extra +
+        `</div>`;
+    }
+    html += `</div>`;
+  }
+  return html + `<button type="button" class="ghost tl-more" id="calMore">Show the next 30 days</button></div>`;
+}
+
+/* ── moving about ── */
+function calGo(by) {
+  const d = cal.day;
+  if (cal.view === "day") cal.day = calAddDays(d, by);
+  else if (cal.view === "week") cal.day = calAddDays(d, 7 * by);
+  else if (cal.view === "month") cal.day = new Date(d.getFullYear(), d.getMonth() + by, 1);
+  else cal.day = calAddDays(d, 30 * by);
+  calRender(true);
+  calLoad();
+}
+function calSetView(v, day) {
+  if (day) cal.day = calMidnight(day);
+  cal.view = v;
+  calSave();
+  calRender(true);
+  calLoad();
+}
+$("#calPrev").addEventListener("click", () => calGo(-1));
+$("#calNext").addEventListener("click", () => calGo(1));
+$("#calToday").addEventListener("click", () => {
+  cal.day = calMidnight(new Date());
+  calRender(true);
+  calLoad();
+});
+$("#timelineView").addEventListener("click", (e) => {
+  if (cal.suppress) { e.stopPropagation(); e.preventDefault(); return; }
+  const v = e.target.closest("[data-cal-view]");
+  if (v) return calSetView(v.dataset.calView);
+  if (e.target.closest("[data-cal-retry]")) return calLoad();
+  if (e.target.closest("#calMore")) {
+    cal.day = calAddDays(calRange()[0], 30);
+    calRender(true);
+    return calLoad();
+  }
+  const day = e.target.closest("[data-cal-day]");
+  if (day) return calSetView("day", new Date(Number(day.dataset.calDay)));
+  const rsvp = e.target.closest("[data-tl-rsvp]");
+  if (rsvp) {
+    const id = rsvp.dataset.eid;
+    const status = rsvp.dataset.tlRsvp;
+    // The same five seconds and the same Undo as the card in the reader.
+    answerInvite(id, status);
+    const again = [...$("#timelineView").querySelectorAll(`[data-tl-rsvp="${status}"]`)].find((b) => b.dataset.eid === id);
+    if (again) again.focus();
+    return;
+  }
+  const el = e.target.closest("[data-occ]");
+  const o = el && cal.occ.find((x) => x.id === el.dataset.occ);
+  if (!o || e.target.closest("a")) return;
+  if (o.calendarId === "invitations") {
+    // The reader lives on the Mail tab.
+    switchTab("mail");
+    openMsg(o.messageId);
+  } else calEdit(o);
+});
+// An answer to an invitation changes the card; redrawn by paintRsvp through renderTimeline.
+
+/* ── pointer: create, move, resize ── */
+let calDrag = null;
+
+const calSnap = (min) => Math.round(min / CAL_SNAP) * CAL_SNAP;
+/** The day column under a point, and how many minutes down it. */
+function calGridAt(x, y) {
+  const cols = [...$("#calBody").querySelectorAll(".cal-col")];
+  if (!cols.length) return null;
+  let i = cols.findIndex((c) => { const r = c.getBoundingClientRect(); return x >= r.left && x < r.right; });
+  if (i < 0) i = x < cols[0].getBoundingClientRect().left ? 0 : cols.length - 1;
+  const r = cols[i].getBoundingClientRect();
+  return { i, col: cols[i], day: new Date(Number(cols[i].dataset.t)), min: Math.min(1440, Math.max(0, ((y - r.top) / r.height) * 1440)) };
+}
+/** The month cell under a point, as a day. */
+function calCellAt(x, y) {
+  for (const wk of $("#calBody").querySelectorAll(".cal-wk")) {
+    const r = wk.getBoundingClientRect();
+    if (y < r.top || y >= r.bottom) continue;
+    const cells = wk.querySelectorAll(".cal-cell");
+    const c = Math.min(6, Math.max(0, Math.floor(((x - r.left) / r.width) * 7)));
+    return new Date(Number(cells[c].dataset.t));
+  }
+  return null;
+}
+const calAtMin = (day, min) => new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, min);
+
+function calDragClear() {
+  const d = calDrag;
+  calDrag = null;
+  if (!d) return;
+  clearTimeout(d.timer);
+  for (const g of document.querySelectorAll(".cal-ghost")) g.remove();
+  for (const g of document.querySelectorAll(".cal-col.drop,.cal-cell.drop")) g.classList.remove("drop");
+  if (d.el) d.el.classList.remove("dragging");
+  try { $("#calBody").releasePointerCapture(d.pid); } catch {}
+}
+
+function calPointerDown(e) {
+  if (calDrag || (e.pointerType === "mouse" && e.button !== 0)) return;
+  if (!$("#calBody").contains(e.target)) return;
+  const touch = e.pointerType !== "mouse";
+  const handle = e.target.closest(".cal-rs");
+  const ev = e.target.closest(".cal-ev, .cal-mev");
+  const base = { pid: e.pointerId, ptype: e.pointerType, x0: e.clientX, y0: e.clientY, active: false, el: null, timer: 0 };
+
+  if (ev) {
+    const o = cal.occ.find((x) => x.id === ev.dataset.occ);
+    if (!o || o.readOnly) return;
+    base.o = o;
+    base.el = ev;
+    if (handle) calDrag = { ...base, mode: handle.classList.contains("t") ? "rs-t" : "rs-b", hold: false, seg: calGridAt(e.clientX, e.clientY) };
+    else if (ev.classList.contains("cal-mev") || ev.classList.contains("bar")) calDrag = { ...base, mode: "days", hold: touch, from: calDayAtPoint(e.clientX, e.clientY) };
+    else {
+      const p = calGridAt(e.clientX, e.clientY);
+      // How far into the event the pointer took hold, so it keeps that hold as it moves.
+      calDrag = { ...base, mode: "move", hold: touch, p0: p, grab: (calAtMin(p.day, p.min).getTime() - o.ws.getTime()) / 60000 };
+    }
+  } else if (e.target.closest(".cal-col")) {
+    const p = calGridAt(e.clientX, e.clientY);
+    calDrag = { ...base, mode: "create", hold: touch, p0: p, a: Math.floor(p.min / CAL_SNAP) * CAL_SNAP };
+  } else if (e.target.closest(".cal-cell")) {
+    calDrag = { ...base, mode: "create-day", hold: false, day: calCellAt(e.clientX, e.clientY) };
+  } else return;
+
+  // A finger has to be free to scroll, so a move or a create from one starts
+  // only after it has been held still.
+  if (calDrag.hold) {
+    calDrag.timer = setTimeout(() => {
+      if (!calDrag) return;
+      calDrag.active = true;
+      try { $("#calBody").setPointerCapture(calDrag.pid); } catch {}
+      if (calDrag.el) calDrag.el.classList.add("dragging");
+      try { navigator.vibrate && navigator.vibrate(8); } catch {}
+      calDragUpdate(calDrag.x0, calDrag.y0);
+    }, 420);
+  }
+}
+function calDayAtPoint(x, y) {
+  if ($("#calBody").querySelector(".cal-month")) return calCellAt(x, y);
+  const p = calGridAt(x, y);
+  return p && p.day;
+}
+
+function calPointerMove(e) {
+  const d = calDrag;
+  if (!d || e.pointerId !== d.pid) return;
+  const dist = Math.hypot(e.clientX - d.x0, e.clientY - d.y0);
+  if (!d.active) {
+    if (d.hold) {
+      if (dist > 9) calDragClear(); // it was a scroll, not a drag
+      return;
+    }
+    if (dist < 5 || d.mode === "create-day") return;
+    d.active = true;
+    try { $("#calBody").setPointerCapture(d.pid); } catch {}
+    if (d.el) d.el.classList.add("dragging");
+  }
+  calDragUpdate(e.clientX, e.clientY);
+  // Near an edge the page scrolls under the drag.
+  const box = $("#calBody").getBoundingClientRect();
+  if (e.clientY < box.top + 36) $("#calBody").scrollTop -= 14;
+  else if (e.clientY > box.bottom - 36) $("#calBody").scrollTop += 14;
+}
+
+/** Works out where a drag would land and shows it. */
+function calDragUpdate(x, y) {
+  const d = calDrag;
+  if (!d) return;
+  for (const g of document.querySelectorAll(".cal-ghost")) g.remove();
+  for (const g of document.querySelectorAll(".cal-col.drop,.cal-cell.drop")) g.classList.remove("drop");
+  let s;
+  let e;
+  if (d.mode === "create" || d.mode === "move" || d.mode === "rs-t" || d.mode === "rs-b") {
+    const p = calGridAt(x, y);
+    if (!p) return;
+    const dur = d.o ? d.o.we.getTime() - d.o.ws.getTime() : 0;
+    if (d.mode === "create") {
+      const cur = Math.floor(p.min / CAL_SNAP) * CAL_SNAP;
+      const day = d.p0.day;
+      const [a, b] = cur >= d.a ? [d.a, cur + CAL_SNAP] : [cur, d.a + CAL_SNAP];
+      s = calAtMin(day, a);
+      e = calAtMin(day, b);
+    } else if (d.mode === "move") {
+      s = calAtMin(p.day, calSnap(p.min - d.grab));
+      e = new Date(s.getTime() + dur);
+    } else if (d.mode === "rs-b") {
+      s = d.o.ws;
+      const day = d.seg.day;
+      e = calAtMin(day, Math.max(calSnap(p.min), 0));
+      if (e.getTime() < s.getTime() + CAL_SNAP * 60000) e = new Date(s.getTime() + CAL_SNAP * 60000);
+    } else {
+      e = d.o.we;
+      s = calAtMin(d.seg.day, calSnap(p.min));
+      if (s.getTime() > e.getTime() - CAL_SNAP * 60000) s = new Date(e.getTime() - CAL_SNAP * 60000);
+    }
+    d.preview = { s, e };
+    // The ghost is drawn as a segment on each day it crosses.
+    const cols = [...$("#calBody").querySelectorAll(".cal-col")];
+    for (const col of cols) {
+      const day = new Date(Number(col.dataset.t));
+      const g = calSegment({ ws: s, de: e }, day);
+      if (!g) continue;
+      const el = document.createElement("div");
+      el.className = "cal-ghost";
+      el.style.top = `calc(var(--h) * ${g.s / 60})`;
+      el.style.height = `calc(var(--h) * ${(g.e - g.s) / 60})`;
+      el.textContent = `${calClock(s)} – ${calClock(e)}`;
+      col.append(el);
+    }
+  } else if (d.mode === "days") {
+    const day = calDayAtPoint(x, y);
+    if (!day || !d.from) return;
+    const by = Math.round((calMidnight(day) - calMidnight(d.from)) / CAL_DAY);
+    s = calAddDays(d.o.ws, by);
+    e = calAddDays(d.o.we, by);
+    d.preview = { s, e };
+    const last = d.o.allDay ? calAddDays(e, -1) : e;
+    for (const cell of $("#calBody").querySelectorAll(".cal-cell, .cal-col")) {
+      const t = new Date(Number(cell.dataset.t));
+      if (t >= calMidnight(s) && t <= calMidnight(last)) cell.classList.add("drop");
+    }
+  }
+}
+
+function calPointerUp(e) {
+  const d = calDrag;
+  if (!d || e.pointerId !== d.pid) return;
+  const active = d.active;
+  const preview = d.preview;
+  calDragClear();
+  if (!active) {
+    // Nothing moved far enough: a click, or a tap. On an event the browser's
+    // own click opens it; on empty time it starts a new one.
+    if (d.mode === "create") {
+      const s = calAtMin(d.p0.day, Math.floor(d.p0.min / 30) * 30);
+      calNew({ start: s, end: new Date(s.getTime() + 3600_000) });
+    } else if (d.mode === "create-day" && d.day) {
+      const s = new Date(d.day.getFullYear(), d.day.getMonth(), d.day.getDate(), cal.opts.workFrom, 0);
+      calNew({ start: s, end: new Date(s.getTime() + 3600_000) });
+    }
+    return;
+  }
+  // A drag is over; the click that follows it must not open the event.
+  cal.suppress = true;
+  setTimeout(() => (cal.suppress = false), 0);
+  if (!preview) return;
+  if (d.mode === "create") calNew({ start: preview.s, end: preview.e });
+  else if (d.o) calMoveTo(d.o, preview.s, preview.e);
+}
+function calPointerCancel(e) {
+  if (calDrag && e.pointerId === calDrag.pid) calDragClear();
+}
+{
+  const body = $("#calBody");
+  body.addEventListener("pointerdown", calPointerDown);
+  body.addEventListener("pointermove", calPointerMove);
+  body.addEventListener("pointerup", calPointerUp);
+  body.addEventListener("pointercancel", calPointerCancel);
+  body.addEventListener("lostpointercapture", calPointerCancel);
+  // Once a drag is on, the page must not also scroll under the finger.
+  body.addEventListener("touchmove", (e) => { if (calDrag && calDrag.active && e.cancelable) e.preventDefault(); }, { passive: false });
+  body.addEventListener("contextmenu", (e) => { if (e.target.closest(".cal-ev, .cal-mev, .cal-col, .cal-cell") && calDrag) e.preventDefault(); });
+  addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && calDrag && calDrag.active) { e.stopPropagation(); e.preventDefault(); calDragClear(); }
+  }, true);
+}
+
+/* ── changing an event from where it was dropped ── */
+async function calAskScope(title, detail) {
+  $("#calScopeTitle").textContent = title;
+  $("#calScopeDetail").textContent = detail;
+  const dlg = $("#calScope");
+  return new Promise((resolve) => {
+    const done = (v) => {
+      dlg.close();
+      for (const [id, fn] of Object.entries(handlers)) $(id).removeEventListener("click", fn);
+      dlg.removeEventListener("cancel", onCancel);
+      resolve(v);
+    };
+    const handlers = { "#calScopeOne": () => done("one"), "#calScopeAll": () => done("all"), "#calScopeCancel": () => done(null) };
+    const onCancel = (e) => { e.preventDefault(); done(null); };
+    for (const [id, fn] of Object.entries(handlers)) $(id).addEventListener("click", fn);
+    dlg.addEventListener("cancel", onCancel);
+    dlg.showModal();
+    $("#calScopeAll").focus();
+  });
+}
+
+async function calReq(path, method, body, raw) {
+  const res = await api(path, {
+    method,
+    headers: { "Content-Type": raw !== undefined ? "text/calendar" : "application/json" },
+    body: raw !== undefined ? raw : body === undefined ? undefined : JSON.stringify(body),
+  }).catch(() => null);
+  const data = res ? await res.json().catch(() => ({})) : {};
+  return { ok: !!res && res.ok, status: res ? res.status : 0, data };
+}
+
+/** Moves or resizes an occurrence to these wall-clock Dates, after asking which ones for a series. */
+async function calMoveTo(o, ws, we) {
+  const patch = { start: calStored(ws, o), end: calStored(we, o) };
+  if (o.allDay) {
+    patch.start = Date.UTC(ws.getFullYear(), ws.getMonth(), ws.getDate());
+    patch.end = Date.UTC(we.getFullYear(), we.getMonth(), we.getDate());
+  }
+  if (patch.start === o.start && patch.end === o.end) return;
+  let body = patch;
+  if (o.recurring) {
+    const scope = await calAskScope("Change a repeating event", "Move this one, or every event in the series?");
+    if (!scope) return calRender();
+    body = scope === "one" ? { scope, occurrence: o.occurrence, ...patch } : { scope, from: o.start, ...patch };
+  }
+  // Shown at once; put right below if the server says no.
+  o.start = patch.start;
+  o.end = patch.end;
+  calPrep(o);
+  calRender();
+  const r = await calReq(`/api/calendar/events/${encodeURIComponent(o.eventId)}`, "PATCH", body);
+  if (!r.ok) toast(r.data.error || "Could not move that");
+  await calLoad();
+}
+
+/* ── the event sheet ── */
+const CAL_REMIND = [[null, "No reminder"], [0, "At the time of the event"], [5, "5 minutes before"], [10, "10 minutes before"], [15, "15 minutes before"], [30, "30 minutes before"], [60, "1 hour before"], [120, "2 hours before"], [1440, "1 day before"], [2880, "2 days before"]];
+const CAL_REMIND_DAY = [[null, "No reminder"], [-540, "On the day, at 9:00"], [900, "The day before, at 9:00"], [2340, "2 days before, at 9:00"], [9540, "A week before, at 9:00"]];
+const CAL_WD = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
+
+function calTimeOptions(sel, extra) {
+  let html = "";
+  const mins = [];
+  for (let m = 0; m < 1440; m += 15) mins.push(m);
+  if (Number.isFinite(extra) && !mins.includes(extra)) mins.push(extra);
+  mins.sort((a, b) => a - b);
+  for (const m of mins) html += `<option value="${m}">${esc(calClock(new Date(2000, 0, 1, 0, m)))}</option>`;
+  sel.innerHTML = html;
+}
+const calMinOf = (d) => d.getHours() * 60 + d.getMinutes();
+function calRemindOptions(allDay, value) {
+  const list = (allDay ? CAL_REMIND_DAY : CAL_REMIND).slice();
+  if (value !== null && value !== undefined && !list.some(([v]) => v === value)) list.push([value, `${value} minutes before`]);
+  $("#calEvRemind").innerHTML = list.map(([v, l]) => `<option value="${v === null ? "" : v}">${esc(l)}</option>`).join("");
+  $("#calEvRemind").value = value === null || value === undefined ? "" : String(value);
+}
+
+/** The weekday names, from the week's first day. */
+const calWeekdays = () => Array.from({ length: 7 }, (_, i) => (calWeekStart() + i) % 7);
+const calOrdinal = (n) => ({ 1: "first", 2: "second", 3: "third", 4: "fourth", [-1]: "last" })[n];
+
+/** The monthly choices for the date being edited. */
+function calMonthlyOptions(d, value) {
+  const wd = calDate(d, { weekday: "long" });
+  const nth = Math.ceil(d.getDate() / 7);
+  const lastWeek = d.getDate() + 7 > new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  const opts = [["date", `On day ${d.getDate()}`]];
+  if (nth <= 4) opts.push([`${nth}${CAL_WD[d.getDay()]}`, `On the ${calOrdinal(nth)} ${wd}`]);
+  if (lastWeek) opts.push([`-1${CAL_WD[d.getDay()]}`, `On the last ${wd}`]);
+  $("#calEvMonthly").innerHTML = opts.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
+  $("#calEvMonthly").value = opts.some(([v]) => v === value) ? value : "date";
+}
+
+/** An RRULE as the sheet's controls, or null for one they cannot say (it is then kept as written). */
+function calRuleToUi(text, start) {
+  if (!text) return { freq: "none" };
+  const p = Object.fromEntries(text.split(";").map((x) => x.split("=")));
+  const freq = (p.FREQ || "").toLowerCase();
+  const ui = { freq, interval: Number(p.INTERVAL || 1), end: "never", count: 10, until: "", days: [], monthly: "date" };
+  if (p.COUNT) { ui.end = "count"; ui.count = Number(p.COUNT); }
+  if (p.UNTIL) { ui.end = "until"; ui.until = `${p.UNTIL.slice(0, 4)}-${p.UNTIL.slice(4, 6)}-${p.UNTIL.slice(6, 8)}`; }
+  const keys = Object.keys(p).filter((k) => !["FREQ", "INTERVAL", "COUNT", "UNTIL", "WKST"].includes(k));
+  if (freq === "daily" && !keys.length) return ui;
+  if (freq === "weekly" && keys.every((k) => k === "BYDAY") && (!p.BYDAY || /^(SU|MO|TU|WE|TH|FR|SA)(,(SU|MO|TU|WE|TH|FR|SA))*$/.test(p.BYDAY))) {
+    ui.days = p.BYDAY ? p.BYDAY.split(",").map((x) => CAL_WD.indexOf(x)) : [start.getDay()];
+    return ui;
+  }
+  if (freq === "monthly" && !p.BYMONTH && keys.every((k) => k === "BYDAY" || k === "BYMONTHDAY")) {
+    if (!keys.length || (keys.length === 1 && p.BYMONTHDAY === String(start.getDate()))) return ui;
+    if (keys.length === 1 && /^(-1|[1-4])(SU|MO|TU|WE|TH|FR|SA)$/.test(p.BYDAY || "")) { ui.monthly = p.BYDAY; return ui; }
+  }
+  if (freq === "yearly" && !keys.length) return ui;
+  return null;
+}
+/** The sheet's repeat controls as an RRULE. */
+function calUiToRule(start) {
+  const f = $("#calEvRepeat").value;
+  if (f === "none") return "";
+  if (f === "custom") return cal.sheet.custom;
+  const n = Math.max(1, Math.min(99, Number($("#calEvInt").value) || 1));
+  const parts = [`FREQ=${f.toUpperCase()}`];
+  if (n > 1) parts.push(`INTERVAL=${n}`);
+  if (f === "weekly") {
+    const days = [...$("#calEvDays").querySelectorAll('[aria-pressed="true"]')].map((b) => CAL_WD[Number(b.dataset.wd)]);
+    parts.push(`BYDAY=${(days.length ? days : [CAL_WD[start.getDay()]]).join(",")}`);
+  } else if (f === "monthly" && $("#calEvMonthly").value !== "date") parts.push(`BYDAY=${$("#calEvMonthly").value}`);
+  const end = $("#calEvEnd").value;
+  if (end === "count") parts.push(`COUNT=${Math.max(1, Math.min(999, Number($("#calEvCount").value) || 1))}`);
+  else if (end === "until" && calFromIso($("#calEvUntil").value)) parts.push(`UNTIL=${$("#calEvUntil").value.replaceAll("-", "")}`);
+  return parts.join(";");
+}
+
+/** The sheet's dates and times as wall-clock Dates. */
+function calSheetTimes() {
+  const sd = calFromIso($("#calEvSD").value);
+  const ed = calFromIso($("#calEvED").value);
+  if (!sd || !ed) return null;
+  if ($("#calEvAllDay").checked) return { s: sd, e: calAddDays(ed, 1) };
+  return { s: calAtMin(sd, Number($("#calEvST").value)), e: calAtMin(ed, Number($("#calEvET").value)) };
+}
+
+function calSyncSheet() {
+  const allDay = $("#calEvAllDay").checked;
+  $("#calEvSTW").hidden = $("#calEvETW").hidden = allDay;
+  const f = $("#calEvRepeat").value;
+  $("#calEvRep").hidden = f === "none" || f === "custom";
+  $("#calEvIntW").hidden = f === "none" || f === "custom";
+  $("#calEvUnit").textContent = { daily: "day(s)", weekly: "week(s)", monthly: "month(s)", yearly: "year(s)" }[f] || "";
+  $("#calEvDays").hidden = f !== "weekly";
+  $("#calEvMonthlyW").hidden = f !== "monthly";
+  const end = $("#calEvEnd").value;
+  $("#calEvUntilW").hidden = end !== "until";
+  $("#calEvCountW").hidden = end !== "count";
+  const sd = calFromIso($("#calEvSD").value);
+  if (sd) calMonthlyOptions(sd, $("#calEvMonthly").value);
+}
+
+/** Opens the sheet on a new event, from a prefill of { start, end } or nothing. */
+function calNew(pre = {}) {
+  let start = pre.start;
+  if (!start) {
+    const now = new Date();
+    start = calSameDay(cal.day, now) ? new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours() + 1, 0) : new Date(cal.day.getFullYear(), cal.day.getMonth(), cal.day.getDate(), cal.opts.workFrom, 0);
+  }
+  const end = pre.end || new Date(start.getTime() + 3600_000);
+  const cals = calWritable();
+  calOpenSheet({
+    ev: { id: "", calendarId: (cals.find((c) => !cal.hidden.has(c.id)) || cals[0] || {}).id || "", summary: pre.summary || "", location: pre.location || "", description: pre.description || "", url: pre.url || "", rrule: "", reminderMin: null, recurring: false, readOnly: false, allDay: !!pre.allDay, tzid: pre.floating ? "" : Intl.DateTimeFormat().resolvedOptions().timeZone },
+    ws: start, we: end, isNew: true,
+  });
+}
+/** Opens an existing occurrence: its own fields from the server, its time from what is drawn. */
+async function calEdit(o) {
+  const r = await calReq(`/api/calendar/events/${encodeURIComponent(o.eventId)}`, "GET");
+  if (!r.ok) return toast(r.data.error || "Could not open that event");
+  calOpenSheet({ ev: r.data.event, o, ws: o.ws, we: o.we, isNew: false });
+}
+
+function calOpenSheet({ ev, o, ws, we, isNew }) {
+  const ro = ev.readOnly;
+  const allDay = !!ev.allDay;
+  const lastDay = allDay ? calAddDays(we, -1) : we;
+  const ui = calRuleToUi(ev.rrule, ws) || { freq: "custom" };
+  cal.sheet = { ev, o, isNew, custom: ev.rrule, wasAllDay: allDay, remind: ev.reminderMin, start: o ? o.start : ev.start };
+  $("#calEvHead").textContent = isNew ? "New event" : ro ? "Event" : "Edit event";
+  $("#calEvTitle").value = ev.summary;
+  $("#calEvCal").innerHTML = (ro ? cal.calendars.filter((c) => c.id === ev.calendarId) : calWritable())
+    .map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join("");
+  $("#calEvCal").value = ev.calendarId;
+  $("#calEvAllDay").checked = allDay;
+  calTimeOptions($("#calEvST"), calMinOf(ws));
+  calTimeOptions($("#calEvET"), calMinOf(we));
+  $("#calEvSD").value = calIso(ws);
+  $("#calEvED").value = calIso(lastDay);
+  $("#calEvST").value = String(calMinOf(ws));
+  $("#calEvET").value = String(calMinOf(we));
+  $("#calEvLoc").value = ev.location;
+  $("#calEvNotes").value = ev.description;
+  $("#calEvRepeat").value = ui.freq;
+  $("#calEvInt").value = ui.interval || 1;
+  $("#calEvDays").innerHTML = calWeekdays()
+    .map((wd) => `<button type="button" data-wd="${wd}" aria-pressed="${(ui.days && ui.days.length ? ui.days : [ws.getDay()]).includes(wd)}" aria-label="${esc(calDate(new Date(2024, 0, 7 + wd), { weekday: "long" }))}">${esc(calDate(new Date(2024, 0, 7 + wd), { weekday: "narrow" }))}</button>`)
+    .join("");
+  calMonthlyOptions(ws, ui.monthly);
+  $("#calEvEnd").value = ui.end || "never";
+  $("#calEvUntil").value = ui.until || "";
+  $("#calEvCount").value = ui.count || 10;
+  $("#calEvRepeat").querySelector('[value="custom"]').hidden = ui.freq !== "custom";
+  $("#calEvErr").classList.remove("show");
+  const link = meetingLink(ev.url);
+  $("#calEvLink").hidden = !link;
+  $("#calEvLink").innerHTML = link ? `<a href="${esc(link.href)}" target="_blank" rel="noopener noreferrer">${esc(link.host)}</a>` : "";
+  calSyncSheet();
+  calRemindOptions(allDay, ev.reminderMin);
+  cal.sheet.times = calSheetTimes();
+
+  const roBox = $("#calEvRo");
+  roBox.hidden = !ro;
+  roBox.textContent = ro ? `From the subscribed calendar “${ev.calendarName}”. It is read-only here.` : "";
+  for (const el of $("#calEvSheet").querySelectorAll("input,select,textarea")) el.disabled = ro;
+  for (const b of $("#calEvDays").querySelectorAll("button")) b.disabled = ro;
+  $("#calEvSave").hidden = ro;
+  $("#calEvDelete").hidden = ro || isNew;
+  $("#calEvCancel").textContent = ro ? "Close" : "Cancel";
+  closeOverlays();
+  setTimeout(() => openSheet("#calEvSheet"), 60);
+}
+
+async function calSaveSheet() {
+  const sh = cal.sheet;
+  const err = (m) => { $("#calEvErr").textContent = m; $("#calEvErr").classList.add("show"); };
+  const t = calSheetTimes();
+  if (!t) return err("Pick a start and an end");
+  const allDay = $("#calEvAllDay").checked;
+  if (allDay ? t.e <= t.s : t.e < t.s) return err("The event cannot end before it starts");
+  const floating = sh.ev.tzid === "" && !allDay && !sh.isNew;
+  const stored = (d) => (allDay ? Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) : floating ? Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes()) : d.getTime());
+  const rule = calUiToRule(t.s);
+  const remind = $("#calEvRemind").value === "" ? null : Number($("#calEvRemind").value);
+  const body = {
+    summary: $("#calEvTitle").value.trim(), location: $("#calEvLoc").value, description: $("#calEvNotes").value,
+    calendarId: $("#calEvCal").value, allDay, start: stored(t.s), end: stored(t.e), tzid: sh.ev.tzid,
+  };
+  let path = "/api/calendar/events";
+  let method = "POST";
+  if (!sh.isNew) {
+    path = `/api/calendar/events/${encodeURIComponent(sh.ev.id)}`;
+    method = "PATCH";
+    if (sh.ev.recurring) {
+      // Changing the repeat only makes sense for the whole series.
+      const repeatChanged = rule !== (sh.ev.rrule || "");
+      const scope = repeatChanged || remind !== sh.ev.reminderMin
+        ? "all"
+        : await calAskScope("Change a repeating event", "Change this event only, or every event in the series?");
+      if (!scope) return;
+      Object.assign(body, scope === "one" ? { scope, occurrence: sh.o ? sh.o.occurrence : sh.ev.recurrenceId ?? sh.ev.start } : { scope, from: sh.start, rrule: rule, reminderMin: remind });
+    } else Object.assign(body, { rrule: rule, reminderMin: remind });
+  } else Object.assign(body, { rrule: rule, reminderMin: remind });
+  $("#calEvSave").disabled = true;
+  const r = await calReq(path, method, body);
+  $("#calEvSave").disabled = false;
+  if (!r.ok) return err(r.data.error || "Could not save that");
+  closeSheets();
+  toast(sh.isNew ? "Event added" : "Event saved");
+  await calLoad();
+}
+
+async function calDeleteSheet() {
+  const sh = cal.sheet;
+  let scope = "all";
+  if (sh.ev.recurring) {
+    scope = await calAskScope("Delete a repeating event", "Delete this event only, or every event in the series?");
+    if (!scope) return;
+  } else if (!(await ask("Delete this event?", "It is removed from your calendar.", { ok: "Delete", danger: true }))) return;
+  const occ = sh.o ? sh.o.occurrence : sh.ev.recurrenceId ?? sh.ev.start;
+  const r = await calReq(`/api/calendar/events/${encodeURIComponent(sh.ev.id)}?scope=${scope}&occurrence=${occ}`, "DELETE");
+  if (!r.ok) return toast(r.data.error || "Could not delete that");
+  closeSheets();
+  toast("Event deleted");
+  await calLoad();
+}
+
+{
+  const sheet = $("#calEvSheet");
+  /** Sets a time select to a minute of the day, adding the option when it is not a quarter hour. */
+  const setTime = (sel, min) => {
+    if (![...sel.options].some((o) => Number(o.value) === min)) calTimeOptions(sel, min);
+    sel.value = String(min);
+  };
+  sheet.addEventListener("change", (e) => {
+    const sh = cal.sheet;
+    if (!sh) return;
+    if (e.target.id === "calEvAllDay") {
+      calRemindOptions(e.target.checked, null);
+      if (e.target.checked && $("#calEvED").value < $("#calEvSD").value) $("#calEvED").value = $("#calEvSD").value;
+    }
+    // Moving the start carries the end with it, as every calendar does.
+    if (e.target.id === "calEvSD" || e.target.id === "calEvST") {
+      const old = sh.times;
+      const t = calSheetTimes();
+      if (old && t) {
+        const allDay = $("#calEvAllDay").checked;
+        const end = allDay ? calAddDays(t.s, Math.round((old.e - old.s) / CAL_DAY) - 1) : new Date(t.s.getTime() + (old.e.getTime() - old.s.getTime()));
+        $("#calEvED").value = calIso(end);
+        if (!allDay) setTime($("#calEvET"), calMinOf(end));
+      }
+    }
+    calSyncSheet();
+    sh.times = calSheetTimes();
+  });
+  $("#calEvDays").addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (b) b.setAttribute("aria-pressed", String(b.getAttribute("aria-pressed") !== "true"));
+  });
+  $("#calEvSave").addEventListener("click", calSaveSheet);
+  $("#calEvDelete").addEventListener("click", calDeleteSheet);
+  $("#calEvCancel").addEventListener("click", () => closeSheets());
+  sheet.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && e.target.id === "calEvTitle") { e.preventDefault(); calSaveSheet(); }
+  });
+}
+$("#calNew").addEventListener("click", () => calNew());
+
+/* ── calendars ── */
+const CAL_COLORS = ["#1f6fd0", "#d9534f", "#2e9e5b", "#e0892b", "#8a5cc7", "#17a2b8", "#c2569d", "#6b7280"];
+let calManage = "";
+let calForm = null;
+function calAgo(ms) {
+  if (!ms) return "not fetched yet";
+  const m = Math.round((Date.now() - ms) / 60000);
+  return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
+}
+const calEvery = (m) => (m < 60 ? `${m} minutes` : m === 60 ? "hour" : m < 1440 ? `${m / 60} hours` : "day");
+function calSwatches(current) {
+  return `<div class="cal-swatches" role="group" aria-label="Colour">${CAL_COLORS.map((c) => `<button type="button" data-cal-color="${c}" style="--c:${c}" aria-label="${c}" aria-pressed="${c === current}"></button>`).join("")}</div>`;
+}
+function calRenderCals() {
+  let html = "";
+  for (const c of cal.calendars) {
+    const sub = c.kind === "subscription";
+    const open = calManage === c.id;
+    const note = sub ? (c.lastError ? `<small class="err">${esc(c.lastError)}</small>` : `<small>Subscribed · ${esc(calAgo(c.fetchedAt))}</small>`) : c.kind === "invitations" ? `<small>From your mail</small>` : "";
+    html +=
+      `<div class="cal-crow" style="--c:${esc(c.color)}" data-cid="${esc(c.id)}">` +
+      `<input type="checkbox" data-cal-tick="${esc(c.id)}" ${cal.hidden.has(c.id) ? "" : "checked"} aria-label="Show ${esc(c.name)}">` +
+      `<span class="cal-sw"></span>` +
+      (c.kind === "invitations"
+        ? `<div class="cal-cname"><span class="cal-nm">${esc(c.name)}</span>${note}</div>`
+        : `<button type="button" class="cal-cname" data-cal-manage="${esc(c.id)}" aria-expanded="${open}"><span class="cal-nm">${esc(c.name)}</span>${note}</button>`) +
+      (c.kind === "invitations" ? "" : `<span class="cal-sub" style="margin:0">${c.events}</span>`) +
+      `</div>`;
+    if (open) {
+      html +=
+        `<div class="cal-manage" data-cid="${esc(c.id)}">` +
+        `<input class="field" type="text" data-cal-name value="${esc(c.name)}" aria-label="Calendar name" maxlength="80">` +
+        calSwatches(c.color) +
+        (sub
+          ? `<label class="cal-lbl" for="calMRefresh">Check for changes every</label><div class="field"><select id="calMRefresh">${[15, 30, 60, 180, 360, 720, 1440].map((m) => `<option value="${m}" ${m === c.refreshMin ? "selected" : ""}>${esc(calEvery(m))}</option>`).join("")}</select></div>` +
+            `<input class="field" type="url" data-cal-url placeholder="New address (leave empty to keep the saved one)" aria-label="New address" autocomplete="off" autocapitalize="off" spellcheck="false">`
+          : "") +
+        `<div class="cal-acts">` +
+        `<button type="button" class="cta" data-cal-save>Save</button>` +
+        (sub ? `<button type="button" class="cta quiet" data-cal-refresh>Refresh now</button>` : `<button type="button" class="cta quiet" data-cal-import>Import .ics</button>`) +
+        `<a class="cal-lnk" href="/api/calendar/calendars/${encodeURIComponent(c.id)}/export" download>Export .ics</a>` +
+        `<button type="button" class="cta danger" data-cal-delete>Delete</button>` +
+        `</div></div>`;
+    }
+  }
+  $("#calCalsList").innerHTML = html;
+  const f = calForm;
+  $("#calCalsForm").innerHTML = !f ? "" :
+    `<div class="cal-manage" style="margin-top:10px"><div class="sh-t" style="font-size:14px">${f === "sub" ? "Subscribe to a calendar" : "New calendar"}</div>` +
+    (f === "sub"
+      ? `<div class="cal-sub">A calendar on the web, from an https:// or webcal:// address. It is read-only here, and the address is kept private on the server.</div>` +
+        `<input class="field" type="url" id="calFormUrl" placeholder="https:// or webcal://" aria-label="Calendar address" autocomplete="off" autocapitalize="off" spellcheck="false">`
+      : "") +
+    `<input class="field" type="text" id="calFormName" placeholder="Name" aria-label="Calendar name" maxlength="80" autocomplete="off">` +
+    calSwatches(calForm === "sub" ? CAL_COLORS[3] : CAL_COLORS[1]) +
+    (f === "sub" ? `<label class="cal-lbl" for="calFormRefresh">Check for changes every</label><div class="field"><select id="calFormRefresh">${[15, 30, 60, 180, 360, 720, 1440].map((m) => `<option value="${m}" ${m === 60 ? "selected" : ""}>${esc(calEvery(m))}</option>`).join("")}</select></div>` : "") +
+    `<div class="formerr" id="calFormErr" role="alert"></div>` +
+    `<div class="cal-acts"><button type="button" class="cta" id="calFormGo">${f === "sub" ? "Subscribe" : "Create"}</button><button type="button" class="cta quiet" id="calFormCancel">Cancel</button></div></div>`;
+  $("#calCalsNew").hidden = $("#calCalsSub").hidden = !!calForm;
+}
+function calOpenCals() {
+  calManage = "";
+  calForm = null;
+  calRenderCals();
+  closeOverlays();
+  $("#calCals").setAttribute("aria-expanded", "true");
+  setTimeout(() => openSheet("#calCalsSheet"), 60);
+}
+$("#calCals").addEventListener("click", calOpenCals);
+$("#calCalsNew").addEventListener("click", () => { calForm = "new"; calRenderCals(); $("#calFormName").focus(); });
+$("#calCalsSub").addEventListener("click", () => { calForm = "sub"; calRenderCals(); $("#calFormUrl").focus(); });
+let calImportInto = "";
+$("#calFile").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file || !calImportInto) return;
+  const text = await file.text().catch(() => "");
+  const r = await calReq(`/api/calendar/calendars/${encodeURIComponent(calImportInto)}/import`, "POST", undefined, text);
+  if (!r.ok) return toast(r.data.error || "Could not import that file");
+  const d = r.data;
+  toast(`Imported ${d.imported} ${d.imported === 1 ? "event" : "events"}${d.skipped ? `, ${d.skipped} left out` : ""}${d.droppedRules ? `, ${d.droppedRules} repeat${d.droppedRules === 1 ? "" : "s"} not kept` : ""}`);
+  await calLoad();
+  calRenderCals();
+});
+$("#calCalsSheet").addEventListener("click", async (e) => {
+  const sw = e.target.closest("[data-cal-color]");
+  if (sw) {
+    for (const b of sw.parentElement.children) b.setAttribute("aria-pressed", String(b === sw));
+    return;
+  }
+  const mg = e.target.closest("[data-cal-manage]");
+  if (mg) { calManage = calManage === mg.dataset.calManage ? "" : mg.dataset.calManage; calRenderCals(); return; }
+  const row = e.target.closest(".cal-manage[data-cid]");
+  const cid = row && row.dataset.cid;
+  const color = (scope) => (scope.querySelector('[data-cal-color][aria-pressed="true"]') || {}).dataset?.calColor;
+  if (e.target.closest("[data-cal-save]")) {
+    const body = { name: row.querySelector("[data-cal-name]").value.trim(), color: color(row) };
+    const sel = row.querySelector("#calMRefresh");
+    if (sel) body.refreshMin = Number(sel.value);
+    const url = row.querySelector("[data-cal-url]");
+    if (url && url.value.trim()) body.url = url.value.trim();
+    const r = await calReq(`/api/calendar/calendars/${encodeURIComponent(cid)}`, "PATCH", body);
+    if (!r.ok) return toast(r.data.error || "Could not save that");
+    calManage = "";
+    await calLoad();
+    return calRenderCals();
+  }
+  if (e.target.closest("[data-cal-refresh]")) {
+    const b = e.target.closest("button");
+    b.disabled = true;
+    const r = await calReq(`/api/calendar/calendars/${encodeURIComponent(cid)}/refresh`, "POST", {});
+    b.disabled = false;
+    toast(r.ok && r.data.ok ? "Up to date" : (r.data && r.data.error) || "Could not refresh");
+    await calLoad();
+    return calRenderCals();
+  }
+  if (e.target.closest("[data-cal-import]")) { calImportInto = cid; $("#calFile").click(); return; }
+  if (e.target.closest("[data-cal-delete]")) {
+    const c = calCalendar(cid);
+    if (!(await ask(`Delete “${c.name}”?`, "Its events are deleted with it. This cannot be undone.", { ok: "Delete", danger: true }))) return;
+    const r = await calReq(`/api/calendar/calendars/${encodeURIComponent(cid)}`, "DELETE");
+    if (!r.ok) return toast(r.data.error || "Could not delete that");
+    cal.hidden.delete(cid);
+    calSave();
+    calManage = "";
+    await calLoad();
+    return calRenderCals();
+  }
+  if (e.target.closest("#calFormCancel")) { calForm = null; calRenderCals(); return; }
+  if (e.target.closest("#calFormGo")) {
+    const f = $("#calCalsForm");
+    const sub = calForm === "sub";
+    const body = { name: $("#calFormName").value.trim(), color: color(f) };
+    if (sub) { body.url = $("#calFormUrl").value.trim(); body.refreshMin = Number($("#calFormRefresh").value); }
+    const r = await calReq("/api/calendar/calendars", "POST", body);
+    if (!r.ok) { $("#calFormErr").textContent = r.data.error || "Could not make that calendar"; $("#calFormErr").classList.add("show"); return; }
+    calForm = null;
+    toast(sub && r.data.calendar.lastError ? `Subscribed, but ${r.data.calendar.lastError}` : sub ? `Subscribed, ${r.data.calendar.events} events` : "Calendar added");
+    await calLoad();
+    calRenderCals();
+  }
+});
+$("#calCalsSheet").addEventListener("change", (e) => {
+  const t = e.target.closest("[data-cal-tick]");
+  if (!t) return;
+  if (t.checked) cal.hidden.delete(t.dataset.calTick);
+  else cal.hidden.add(t.dataset.calTick);
+  calSave();
+  calRender();
+});
+
+/* ── options ── */
+{
+  const hours = (to) => Array.from({ length: 24 }, (_, i) => i + (to ? 1 : 0)).map((h) => `<option value="${h}">${esc(calHourLabel(h % 24))}</option>`).join("");
+  $("#calOpts").addEventListener("click", () => {
+    $("#calOptFrom").innerHTML = hours(false);
+    $("#calOptTo").innerHTML = hours(true);
+    $("#calOptWeek").value = String(cal.opts.weekStart);
+    $("#calOptClock").value = cal.opts.clock;
+    $("#calOptFrom").value = String(cal.opts.workFrom);
+    $("#calOptTo").value = String(cal.opts.workTo);
+    $("#calOptDays").innerHTML = calWeekdays()
+      .map((wd) => `<button type="button" data-wd="${wd}" aria-pressed="${cal.opts.workDays.includes(wd)}" aria-label="${esc(calDate(new Date(2024, 0, 7 + wd), { weekday: "long" }))}">${esc(calDate(new Date(2024, 0, 7 + wd), { weekday: "short" }))}</button>`)
+      .join("");
+    closeOverlays();
+    $("#calOpts").setAttribute("aria-expanded", "true");
+    setTimeout(() => openSheet("#calOptsSheet"), 60);
+  });
+  const read = () => {
+    cal.opts.weekStart = $("#calOptWeek").value === "auto" ? "auto" : Number($("#calOptWeek").value);
+    cal.opts.clock = $("#calOptClock").value;
+    cal.opts.workFrom = Number($("#calOptFrom").value);
+    cal.opts.workTo = Math.max(Number($("#calOptTo").value), cal.opts.workFrom + 1);
+    cal.opts.workDays = [...$("#calOptDays").querySelectorAll('[aria-pressed="true"]')].map((b) => Number(b.dataset.wd));
+    calSave();
+    calRender();
+    calLoad();
+  };
+  $("#calOptsSheet").addEventListener("change", read);
+  $("#calOptDays").addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    b.setAttribute("aria-pressed", String(b.getAttribute("aria-pressed") !== "true"));
+    read();
+  });
+}
+
+/* ── the tab, the reminder, the invitation ── */
+function calShow() {
+  document.body.classList.add("calview");
+  calRender(true);
+  calLoad();
+  clearInterval(cal.timer);
+  // The minute poll refreshAll runs is the timeline's; this keeps the grid, which
+  // reads the same window as it, as current as the clock that moves its "now" line.
+  cal.timer = setInterval(() => { if (!document.hidden && !calDrag && !$("#calEvSheet").classList.contains("up")) calLoad(); }, 60_000);
+}
+function calHide() {
+  document.body.classList.remove("calview");
+  clearInterval(cal.timer);
+}
+// The poll that redraws the timeline (renderTimeline) must not undo a drag in progress.
+reminderOpeners.event = async (id) => {
+  switchTab("timeline");
+  const r = await calReq(`/api/calendar/events/${encodeURIComponent(id)}`, "GET");
+  if (!r.ok) return toast(r.data.error || "That event is gone");
+  const ev = r.data.event;
+  const o = calPrep({ ...ev, eventId: ev.id, occurrence: ev.recurring ? ev.start : null, readOnly: ev.readOnly, id: ev.id });
+  cal.day = calMidnight(o.ws);
+  calRender(true);
+  calLoad();
+  calOpenSheet({ ev, o, ws: o.ws, we: o.we, isNew: false });
+};
+
+/** "Add to calendar" on an invitation: one local calendar takes it at once, with Undo; several ask which. */
+$("#rInvite").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-cal-add]");
+  if (!b || !current || !current.invite || !current.invite.start) return;
+  const inv = current.invite;
+  const floating = !!inv.start.floating;
+  const pre = { summary: inv.summary || current.message.subject || "", location: inv.location || "", description: inv.description || "", url: inv.url || "", allDay: !!inv.start.allDay, floating };
+  await calLoadCalendars();
+  const cals = calWritable();
+  const startMs = inv.start.ms;
+  const endMs = inv.end ? inv.end.ms : startMs + 3600_000;
+  const fake = { allDay: pre.allDay, floating };
+  if (cals.length !== 1) {
+    // More than one place it could go: the sheet asks.
+    switchTab("timeline");
+    return calNew({ ...pre, start: calWall(startMs, fake), end: calWall(endMs, fake) });
+  }
+  const r = await calReq("/api/calendar/events", "POST", {
+    calendarId: cals[0].id, summary: pre.summary, location: pre.location, description: pre.description, url: pre.url,
+    allDay: pre.allDay, start: startMs, end: endMs, tzid: floating ? "" : Intl.DateTimeFormat().resolvedOptions().timeZone,
+  });
+  if (!r.ok) return toast(r.data.error || "Could not add that to your calendar");
+  const made = r.data.event.id;
+  toast(`Added to ${cals[0].name}`, async () => {
+    await calReq(`/api/calendar/events/${encodeURIComponent(made)}?scope=all`, "DELETE");
+    toast("Removed again");
+    calLoad();
+  });
+  calLoad();
+});
+async function calLoadCalendars() {
+  if (cal.calendars.length) return;
+  const c = await api("/api/calendar/calendars").catch(() => null);
+  const d = c && c.ok ? await c.json().catch(() => null) : null;
+  if (d) cal.calendars = d.calendars || [];
+}
 
 /* ── init ── */
 (async function init() {

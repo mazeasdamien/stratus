@@ -14,6 +14,9 @@ import { demoTransfer } from "./demo-transfer.mjs";
 import { CLIENT_VERSION } from "../src/version.js";
 import { catalog, cleanRule } from "../src/rules.js";
 
+// The calendar view's API: the real module over a seeded in-memory database.
+const calendarDemo = (await import("./demo-calendar.mjs")).default;
+
 const root = join(fileURLToPath(new URL("..", import.meta.url)), "public");
 const port = Number(process.argv[2] || 8765);
 
@@ -233,6 +236,7 @@ createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${port}`);
   const p = url.pathname;
   if (p.startsWith("/api/")) {
+    if (p.startsWith("/api/calendar/")) return calendarDemo(req, res, url);
     if (p === "/api/reminders") return json(res, { reminders, count: reminders.length });
     const rem = p.match(/^\/api\/reminders\/([^/]+)\/(?:dismiss|snooze)$/);
     if (rem) {
