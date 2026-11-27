@@ -1151,6 +1151,23 @@ html.busy #bar{opacity:1}
   background:color-mix(in srgb,var(--acc) 4%,var(--bg))}
 .rowwrap.open .row,.rowwrap .row.sel{background:color-mix(in srgb,var(--acc) 25%,var(--bg))}
 
+/* Compact list density: tighter rows, and the subject and the preview share
+   one line. The sender and the date keep the first line, so the list still
+   scans down one edge. A conversation's inner rows have no subject, so their
+   preview takes the whole line. Categories stay, on a line of their own, only
+   for the rows that have any. */
+html[data-density="compact"] .row{padding-top:6px;padding-bottom:6px;gap:9px}
+html[data-density="compact"] .rowwrap{contain-intrinsic-size:auto 50px}
+html[data-density="compact"] .mi-info{display:grid;grid-template-columns:fit-content(58%) minmax(0,1fr);column-gap:8px;align-items:baseline}
+html[data-density="compact"] .l1,html[data-density="compact"] .cats{grid-column:1/-1}
+html[data-density="compact"] .subj{grid-column:1;margin-top:0;font-size:13px}
+html[data-density="compact"] .snip{grid-column:2;margin-top:0}
+html[data-density="compact"] .row.sub .snip{grid-column:1/-1}
+html[data-density="compact"] .cats{margin-top:3px}
+html[data-density="compact"] .thread .row{padding-left:32px}
+html[data-density="compact"] .selbox{margin-top:0}
+html[data-density="compact"] .acc-dot{margin-top:5px}
+
 /* Dragging a message to a folder, with a mouse. The strip is above everything
    but the dialogs, and takes no clicks until a drag has begun. No blur behind
    it: the message frame is sandboxed and a blur over it has cost it paint
@@ -2191,6 +2208,12 @@ body.composing #peopleCard{display:none}
     </div>
     </div>
     <div class="sh-s" style="margin:2px 0 0;font-size:12px">On a touch screen, sliding a row does this. Mark read becomes Mark unread on a read message, and Star becomes Unstar. Archive is not offered in Archive, Drafts, Sent, Trash or Spam, nor Delete in Drafts, Trash or Spam; a row there stays put. Every one has an Undo. Kept on this device only.</div>
+    <div class="sh-s" style="margin-top:14px">List density</div>
+    <div class="chips" id="densityPick" role="group" aria-label="List density">
+      <button class="pill" data-density="comfortable" aria-pressed="false">Comfortable</button>
+      <button class="pill" data-density="compact" aria-pressed="false">Compact</button>
+    </div>
+    <div class="sh-s" style="margin:2px 0 0;font-size:12px">Compact tightens the rows and shows the subject and the start of the message on one line. Kept on this device only.</div>
     <button class="cta" id="openKeys" style="background:var(--elev2);color:var(--t1)">Keyboard shortcuts</button>
   </section>
 </div>
@@ -10109,6 +10132,27 @@ $("#swipePick").addEventListener("click", (e) => {
   paintSwipePick();
 });
 paintSwipePick();
+
+/* ── list density ──
+   Comfortable is the list as it has always been. Compact puts the subject and
+   the first words of the message on one line and tightens the rows, for
+   someone who wants to see more of the mailbox at once. A setting of this
+   device, applied by an attribute on the page so nothing is repainted. */
+function applyDensity(choice) {
+  const compact = choice === "compact";
+  document.documentElement.dataset.density = compact ? "compact" : "comfortable";
+  try { localStorage.setItem("dmzs-density", compact ? "compact" : "comfortable"); } catch {}
+  document.querySelectorAll("#densityPick [data-density]").forEach((b) => {
+    const on = b.dataset.density === (compact ? "compact" : "comfortable");
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-pressed", String(on));
+  });
+}
+$("#densityPick").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-density]");
+  if (b) applyDensity(b.dataset.density);
+});
+applyDensity((() => { try { return localStorage.getItem("dmzs-density"); } catch { return ""; } })());
 
 /* ── drag a message onto a folder ──────────────────────────────────────
    With a mouse, a row (or the rows picked, when the row is one of them) can be
