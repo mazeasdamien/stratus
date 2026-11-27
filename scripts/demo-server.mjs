@@ -10,6 +10,7 @@ import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { demoContacts } from "./demo-contacts.mjs";
 import { readingBodies, readingMessages } from "./demo-reading.mjs";
+import { demoTransfer } from "./demo-transfer.mjs";
 import { CLIENT_VERSION } from "../src/version.js";
 import { catalog, cleanRule } from "../src/rules.js";
 
@@ -255,6 +256,7 @@ createServer(async (req, res) => {
       followups = followups.filter((f) => f.message_id !== fuDone[1]);
       return json(res, { ok: true });
     }
+    if (await demoTransfer(req, res, p, url)) return;
     if (p === "/api/accounts") return json(res, { accounts });
     if (p === "/api/folders") return json(res, { folders });
     if (p === "/api/messages") {

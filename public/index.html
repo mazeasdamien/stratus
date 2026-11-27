@@ -1786,6 +1786,37 @@ body.composing #peopleCard{display:none}
 .fu-comp select{flex:0 1 auto;width:auto;max-width:48%;font-size:13px;height:40px;color:var(--t1)}
 .fu-comp input{flex:1 1 100%;height:38px}
 .fu-comp input[hidden]{display:none}
+/* ── import and export ── */
+#xferSheet .xf-line{font-size:13px;color:var(--t2);line-height:1.45;margin:0 0 10px;word-break:break-word}
+#xferSheet .xf-line.num{font-variant-numeric:tabular-nums}
+#xferSheet .field select:disabled,#xferSheet .field input:disabled{opacity:.5}
+#xfStatus{margin-top:14px;padding:12px 14px;background:var(--elev);border:1px solid var(--line);border-radius:var(--r)}
+#xfStatus[hidden]{display:none}
+.xf-track{height:6px;border-radius:3px;background:var(--line-strong);overflow:hidden;margin:2px 0 9px}
+.xf-track i{display:block;height:100%;width:0;border-radius:3px;background:var(--acc);transition:width .2s}
+#xfProg[hidden]{display:none}
+#xfProg .xf-top{display:flex;align-items:center;gap:10px}
+#xfProg .xf-top #xfLine{flex:1;min-width:0;font-size:13px;color:var(--t1);font-variant-numeric:tabular-nums}
+#xfResult{font-size:13px;color:var(--t1);line-height:1.5;white-space:pre-line;word-break:break-word}
+#xfResult:empty{display:none}
+#xfResult.warn{color:var(--red)}
+.xf-chip{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--sab) + 76px);z-index:75;max-width:86vw;
+  display:flex;align-items:center;gap:9px;height:36px;padding:0 15px 0 12px;border-radius:18px;
+  background:var(--toast-bg);color:var(--toast-fg);font-size:13px;font-weight:500;box-shadow:0 8px 26px var(--shadow);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.xf-chip[hidden]{display:none}
+.xf-chip .xf-dot{width:8px;height:8px;border-radius:50%;background:var(--acc);flex:none;animation:xfpulse 1.2s ease-in-out infinite}
+@keyframes xfpulse{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.xf-chip .xf-dot{animation:none}.xf-track i{transition:none}}
+body.selmode .xf-chip{bottom:calc(var(--sab) + 92px)}
+/* The selection bar was already full at 390px. One more button would push Done
+   off its end, so on a phone every button gives up some padding to make room. */
+@media (max-width:480px){
+  #bulkbar{gap:0;padding-left:14px}
+  #bulkbar .rbtn{padding:0 8px}
+  #bulkbar .rbtn.ico{width:34px;padding:0}
+  #bulkbar .n-sel{font-size:12.5px;line-height:1.15}
+}
 </style>
 </head>
 <body>
@@ -1889,6 +1920,9 @@ body.composing #peopleCard{display:none}
   <button class="rbtn" id="bulkArchive" aria-label="Archive selected">Archive</button>
   <button class="rbtn ico" id="bulkPin" aria-label="Pin or unpin selected" title="Pin or unpin (Shift+P)">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6l-1 6 3 3v1.5H7V13l3-3Z"/><path d="M12 14.5V21"/></svg>
+  </button>
+  <button class="rbtn ico" id="bulkExport" aria-label="Export selected as an mbox file" title="Export as .mbox">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="M7.5 10.5 12 15l4.5-4.5"/><path d="M5 19.5h14"/></svg>
   </button>
   <button class="rbtn" id="bulkMove" aria-label="Move selected">Move</button>
   <button class="rbtn danger" id="bulkDelete" aria-label="Delete selected">Delete</button>
@@ -2117,6 +2151,7 @@ body.composing #peopleCard{display:none}
     <button class="cta" id="openContacts" style="background:var(--elev2);color:var(--t1)">Contacts</button>
     <button class="cta" id="openBlocked" style="background:var(--elev2);color:var(--t1)">Blocked senders</button>
     <button class="cta" id="openRules" style="background:var(--elev2);color:var(--t1)">Rules</button>
+    <button class="cta" id="openXfer" style="background:var(--elev2);color:var(--t1)">Import and export</button>
     <details class="repair">
       <summary>Repair old self-copies</summary>
       <div class="body">
@@ -2424,6 +2459,42 @@ body.composing #peopleCard{display:none}
   <div class="field"><input id="ctSearch" type="text" placeholder="Filter" aria-label="Filter contacts" autocomplete="off" spellcheck="false"></div>
   <div id="contactList"></div>
 </div>
+
+<!-- Import and export. The sheet is opened from Settings; the chip below it is
+     what shows an import or export still running once the sheet is closed. -->
+<div class="sheet" id="xferSheet" role="dialog" aria-label="Import and export">
+  <div class="grab"></div>
+  <div class="sh-t">Import and export</div>
+  <div class="sh-s">Bring old mail in from <b>.eml</b> and <b>.mbox</b> files, or take a folder out as one <b>.mbox</b>. Imported mail is written to your mailbox at iCloud, so it shows on every device.</div>
+
+  <div class="pe-h">Import mail</div>
+  <button class="cta" id="xfChoose" style="background:var(--elev2);color:var(--t1);margin-top:0">Choose files&hellip;</button>
+  <input type="file" id="xfFiles" multiple hidden>
+  <div class="sh-s" id="xfPicked" style="margin:8px 0 10px;font-size:12px">An .eml message or an .mbox archive, as many as you like. Thunderbird&rsquo;s own mailbox files have no extension and work too.</div>
+  <div class="sh-s" style="margin:0 0 6px">Into folder</div>
+  <div class="field"><select id="xfFolder" aria-label="Folder to import into"></select></div>
+  <div class="field" id="xfNewWrap" hidden><input id="xfNew" type="text" value="Imported" maxlength="120" placeholder="New folder name" aria-label="Name of the new folder" autocomplete="off" spellcheck="false"></div>
+  <button class="cta" id="xfStart" disabled>Import</button>
+  <div class="sh-s" style="margin:8px 0 0;font-size:12px">Messages already in your account, found by their Message-ID, are skipped, so a file can be run again after a failure without making copies. One message is up to 25&nbsp;MB.</div>
+
+  <div id="xfStatus" hidden>
+    <div id="xfProg" hidden>
+      <div class="xf-track" role="progressbar" aria-label="Progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="xfBar"></i></div>
+      <div class="xf-top">
+        <div id="xfLine" role="status" aria-live="polite"></div>
+        <button class="ghost" id="xfCancel">Cancel</button>
+      </div>
+    </div>
+    <div id="xfResult" role="status" aria-live="polite"></div>
+  </div>
+
+  <div class="pe-h" style="margin-top:20px">Export a folder</div>
+  <div class="field"><select id="xfOutFolder" aria-label="Folder to export"></select></div>
+  <button class="cta" id="xfExport" style="background:var(--elev2);color:var(--t1);margin-top:0">Export as .mbox</button>
+  <div class="sh-s" style="margin:8px 0 0;font-size:12px" id="xfOutNote">Every message in the folder, with its read and starred state, in one file. To export only some, choose them in the list and use the export button in the bar.</div>
+</div>
+
+<button class="xf-chip" id="xfChip" hidden aria-label="Show import and export progress"><span class="xf-dot" aria-hidden="true"></span><span id="xfChipText"></span></button>
 
 <div class="sheet lg" id="composeSheet">
   <div class="grab"></div>
@@ -2825,6 +2896,7 @@ const UNTIMED = [
   /^POST \/api\/assist$/,
   /^POST \/api\/messages\/[^/]+\/summary$/,
   /^POST \/api\/(?:backup|backup\/restore|repair\/self-copies)$/,
+  /^POST \/api\/transfer\/import$/,
 ];
 /** The caller's own abort signal, if any, joined with the timeout. */
 function apiSignal(path, opts) {
@@ -7957,6 +8029,778 @@ $("#imgTools").addEventListener("click", (e) => {
   // Percentages rather than pixels: the reader's window is not yours.
   pickedImg.style.width = b.dataset.w || "";
   $("#cBody").focus();
+});
+
+/* ── import and export ──────────────────────────────────────────────
+   Settings > Import and export, and the export button in the selection bar.
+   Mail comes in from .eml and .mbox files one message at a time, to
+   POST /api/transfer/import: the Worker appends it to the mailbox at iCloud
+   and files it here. It goes out as one .mbox written as it is fetched.
+   Neither direction holds an archive: a file is read as a stream and split by
+   the code below, which is src/mbox.js pasted in by scripts/sync-mbox.mjs and
+   is what test/mbox.test.mjs runs. */
+/* mbox:begin — generated by scripts/sync-mbox.mjs from src/mbox.js; do not edit here */
+const mbox = (() => {
+/**
+ * Reading and writing mbox files: the pure part, no network and no storage.
+ *
+ * An mbox is every message of a mailbox one after another, each introduced by
+ * a line that starts "From " (the separator) and each body line that would
+ * look like one quoted so it cannot be mistaken for it. A Worker must never
+ * hold a whole archive, so the reader takes bytes in chunks and gives whole
+ * messages out, keeping only the message it is in the middle of. The page
+ * runs the same code (scripts/sync-mbox.mjs copies this file into
+ * public/index.html, and the tests fail when the copy is stale), so what is
+ * tested is what runs.
+ *
+ * Only whole-line, byte-level work happens here. A message stays the bytes it
+ * was: nothing is decoded, re-wrapped or normalised, which is what lets a file
+ * written by writeEntry come back through MboxSplitter byte for byte.
+ *
+ * Because the page copy is wrapped in a function, this file imports nothing
+ * and keeps every top-level name to itself.
+ */
+
+const LF = 10;
+const CR = 13;
+const GT = 62;
+const FROM = [70, 114, 111, 109, 32]; // "From "
+
+// A separator is "From " + a sender + an asctime date, and nothing looser: a
+// body line that merely begins "From " (an exporter that did not quote it)
+// must not cut a message in two. Gmail Takeout and Thunderbird both write a
+// zone before the year, so that is allowed.
+const SEPARATOR =
+  /^From \S+ +\S{3},? +(\S{3}) +(\d{1,2}) +(\d{1,2}):(\d\d)(?::(\d\d))?(?: +([+-]\d{4}|[A-Z]{2,5}))? +(\d{4}) *\r?\n?$/;
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// A header block longer than this is not one; reading it stops here.
+const HEAD_LIMIT = 256 * 1024;
+
+const latin1 = (bytes) => {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 8192) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+  return s;
+};
+
+const unlatin1 = (s) => {
+  const out = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i) & 255;
+  return out;
+};
+
+function concat(parts, size) {
+  const out = new Uint8Array(size);
+  let at = 0;
+  for (const p of parts) {
+    out.set(p, at);
+    at += p.length;
+  }
+  return out;
+}
+
+const startsFrom = (line, at) => FROM.every((b, i) => line[at + i] === b);
+
+/** How many ">" begin the line, when they are followed by "From "; else -1. */
+function quoteDepth(line) {
+  let i = 0;
+  while (line[i] === GT) i++;
+  return startsFrom(line, i) ? i : -1;
+}
+
+/** The time a separator line names, in ms, or null when it is not a separator. */
+function separatorDate(line) {
+  const m = SEPARATOR.exec(typeof line === "string" ? line : latin1(line));
+  if (!m) return null;
+  const mon = MONTHS.indexOf(m[1].toLowerCase());
+  if (mon < 0) return null;
+  let t = Date.UTC(Number(m[7]), mon, Number(m[2]), Number(m[3]), Number(m[4]), Number(m[5] || 0));
+  const zone = /^([+-])(\d\d)(\d\d)$/.exec(m[6] || "");
+  if (zone) t -= (zone[1] === "-" ? -1 : 1) * (Number(zone[2]) * 60 + Number(zone[3])) * 60000;
+  return Number.isNaN(t) ? null : t;
+}
+
+/**
+ * The headers of one message, read from its bytes.
+ *
+ * Status and X-Status describe the copy of the message in one mailbox, not
+ * the message, so they are taken out of the bytes and reported as flags: a
+ * message that has been through a file comes out the way it went in. A
+ * message with no Status header at all is taken as read, because old mail
+ * brought in from an archive that does not say is far more often a record
+ * than a thing to catch up on.
+ */
+function readHead(raw) {
+  let end = 0;
+  const stop = Math.min(raw.length, HEAD_LIMIT);
+  for (let at = 0; at < stop; ) {
+    const nl = raw.indexOf(LF, at);
+    const to = nl < 0 ? raw.length : nl;
+    if ((to > at && raw[to - 1] === CR ? to - 1 : to) === at) break; // the blank line
+    at = nl < 0 ? raw.length : nl + 1;
+    end = at;
+  }
+  const head = latin1(raw.subarray(0, end));
+  const lines = head.match(/[^\n]*\n|[^\n]+$/g) || [];
+  let status;
+  let xStatus = "";
+  let date = "";
+  const kept = [];
+  let dropping = false;
+  let inDate = false;
+  for (const line of lines) {
+    const fold = /^[ \t]/.test(line);
+    if (!fold) {
+      dropping = false;
+      inDate = false;
+      const m = /^(status|x-status|date):(.*)$/i.exec(line.replace(/\r?\n$/, ""));
+      if (m) {
+        const name = m[1].toLowerCase();
+        if (name === "date") {
+          if (!date) {
+            date = m[2];
+            inDate = true;
+          }
+        } else {
+          dropping = true;
+          if (name === "status" && status === undefined) status = m[2];
+          if (name === "x-status") xStatus += m[2];
+        }
+      }
+    } else if (inDate) {
+      date += line.replace(/\r?\n$/, "");
+    }
+    if (!dropping) kept.push(line);
+  }
+  const flags = {
+    seen: status === undefined ? true : /R/i.test(status),
+    flagged: /F/i.test(xStatus),
+    answered: /A/i.test(xStatus),
+    draft: /T/i.test(xStatus),
+  };
+  const parsed = Date.parse(date.trim());
+  const top = unlatin1(kept.join(""));
+  const cleaned = kept.length === lines.length ? raw : concat([top, raw.subarray(end)], top.length + raw.length - end);
+  return { raw: cleaned, flags, date: Number.isNaN(parsed) ? null : parsed };
+}
+
+/**
+ * Whole messages out of an mbox, fed in chunks.
+ *
+ *   const s = new MboxSplitter();
+ *   for await (const chunk of stream) for (const msg of s.push(chunk)) ...
+ *   for (const msg of s.end()) ...
+ *
+ * A message is { raw, size, date, flags, oversize }. `raw` is Uint8Array and
+ * has the file's own line endings; `date` is the Date header when there is
+ * one, else the date on the separator line, else null; `flags` is
+ * { seen, flagged, answered, draft }. A message over `maxBytes` is not kept:
+ * raw is null and oversize true, so the caller can count and report it
+ * without the reader holding it.
+ *
+ * A file whose first line is not a separator is one message as it stands (an
+ * .eml): nothing in it is split or unquoted, because a body line "From " in a
+ * plain message is just text.
+ *
+ * `quoting` is "mboxrd" (">From " and ">>From " lose one ">"; what current
+ * writers do) or "mboxo" (only a single ">From " is unquoted, which is all
+ * the older format ever added). The chunk is only read, never changed.
+ */
+class MboxSplitter {
+  constructor({ quoting = "mboxrd", maxBytes = Infinity } = {}) {
+    this.quoting = quoting;
+    this.maxBytes = maxBytes;
+    this.carry = [];
+    this.carried = 0;
+    this.mode = null; // null until the first line, then "mbox" or "single"
+    this.started = false;
+    this.parts = [];
+    this.size = 0;
+    this.pending = null;
+    this.sepDate = null;
+    this.over = false;
+  }
+
+  push(chunk) {
+    const out = [];
+    let from = 0;
+    for (;;) {
+      const nl = chunk.indexOf(LF, from);
+      if (nl < 0) break;
+      let line = chunk.subarray(from, nl + 1);
+      if (this.carried) {
+        this.carry.push(line);
+        line = concat(this.carry, this.carried + line.length);
+        this.carry = [];
+        this.carried = 0;
+      }
+      this.line(line, out);
+      from = nl + 1;
+    }
+    if (from < chunk.length) {
+      // A copy: the caller may reuse the buffer it handed in.
+      const rest = chunk.slice(from);
+      this.carry.push(rest);
+      this.carried += rest.length;
+    }
+    return out;
+  }
+
+  end() {
+    const out = [];
+    if (this.carried) {
+      const line = concat(this.carry, this.carried);
+      this.carry = [];
+      this.carried = 0;
+      this.line(line, out);
+    }
+    if (this.started) this.finish(out);
+    return out;
+  }
+
+  line(line, out) {
+    if (this.mode === null) {
+      this.mode = SEPARATOR.test(startsFrom(line, 0) ? latin1(line.subarray(0, 300)) : "") ? "mbox" : "single";
+    }
+    if (this.mode === "single") {
+      this.started = true;
+      this.add(line);
+      return;
+    }
+    if (startsFrom(line, 0) && line.length < 300) {
+      const text = latin1(line);
+      if (SEPARATOR.test(text)) {
+        if (this.started) this.finish(out);
+        this.started = true;
+        this.sepDate = separatorDate(text);
+        return;
+      }
+    }
+    // The line before a separator is a blank one the writer put there; it is
+    // held back one line so it can be left off the message it follows.
+    if (line[0] === GT) {
+      const depth = quoteDepth(line);
+      if (depth > 0 && (this.quoting === "mboxrd" || depth === 1)) line = line.subarray(1);
+    }
+    this.add(line);
+  }
+
+  add(line) {
+    if (this.pending) this.keep(this.pending);
+    this.pending = line;
+  }
+
+  keep(line) {
+    this.size += line.length;
+    if (this.size > this.maxBytes) {
+      this.over = true;
+      this.parts = [];
+    }
+    if (!this.over) this.parts.push(line);
+  }
+
+  finish(out) {
+    const last = this.pending;
+    const blank = last && (last.length === 1 || (last.length === 2 && last[0] === CR)) && last[last.length - 1] === LF;
+    if (last && !(this.mode === "mbox" && blank)) this.keep(last);
+    if (this.over) {
+      out.push({ raw: null, size: this.size, date: this.sepDate, flags: { seen: true, flagged: false, answered: false, draft: false }, oversize: true });
+    } else if (this.size || this.mode === "mbox") {
+      const head = readHead(concat(this.parts, this.size));
+      out.push({ raw: head.raw, size: head.raw.length, date: head.date ?? this.sepDate, flags: head.flags, oversize: false });
+    }
+    this.parts = [];
+    this.size = 0;
+    this.pending = null;
+    this.sepDate = null;
+    this.over = false;
+    this.started = false;
+  }
+}
+
+/** Every message in a file already in memory. For small files and tests. */
+function splitMbox(bytes, opts) {
+  const s = new MboxSplitter(opts);
+  return [...s.push(bytes), ...s.end()];
+}
+
+/** "Thu Nov 27 10:00:00 2026", the date a separator line carries, in UTC. */
+function asctime(ms) {
+  const d = new Date(ms);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${DAYS[d.getUTCDay()]} ${MONTH_NAMES[d.getUTCMonth()]} ${String(d.getUTCDate()).padStart(2, " ")} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())} ${d.getUTCFullYear()}`;
+}
+
+/**
+ * One message as it goes into an mbox: the separator line, the message with
+ * its "From " lines quoted, and the blank line that ends it.
+ *
+ * `flags` ({ seen, flagged, answered, draft }) are written as Status and
+ * X-Status headers, replacing any the message had; leave it out and the
+ * bytes go in untouched. Lines end the way the message's first line does, so
+ * a message from IMAP (CRLF) stays CRLF and a file of LF stays LF. A message
+ * that does not end in a newline is given one.
+ */
+function writeEntry(raw, { date = Date.now(), flags, quoting = "mboxrd", sender = "MAILER-DAEMON" } = {}) {
+  let body = raw;
+  const first = body.indexOf(LF);
+  const eol = first > 0 && body[first - 1] === CR ? "\r\n" : "\n";
+  if (flags) {
+    const status = `${flags.seen ? "RO" : "O"}`;
+    const x = `${flags.flagged ? "F" : ""}${flags.answered ? "A" : ""}${flags.draft ? "T" : ""}`;
+    const extra = unlatin1(`Status: ${status}${eol}${x ? `X-Status: ${x}${eol}` : ""}`);
+    const clean = readHead(body).raw;
+    body = concat([extra, clean], extra.length + clean.length);
+  }
+  const quote = [];
+  for (let at = 0; at < body.length; ) {
+    const depth = quoteDepth(body.subarray(at, at + 80 > body.length ? body.length : at + 80));
+    if (depth === 0 || (depth > 0 && quoting === "mboxrd")) quote.push(at);
+    const nl = body.indexOf(LF, at);
+    if (nl < 0) break;
+    at = nl + 1;
+  }
+  const head = unlatin1(`From ${sender} ${asctime(date)}${eol}`);
+  const tail = unlatin1(body.length && body[body.length - 1] !== LF ? eol + eol : eol);
+  const out = new Uint8Array(head.length + body.length + quote.length + tail.length);
+  out.set(head, 0);
+  let to = head.length;
+  let from = 0;
+  for (const at of quote) {
+    out.set(body.subarray(from, at), to);
+    to += at - from;
+    out[to++] = GT;
+    from = at;
+  }
+  out.set(body.subarray(from), to);
+  to += body.length - from;
+  out.set(tail, to);
+  return out;
+}
+
+return { separatorDate, MboxSplitter, splitMbox, asctime, writeEntry };
+})();
+/* mbox:end */
+
+/** Same ceiling as the Worker's MAX_IMPORT_BYTES. */
+const XF_MAX = 25 * 1024 * 1024;
+/** Messages sent at once. Each is a login and an APPEND at iCloud; more only queues there. */
+const XF_PARALLEL = 2;
+/** What a browser without the File System Access API can be asked to keep in one download. */
+const XF_BLOB_CAP = 150 * 1024 * 1024;
+const XF_NEW = "__new__";
+const xf = { running: false, kind: "", total: 0, done: 0, added: 0, dupes: 0, failed: 0, errors: [], cancel: false, fatal: "", line: "", summary: "", warn: false };
+
+const xfSleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const xfMB = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+const xfPlural = (n, one, many) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+
+/** One place that draws the sheet's status block, the buttons it locks and the chip. */
+function xfPaint() {
+  const on = xf.running;
+  const up = $("#xferSheet").classList.contains("up");
+  $("#xfStatus").hidden = !on && !xf.summary;
+  $("#xfProg").hidden = !on;
+  const pct = xf.total ? Math.min(100, Math.round((xf.done / xf.total) * 100)) : 0;
+  $("#xfBar").style.width = `${on && !xf.total ? 4 : pct}%`;
+  $("#xfBar").parentElement.setAttribute("aria-valuenow", String(pct));
+  $("#xfLine").textContent = xf.line;
+  $("#xfCancel").disabled = xf.cancel;
+  $("#xfResult").textContent = on ? "" : xf.summary;
+  $("#xfResult").classList.toggle("warn", !on && xf.warn);
+  for (const id of ["#xfChoose", "#xfFolder", "#xfNew", "#xfExport", "#xfOutFolder"]) $(id).disabled = on;
+  $("#xfStart").disabled = on || !$("#xfFiles").files.length;
+  $("#xfChip").hidden = !on || up;
+  $("#xfChipText").textContent = on ? xf.line.replace(/\s+·.*$/, "") : "";
+}
+// The sheet is closed by code that does not know about this one (Escape, the
+// scrim, another sheet opening), so the chip follows its class instead.
+new MutationObserver(xfPaint).observe($("#xferSheet"), { attributes: true, attributeFilter: ["class"] });
+// An import dropped by closing the tab would stop halfway with nothing said.
+addEventListener("beforeunload", (e) => {
+  if (!xf.running) return;
+  e.preventDefault();
+  e.returnValue = "";
+});
+
+function xfBegin(kind, total = 0) {
+  Object.assign(xf, { running: true, kind, total, done: 0, added: 0, dupes: 0, failed: 0, errors: [], cancel: false, fatal: "", line: "", summary: "", warn: false });
+}
+function xfFail(label, reason) {
+  xf.failed++;
+  if (xf.errors.length < 5) xf.errors.push(`• ${label}: ${reason}`);
+}
+function xfProblems() {
+  const more = xf.failed - xf.errors.length;
+  return `${xf.errors.join("\n")}${more > 0 ? `\n…and ${more.toLocaleString()} more` : ""}`;
+}
+function xfEnd(summary, warn = false) {
+  xf.running = false;
+  xf.summary = summary;
+  xf.warn = warn;
+  xf.line = "";
+  xfPaint();
+  // Said aloud even when the sheet is shut, where the result would otherwise go unseen.
+  if (!$("#xferSheet").classList.contains("up")) toast(summary.split("\n")[0], () => openSheet("#xferSheet"), "Details");
+  else say(summary.split("\n")[0]);
+}
+
+/* ── choosing what goes in, and where ── */
+function xfFillFolders() {
+  const options = folders
+    .map((f) => `<option value="${esc(f.folder)}">${esc(folderPath(f.label || f.folder))}</option>`)
+    .join("");
+  const out = $("#xfOutFolder");
+  const was = out.value;
+  out.innerHTML = options;
+  if (folders.some((f) => f.folder === was)) out.value = was;
+  else if (folders.some((f) => f.folder === folder)) out.value = folder;
+
+  const into = $("#xfFolder");
+  const chosen = into.value;
+  into.innerHTML = `${options}<option value="${XF_NEW}">New folder…</option>`;
+  const imported = folders.find((f) => String(f.label || f.folder).toLowerCase() === "imported");
+  into.value = folders.some((f) => f.folder === chosen) || chosen === XF_NEW ? chosen : imported ? imported.folder : XF_NEW;
+  $("#xfNewWrap").hidden = into.value !== XF_NEW;
+}
+$("#xfFolder").addEventListener("change", () => {
+  $("#xfNewWrap").hidden = $("#xfFolder").value !== XF_NEW;
+  if (!$("#xfNewWrap").hidden) $("#xfNew").focus();
+});
+$("#openXfer").addEventListener("click", () => {
+  closeSheets();
+  setTimeout(() => {
+    xfFillFolders();
+    xfPaint();
+    openSheet("#xferSheet");
+  }, 60);
+});
+$("#xfChip").addEventListener("click", () => openSheet("#xferSheet"));
+$("#xfChoose").addEventListener("click", () => $("#xfFiles").click());
+$("#xfFiles").addEventListener("change", () => {
+  const files = [...$("#xfFiles").files];
+  const size = files.reduce((n, f) => n + f.size, 0);
+  $("#xfPicked").textContent = files.length
+    ? `${xfPlural(files.length, "file", "files")}, ${xfMB(size)}: ${files.slice(0, 3).map((f) => f.name).join(", ")}${files.length > 3 ? ", …" : ""}`
+    : "No file chosen.";
+  xfPaint();
+});
+$("#xfCancel").addEventListener("click", () => {
+  xf.cancel = true;
+  xf.line = "Stopping…";
+  xfPaint();
+});
+
+/* ── reading a file as messages ── */
+/** The messages of one file, one at a time, the file read as a stream. */
+async function* xfMessages(file, maxBytes) {
+  const split = new mbox.MboxSplitter({ maxBytes });
+  const reader = file.stream().getReader();
+  try {
+    for (;;) {
+      if (xf.cancel) return;
+      const { value, done } = await reader.read();
+      if (done) break;
+      yield* split.push(value);
+    }
+    yield* split.end();
+  } finally {
+    reader.cancel().catch(() => {});
+  }
+}
+
+/** The Message-ID in a message's headers, or "": enough to ask the Worker whether it is already there. */
+function xfMid(raw) {
+  const head = new TextDecoder("latin1").decode(raw.subarray(0, 32768)).split(/\r?\n\r?\n/)[0];
+  return (/^message-id:[ \t]*(\S[^\r\n]*)/im.exec(head)?.[1] || "").trim();
+}
+
+/** A POST to the Worker that is tried once more on a server error or a dropped connection. */
+async function xfPost(url, body) {
+  for (let tries = 0; ; tries++) {
+    let res = null;
+    let data = {};
+    try {
+      res = await api(url, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body });
+      data = (await res.json().catch(() => null)) || {};
+    } catch (e) {
+      if (String(e.message) === "401") throw Object.assign(new Error("You have been signed out"), { fatal: true });
+      data = { error: "the connection dropped" };
+    }
+    if (res && res.ok) return data;
+    if (res && res.status === 409) throw Object.assign(new Error(data.error || "This account needs reconnecting"), { fatal: true });
+    if ((!res || res.status >= 500) && tries < 1 && !xf.cancel) {
+      await xfSleep(1500);
+      continue;
+    }
+    throw new Error(data.error || `the server answered ${res ? res.status : "nothing"}`);
+  }
+}
+
+async function xfSend(m, target, label) {
+  try {
+    if (m.oversize) throw new Error(`larger than ${XF_MAX / 1048576} MB (${xfMB(m.size)})`);
+    if (!m.raw.length) throw new Error("the message is empty");
+    const where = `folder=${encodeURIComponent(target)}`;
+    const mid = xfMid(m.raw);
+    // Asked first, with no body, so a file run a second time does not upload
+    // every message just to be told it is already there.
+    if (mid && (await xfPost(`/api/transfer/import?${where}&probe=${encodeURIComponent(mid)}`)).duplicate) {
+      xf.dupes++;
+      return;
+    }
+    const flags = Object.keys(m.flags).filter((k) => m.flags[k]).join(",");
+    const d = await xfPost(`/api/transfer/import?${where}&flags=${flags}${m.date ? `&date=${m.date}` : ""}`, m.raw);
+    if (d.duplicate) xf.dupes++;
+    else xf.added++;
+  } catch (e) {
+    if (e.fatal) xf.fatal = e.message;
+    else xfFail(label, e.message);
+  } finally {
+    xf.done++;
+    xfLine();
+  }
+}
+
+function xfLine() {
+  const bits = [`${xf.kind === "import" ? "Importing" : "Exporting"} ${xf.done.toLocaleString()}${xf.total ? ` of ${xf.total.toLocaleString()}` : ""}`];
+  if (xf.dupes) bits.push(`${xf.dupes.toLocaleString()} already there`);
+  if (xf.failed) bits.push(`${xf.failed.toLocaleString()} failed`);
+  xf.line = xf.cancel ? "Stopping…" : bits.join(" · ");
+  xfPaint();
+}
+
+/* ── import ── */
+$("#xfStart").addEventListener("click", async () => {
+  const files = [...$("#xfFiles").files];
+  if (!files.length || xf.running) return;
+  let target = $("#xfFolder").value;
+  let shown = $("#xfFolder").selectedOptions[0]?.textContent || target;
+  if (target === XF_NEW) {
+    target = $("#xfNew").value.trim();
+    shown = target;
+    if (!target || target.length > 120 || /["\\\r\n]/.test(target)) {
+      toast("Give the new folder a name without quotes or backslashes");
+      $("#xfNew").focus();
+      return;
+    }
+    // A name the account already has is that folder, not a second one.
+    const same = folders.find((f) => String(f.label || f.folder).toLowerCase() === target.toLowerCase());
+    if (same) target = same.folder;
+  }
+  xfBegin("import");
+  xf.line = "Counting messages…";
+  xfPaint();
+
+  try {
+    // First a pass that only counts, so there is a real "n of total" to show.
+    // Nothing is kept: a maxBytes of 0 makes the splitter drop each message.
+    for (const f of files) {
+      let n = 0;
+      for await (const _ of xfMessages(f, 0)) {
+        n++;
+        xf.total++;
+        if (n % 200 === 0) {
+          xf.line = `Counting messages… ${xf.total.toLocaleString()}`;
+          xfPaint();
+        }
+      }
+      if (xf.cancel) break;
+      if (!n) xfFail(f.name, "no messages found in it");
+    }
+    xfLine();
+
+    const pending = new Set();
+    for (const f of files) {
+      if (xf.cancel || xf.fatal) break;
+      let n = 0;
+      for await (const m of xfMessages(f, XF_MAX)) {
+        n++;
+        while (pending.size >= XF_PARALLEL) await Promise.race(pending);
+        if (xf.cancel || xf.fatal) break;
+        const p = xfSend(m, target, `${f.name} #${n}`).finally(() => pending.delete(p));
+        pending.add(p);
+      }
+    }
+    await Promise.all(pending);
+  } catch (e) {
+    xf.fatal = xf.fatal || `could not read the file (${(e && e.message) || e})`;
+  }
+
+  const lines = [];
+  const into = `“${shown}”`;
+  const left = xf.total - xf.done;
+  if (xf.fatal) lines.push(`Stopped after ${xf.done.toLocaleString()} of ${xf.total.toLocaleString()}: ${xf.fatal}.`);
+  else if (xf.cancel) lines.push(`Cancelled with ${left.toLocaleString()} of ${xf.total.toLocaleString()} not yet sent.`);
+  lines.push(`Imported ${xfPlural(xf.added, "message", "messages")} into ${into}.`);
+  if (xf.dupes) lines.push(`${xfPlural(xf.dupes, "message was", "messages were")} already in your account and skipped.`);
+  if (xf.failed) lines.push(`${xfPlural(xf.failed, "message", "messages")} could not be imported:\n${xfProblems()}`);
+  if (xf.cancel || xf.fatal) lines.push("Choose the same files again to carry on: what is already in is skipped.");
+  xfEnd(lines.join("\n"), Boolean(xf.fatal));
+  $("#xfFiles").value = "";
+  $("#xfPicked").textContent = "No file chosen.";
+  await refreshAll();
+  xfFillFolders();
+  if (folders.some((f) => f.folder === target)) $("#xfFolder").value = target;
+  xfPaint();
+});
+
+/* ── export ── */
+/** Where the file goes: straight to disk where the browser allows it, else one download at the end. */
+async function xfSink(name) {
+  if (window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: name,
+        types: [{ description: "Mailbox archive", accept: { "application/mbox": [".mbox"] } }],
+      });
+      const out = await handle.createWritable();
+      return { write: (b) => out.write(b), close: () => out.close(), abort: () => out.abort().catch(() => {}), where: "to the file you chose" };
+    } catch (e) {
+      if (e && e.name === "AbortError") return null;
+      // Any other refusal (a frame, a policy): the download below still works.
+    }
+  }
+  const parts = [];
+  let size = 0;
+  return {
+    write(b) {
+      size += b.length;
+      if (size > XF_BLOB_CAP) {
+        parts.length = 0;
+        throw new Error(`this is more than the ${XF_BLOB_CAP / 1048576} MB a browser without direct file access can save as one file. Use Chrome or Edge, which write straight to disk, or export part of it from the selection bar`);
+      }
+      parts.push(b);
+    },
+    async close() {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob(parts, { type: "application/mbox" }));
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
+    },
+    abort() { parts.length = 0; },
+    where: "as a download",
+  };
+}
+
+/** One message's bytes, taken the way the single-message download takes them. */
+async function xfFetchOne(it) {
+  for (let tries = 0; ; tries++) {
+    try {
+      const res = await api(`/api/messages/${it.id}/eml`);
+      if (res.ok) return { it, bytes: new Uint8Array(await res.arrayBuffer()) };
+      const d = await res.json().catch(() => ({}));
+      if (res.status < 500 || tries) return { it, error: d.error || `the server answered ${res.status}` };
+    } catch (e) {
+      if (String(e.message) === "401") return { it, error: "You have been signed out", fatal: true };
+      if (tries) return { it, error: "the connection dropped" };
+    }
+    await xfSleep(1500);
+  }
+}
+
+/** Every item of `items` into one file. `items` is any async iterable of { id, date, unread, starred }. */
+async function xfExportTo(name, total, items) {
+  const sink = await xfSink(name);
+  if (!sink) return;
+  xfBegin("export", total);
+  xf.line = "Exporting…";
+  xfPaint();
+  let written = 0;
+  const window3 = [];
+  const settle = async () => {
+    const r = await window3.shift();
+    if (r.fatal) xf.fatal = r.error;
+    else if (r.error) xfFail(r.it.subject || `message ${r.it.id.slice(0, 6)}`, r.error);
+    else {
+      sink.write(mbox.writeEntry(r.bytes, { date: r.it.date || Date.now(), flags: { seen: !r.it.unread, flagged: !!r.it.starred, answered: false, draft: false } }));
+      written++;
+    }
+    xf.done++;
+    xfLine();
+  };
+  let problem = "";
+  try {
+    // Three fetches in flight, written in the order they were asked for.
+    for await (const it of items) {
+      if (xf.cancel || xf.fatal) break;
+      window3.push(xfFetchOne(it));
+      if (window3.length >= 3) await settle();
+    }
+    while (window3.length) await settle();
+    await sink.close();
+  } catch (e) {
+    problem = (e && e.message) || String(e);
+    await Promise.allSettled(window3);
+    sink.abort();
+  }
+  const lines = [];
+  if (problem) lines.push(`Export stopped: ${problem}.`);
+  else if (xf.fatal) lines.push(`Export stopped: ${xf.fatal}.`);
+  else {
+    if (xf.cancel) lines.push("Cancelled. The file holds the messages written so far.");
+    lines.push(`Exported ${xfPlural(written, "message", "messages")}${xf.total && !xf.cancel ? ` of ${xf.total.toLocaleString()}` : ""} ${sink.where}: ${name}`);
+  }
+  if (xf.failed) lines.push(`${xfPlural(xf.failed, "message", "messages")} could not be read from iCloud and ${xf.failed === 1 ? "is" : "are"} not in the file:\n${xfProblems()}`);
+  xfEnd(lines.join("\n"), Boolean(problem || xf.fatal));
+}
+
+async function* xfFolderItems(name) {
+  let after = "";
+  for (;;) {
+    const res = await api(`/api/transfer/ids?folder=${encodeURIComponent(name)}${after ? `&after=${after}` : ""}`);
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || `the server answered ${res.status}`);
+    if (d.total !== undefined) {
+      xf.total = d.total;
+      xfLine();
+    }
+    yield* d.ids;
+    if (!d.next) return;
+    after = d.next;
+  }
+}
+
+$("#xfExport").addEventListener("click", () => {
+  if (xf.running) return;
+  const name = $("#xfOutFolder").value;
+  if (!name) return;
+  const label = String($("#xfOutFolder").selectedOptions[0]?.textContent || name).replace(/[\\/:*?"<>|\x00-\x1f]+/g, " ").trim();
+  xfExportTo(`${label || "mail"}.mbox`, 0, xfFolderItems(name));
+});
+
+/** The messages picked in the list. A row that stands for a conversation exports the whole of it. */
+async function* xfPickedItems(rows) {
+  for (const m of rows) {
+    if (Number(m.n) > 1 && m.thread_key) {
+      const res = await api(`/api/transfer/ids?folder=${encodeURIComponent(m.folder || folder)}&thread=${encodeURIComponent(m.thread_key)}`);
+      const d = res.ok ? await res.json().catch(() => null) : null;
+      if (d && d.ids.length) {
+        xf.total += d.ids.length - 1;
+        yield* d.ids.map((i) => ({ ...i, subject: m.subject }));
+        continue;
+      }
+    }
+    yield { id: m.id, date: m.date, unread: m.unread, starred: m.starred, subject: m.subject };
+  }
+}
+$("#bulkExport").addEventListener("click", () => {
+  if (xf.running) {
+    toast("An import or export is already running");
+    return;
+  }
+  const rows = [...picked].map((id) => messages.find((m) => m.id === id) || { id });
+  if (!rows.length) return;
+  const day = new Date().toISOString().slice(0, 10);
+  // The file is asked for first, inside the tap: a browser only opens its save dialog for one.
+  const started = xfExportTo(`mail-selection-${day}.mbox`, rows.length, xfPickedItems(rows));
+  exitSelmode();
+  started.then(() => refreshCounts());
 });
 
 /* ── contacts ── */
