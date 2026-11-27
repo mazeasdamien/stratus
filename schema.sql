@@ -268,6 +268,44 @@ CREATE TABLE IF NOT EXISTS followups (
   created_at  INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS calendars (
+  id          TEXT PRIMARY KEY,
+  name        TEXT NOT NULL,
+  color       TEXT NOT NULL DEFAULT '#1f6fd0',
+  kind        TEXT NOT NULL DEFAULT 'local',  -- local | subscription
+  url_sealed  TEXT,                           -- a subscription's address, sealed with ENC_KEY; never sent to the page
+  refresh_min INTEGER NOT NULL DEFAULT 60,    -- how often a subscription is fetched
+  fetched_at  INTEGER,                        -- ms of the last fetch, successful or not; NULL until the first
+  last_error  TEXT NOT NULL DEFAULT '',       -- what the last fetch said went wrong, shown beside the calendar
+  hash        TEXT NOT NULL DEFAULT '',       -- of what the last fetch parsed to, to leave an unchanged feed alone
+  position    INTEGER NOT NULL DEFAULT 0,
+  created_at  INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cal_events (
+  id            TEXT PRIMARY KEY,
+  calendar_id   TEXT NOT NULL,
+  uid           TEXT NOT NULL,                -- iCalendar UID; an edited occurrence shares its series'
+  summary       TEXT NOT NULL DEFAULT '',
+  location      TEXT NOT NULL DEFAULT '',
+  description   TEXT NOT NULL DEFAULT '',
+  url           TEXT NOT NULL DEFAULT '',
+  start_ms      INTEGER NOT NULL,             -- an instant; for an all-day or floating event its wall time as UTC
+  end_ms        INTEGER NOT NULL,             -- same; for all-day, the day after the last (exclusive)
+  all_day       INTEGER NOT NULL DEFAULT 0,
+  tzid          TEXT NOT NULL DEFAULT '',     -- IANA zone the wall clock is read in; '' with all_day = 0 is floating
+  rrule         TEXT NOT NULL DEFAULT '',     -- RRULE text; '' for a single event
+  exdates       TEXT NOT NULL DEFAULT '',     -- comma-separated start times (ms) of occurrences not held
+  reminder_min  INTEGER,                      -- minutes before the start; NULL for none
+  recurrence_id INTEGER,                      -- set on an edited occurrence: the start it had in its series' rule
+  created_at    INTEGER NOT NULL,
+  updated_at    INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_cal_events_start ON cal_events(calendar_id, start_ms);
+
+CREATE INDEX IF NOT EXISTS idx_cal_events_uid ON cal_events(calendar_id, uid);
+
 CREATE INDEX IF NOT EXISTS idx_messages_uid     ON messages(account_id, mailbox, uid);
 
 CREATE INDEX IF NOT EXISTS idx_messages_att_todo ON messages(account_id) WHERE att_names IS NULL;

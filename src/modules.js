@@ -1,5 +1,6 @@
 import { remindersModule } from "./reminders.js";
 import { tasksModule } from "./tasks.js";
+import { calendarModule } from "./calendar.js";
 
 /**
  * Where a feature plugs into the Worker without editing the shared files.
@@ -47,6 +48,7 @@ export const MODULES = [
   followupModule,
   rulesModule,
   transfer,
+  calendarModule,
 ];
 
 /** The first Response a module gives for this request, or null. */
