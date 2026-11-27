@@ -40,6 +40,25 @@ StratusI18n.define("fr", {
 
     /* ── page 6 ── */
 
+    "Reminders, {n} due": "Rappels, {n} en attente",
+    "Reminders": "Rappels",
+    "10 min": "10 min",
+    "Snooze for 10 minutes": "Reporter de 10 minutes",
+    "1 hour": "1 h",
+    "Snooze for 1 hour": "Reporter d’une heure",
+    "Tomorrow": "Demain",
+    "Snooze until tomorrow morning": "Reporter à demain matin",
+    "Nothing is due.": "Aucun rappel en attente.",
+    "Reminder": "Rappel",
+    "Due {when}": "Échéance : {when}",
+    "Open": "Ouvrir",
+    "Dismiss": "Ignorer",
+    "Snooze": "Reporter",
+    "Could not open that": "Impossible d’ouvrir cet élément",
+    "That didn't work": "Cela n’a pas fonctionné",
+    "Snoozed until {when}": "Reporté au {when}",
+    "Dismissed": "Ignoré",
+
     /* ── end page 6 ── */
 
     /* ── page 7 ── */

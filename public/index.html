@@ -12490,7 +12490,7 @@ async function loadReminders() {
   const n = reminders.length;
   $("#remindersBtn").hidden = !n;
   $("#remindersN").textContent = n > 9 ? "9+" : n;
-  $("#remindersBtn").setAttribute("aria-label", n ? `Reminders, ${n} due` : "Reminders");
+  $("#remindersBtn").setAttribute("aria-label", n ? t("Reminders, {n} due", { n }) : t("Reminders"));
   if (changed && $("#remindersSheet").classList.contains("up")) renderReminders();
 }
 function reminderSnoozes(now = new Date()) {
@@ -12498,31 +12498,44 @@ function reminderSnoozes(now = new Date()) {
   tomorrow.setDate(tomorrow.getDate() + 1);
   tomorrow.setHours(8, 0, 0, 0);
   return [
-    ["10 min", "10 minutes", now.getTime() + 10 * 60_000],
-    ["1 hour", "1 hour", now.getTime() + 3600_000],
-    ["Tomorrow", "until tomorrow morning", tomorrow.getTime()],
+    [t("10 min"), t("Snooze for 10 minutes"), now.getTime() + 10 * 60_000],
+    [t("1 hour"), t("Snooze for 1 hour"), now.getTime() + 3600_000],
+    [t("Tomorrow"), t("Snooze until tomorrow morning"), tomorrow.getTime()],
   ];
+}
+/**
+ * A reminder's title and body as shown. The Worker writes those of follow-ups
+ * and events in English, so they go through tw(); a task's are the user's own
+ * words, as is an event's title unless it had none.
+ */
+function reminderText(r) {
+  if (r.kind === "followup") return { title: tw(r.title), body: tw(r.body) };
+  if (r.kind !== "event") return { title: r.title, body: r.body };
+  // An event's body is "<when> · <location>": only the first part is the Worker's.
+  const [when, ...rest] = String(r.body || "").split(" · ");
+  return { title: r.title === "Event" ? tw(r.title) : r.title, body: [tw(when), ...rest].join(" · ") };
 }
 function renderReminders() {
   if (!reminders.length) {
-    $("#remindersList").innerHTML = `<div class="sh-s">Nothing is due.</div>`;
+    $("#remindersList").innerHTML = `<div class="sh-s">${t("Nothing is due.")}</div>`;
     return;
   }
   const snoozes = reminderSnoozes();
   $("#remindersList").innerHTML = reminders
     .map((r) => {
       const id = esc(r.id);
+      const shown = reminderText(r);
       return `<div class="rem">
-        <div class="rem-t">${esc(r.title || "Reminder")}</div>
-        ${r.body ? `<div class="rem-b">${esc(r.body)}</div>` : ""}
-        <div class="rem-w">Due ${esc(fmtFull(r.at))}</div>
+        <div class="rem-t">${esc(shown.title || t("Reminder"))}</div>
+        ${shown.body ? `<div class="rem-b">${esc(shown.body)}</div>` : ""}
+        <div class="rem-w">${t("Due {when}", { when: esc(fmtFull(r.at)) })}</div>
         <div class="rem-a">
-          ${reminderOpeners[r.kind] ? `<button class="ghost acc" data-ropen="${id}">Open</button>` : ""}
-          <button class="ghost" data-rdone="${id}">Dismiss</button>
+          ${reminderOpeners[r.kind] ? `<button class="ghost acc" data-ropen="${id}">${t("Open")}</button>` : ""}
+          <button class="ghost" data-rdone="${id}">${t("Dismiss")}</button>
         </div>
         <div class="rem-a">
-          <span class="rem-l">Snooze</span>
-          ${snoozes.map(([label, said, at]) => `<button class="ghost" data-rsnz="${id}" data-until="${at}" aria-label="Snooze ${esc(said)}">${esc(label)}</button>`).join("")}
+          <span class="rem-l">${t("Snooze")}</span>
+          ${snoozes.map(([label, said, at]) => `<button class="ghost" data-rsnz="${id}" data-until="${at}" aria-label="${esc(said)}">${esc(label)}</button>`).join("")}
         </div></div>`;
     })
     .join("");
@@ -12543,7 +12556,7 @@ $("#remindersList").addEventListener("click", async (e) => {
   if (!r) return;
   if (b.dataset.ropen) {
     closeSheets();
-    try { reminderOpeners[r.kind]?.(r.ref); } catch (err) { toast("Could not open that"); }
+    try { reminderOpeners[r.kind]?.(r.ref); } catch (err) { toast(t("Could not open that")); }
     return;
   }
   const snooze = !!b.dataset.rsnz;
@@ -12554,11 +12567,11 @@ $("#remindersList").addEventListener("click", async (e) => {
     body: snooze ? JSON.stringify({ until: Number(b.dataset.until) }) : "{}",
   }).catch(() => null);
   if (!res || !res.ok) {
-    toast((res && (await res.json().catch(() => ({}))).error) || "That didn't work");
+    toast(tw(res && (await res.json().catch(() => ({}))).error) || t("That didn't work"));
     b.disabled = false;
     return loadReminders();
   }
-  toast(snooze ? `Snoozed until ${whenText(Number(b.dataset.until))}` : "Dismissed");
+  toast(snooze ? t("Snoozed until {when}", { when: whenText(Number(b.dataset.until)) }) : t("Dismissed"));
   await loadReminders();
   if (!reminders.length) closeSheets();
 });
