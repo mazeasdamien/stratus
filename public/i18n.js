@@ -227,7 +227,8 @@
       const m = p.re.exec(text);
       if (!m) continue;
       const values = {};
-      p.names.forEach((n, i) => { values[n] = m[i + 1]; });
+      // A captured part that is itself a sentence we know ("(no subject)") is translated too.
+      p.names.forEach((n, i) => { const v = m[i + 1]; values[n] = strings[v] !== undefined && v.indexOf("{") < 0 ? strings[v] : v; });
       return format(strings[p.key], values);
     }
     return text;

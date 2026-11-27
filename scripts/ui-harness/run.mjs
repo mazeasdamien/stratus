@@ -305,6 +305,56 @@ try {
     ok(v === "camille@gmail.com", `Block and delete offers the sender's address, not the whole domain — offered: ${v}`);
   });
 
+  await scenario("french", async () => {
+    // The language is per device and applies on a load: chosen, then the page
+    // is loaded again. Everything below is read off the page as a person sees it.
+    const load = async () => {
+      await cdp("Page.navigate", { url: APP + "/" });
+      for (let i = 0; i < 40; i++) {
+        await sleep(150);
+        if (await ev("window.wait = (ms) => new Promise((r) => setTimeout(r, ms)); return typeof accounts !== 'undefined' && accounts.length > 0 && messages.length > 0", 3000).catch(() => false)) return;
+      }
+      throw new Error("the page did not load");
+    };
+    const read = () => ev(`
+      const text = (s) => ($(s)?.textContent || "").replace(/\\s+/g, " ").trim();
+      const tabs = ["Mail", "Timeline", "People", "Tasks"].map((n) => text("#tab" + n));
+      $("#acctBtn").click(); await wait(200);
+      const settings = [...document.querySelectorAll("#setNav .pill")].map((b) => b.textContent.trim());
+      const heading = text("#acctSheet .sh-t");
+      closeSheets(); await wait(300);
+      openCompose(); await wait(150);
+      const composer = { send: text("#cSend"), discard: $("#cDiscard").getAttribute("aria-label") };
+      closeSheets(); await wait(400);
+      await openMsg("m1", messages[0]); await wait(300);
+      $("#rArchive").click(); await wait(300);
+      const toastText = text("#toast");
+      await openMsg("m2", messages[1]); await wait(300);
+      $("#sdBlock").click(); await wait(200);
+      const dialog = text("#modalTitle");
+      closeModal(null);
+      return { lang: document.documentElement.lang, tabs, settings, heading, composer, toastText, dialog, date: fmtWhen(Date.UTC(2024, 2, 3, 12)), number: (1234.5).toLocaleString(LOCALE) };`);
+    await fresh();
+    const en = await read();
+    ok(en.lang === "en" && en.tabs.join() === "Mail,Calendar,People,Tasks" && en.composer.send === "Send" && /Archived/.test(en.toastText), `English by default — ${JSON.stringify(en)}`);
+    await ev(`localStorage.setItem("dmzs-lang", "fr");`);
+    await load();
+    const fr = await read();
+    ok(fr.lang === "fr", `<html lang> follows the choice — ${fr.lang}`);
+    ok(fr.tabs.join() === "Mail,Calendrier,Contacts,Tâches", `the view tabs are in French — ${fr.tabs}`);
+    ok(fr.heading === "Réglages" && fr.settings.includes("Apparence") && fr.settings.includes("Confidentialité"), `the settings headings are in French — ${fr.heading}, ${fr.settings}`);
+    ok(fr.composer.send === "Envoyer" && /brouillon/i.test(fr.composer.discard), `the composer's buttons are in French — ${JSON.stringify(fr.composer)}`);
+    ok(/^Archiv/.test(fr.toastText), `a toast after archiving is in French — ${fr.toastText}`);
+    ok(/bloquer/i.test(fr.dialog), `a dialog is in French — ${fr.dialog}`);
+    ok(/mars/.test(fr.date) && /1\\s?234,5/.test(fr.number), `a date and a number are formatted for French — ${fr.date}, ${fr.number}`);
+    // Back to English through the same chips a person uses.
+    await ev(`$("#acctBtn").click(); await wait(100); $('#langPick [data-lang="en"]').click();`).catch(() => {});
+    await sleep(400);
+    await load();
+    const back = await read();
+    ok(back.lang === "en" && back.tabs.join() === "Mail,Calendar,People,Tasks" && back.composer.send === "Send", `switching back restores English — ${JSON.stringify(back.tabs)}`);
+  });
+
   await scenario("late-send", async () => {
     await fresh({ sendDelay: 1500 });
     const s = await ev(`
