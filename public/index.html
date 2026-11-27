@@ -1130,10 +1130,17 @@ html.busy #bar{opacity:1}
   gap:8px;padding:0 22px;background:color-mix(in srgb,var(--acc) 18%,var(--bg));
   color:var(--acc);font-size:var(--t-m);font-weight:650;pointer-events:none;
   z-index:0;opacity:0;visibility:hidden}
-.rowwrap.dragging .swipe-act{opacity:1;visibility:visible}
-/* Past the point where letting go files it. */
+/* Two layers, one per side, filled in by the script as a finger lands with
+   what that side will do. Only the one the row is sliding away from shows. */
+.rowwrap.sw-r .swipe-act.r,.rowwrap.sw-l .swipe-act.l{opacity:1;visibility:visible}
+.rowwrap .swipe-act.l{justify-content:flex-end}
+.rowwrap .swipe-act.del{background:color-mix(in srgb,var(--red) 16%,var(--bg));color:var(--red)}
+/* Past the point where letting go does it. The icon grows with the tint, so
+   the change is not colour alone. */
 .rowwrap.armed .swipe-act{background:color-mix(in srgb,var(--acc) 34%,var(--bg))}
-.rowwrap .swipe-act svg{flex:none}
+.rowwrap.armed .swipe-act.del{background:color-mix(in srgb,var(--red) 30%,var(--bg))}
+.rowwrap .swipe-act svg{flex:none;transition:transform .12s ease}
+.rowwrap.armed .swipe-act svg{transform:scale(1.25)}
 .rowwrap .row{background:var(--bg);position:relative;z-index:1;
   transition:transform .22s cubic-bezier(.32,.72,0,1),background-color .16s ease}
 @media (hover:hover) and (pointer:fine){
@@ -2139,6 +2146,26 @@ body.composing #peopleCard{display:none}
       <button class="pill" data-theme="system" aria-pressed="false">System</button>
     </div>
     <div class="sh-s" style="margin:2px 0 0;font-size:12px">System follows your device. Light and Dark fix it here and keep it when the device changes its mind at sunset.</div>
+    <!-- Swipe actions: a touch gesture on a list row, set per device. -->
+    <div id="swipePick">
+    <div class="sh-s" style="margin-top:14px">Swipe right on a message</div>
+    <div class="chips" role="group" aria-label="Swipe right on a message">
+      <button class="pill" data-swipe-right="archive" aria-pressed="false">Archive</button>
+      <button class="pill" data-swipe-right="delete" aria-pressed="false">Delete</button>
+      <button class="pill" data-swipe-right="read" aria-pressed="false">Mark read</button>
+      <button class="pill" data-swipe-right="star" aria-pressed="false">Star</button>
+      <button class="pill" data-swipe-right="none" aria-pressed="false">Nothing</button>
+    </div>
+    <div class="sh-s" style="margin-top:2px">Swipe left on a message</div>
+    <div class="chips" role="group" aria-label="Swipe left on a message">
+      <button class="pill" data-swipe-left="archive" aria-pressed="false">Archive</button>
+      <button class="pill" data-swipe-left="delete" aria-pressed="false">Delete</button>
+      <button class="pill" data-swipe-left="read" aria-pressed="false">Mark read</button>
+      <button class="pill" data-swipe-left="star" aria-pressed="false">Star</button>
+      <button class="pill" data-swipe-left="none" aria-pressed="false">Nothing</button>
+    </div>
+    </div>
+    <div class="sh-s" style="margin:2px 0 0;font-size:12px">On a touch screen, sliding a row does this. Mark read becomes Mark unread on a read message, and Star becomes Unstar. Archive is not offered in Archive, Drafts, Sent, Trash or Spam, nor Delete in Drafts, Trash or Spam; a row there stays put. Every one has an Undo. Kept on this device only.</div>
     <button class="cta" id="openKeys" style="background:var(--elev2);color:var(--t1)">Keyboard shortcuts</button>
   </section>
 </div>
@@ -3474,10 +3501,7 @@ function rowHtml(m, sub = false) {
       ${fuRow(m, sub)}
     </div>
   </div>
-  <div class="swipe-act" aria-hidden="true">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1.4"/><path d="M5 9v9.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V9"/><path d="M10 13h4"/></svg>
-    <span>Archive</span>
-  </div></div>`;
+  <div class="swipe-act r" aria-hidden="true"></div><div class="swipe-act l" aria-hidden="true"></div></div>`;
 }
 
 /**
@@ -9807,26 +9831,164 @@ addEventListener("keydown", (e) => {
   });
 })();
 
-/* ── swipe to archive, long-press to select ──
+/* ── swipe actions, long-press to select ──
    The row slides aside rather than the list scrolling sideways, and only a
-   committed right-swipe files anything. Left is left alone on purpose: two
-   gestures per row is two chances to lose mail, and archive is the one worth
-   the gesture. */
+   committed swipe does anything. What each direction does is a setting of this
+   device (Appearance): the defaults are the gesture as it always was, a right
+   swipe archives and a left swipe leaves the row alone.
+
+   Two chances per row to lose mail is the reason for the care below. Each
+   action says, in one table, where it means something; a row where the action
+   does not apply does not slide, so the gesture never promises what it will
+   not do. */
+
+/**
+ * The swipe actions, and the folders each one is refused in.
+ *
+ * Judged by the row's own folder, since a search or Starred lists every
+ * folder at once. Archive in Archive filed a message into the folder it was
+ * already in and said "Archived"; in Drafts and Sent it moved your own mail
+ * out of its place; in Trash and Spam it pulled back what had been thrown
+ * away. Delete here is the move to Trash, which has an Undo: in Trash and Spam
+ * the only delete left is the permanent one, which asks first and is not a
+ * gesture, and a draft has its own delete button. Mark read and Star mean the
+ * same everywhere. `refused: null` is an action that is never taken.
+ */
+const SWIPE_ACTIONS = {
+  none: { label: "Nothing", refused: null },
+  archive: { label: "Archive", refused: ["archive", "drafts", "sent", "trash", "spam"] },
+  delete: { label: "Delete", refused: ["drafts", "trash", "spam"] },
+  read: { label: "Mark read", refused: [] },
+  star: { label: "Star", refused: [] },
+};
+
+/** Whether an action may be taken on a row in this folder. */
+function swipeAllowed(action, folder) {
+  const a = Object.hasOwn(SWIPE_ACTIONS, action) ? SWIPE_ACTIONS[action] : null;
+  return !!a && !!a.refused && !a.refused.includes(String(folder || "inbox").toLowerCase());
+}
+
+/** What this device does for a swipe to one side, "right" or "left". */
+function swipeSetting(side) {
+  let v = "";
+  try { v = localStorage.getItem(`dmzs-swipe-${side}`) || ""; } catch {}
+  return Object.hasOwn(SWIPE_ACTIONS, v) ? v : side === "right" ? "archive" : "none";
+}
+
+/** The icon and the words a row shows for an action while it is dragged. */
+function swipeFace(action, m) {
+  const svg = (d) =>
+    `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+  if (action === "delete")
+    return { label: "Delete", icon: svg('<path d="M4 7h16"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>') };
+  if (action === "star") {
+    const on = !!Number(m.starred);
+    return { label: on ? "Unstar" : "Star", icon: svg(`<path d="m12 3.6 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.8l5.9-.9Z"${on ? ' fill="currentColor"' : ""}/>`) };
+  }
+  if (action === "read") {
+    const unread = Number(m.unread) > 0;
+    return unread
+      ? { label: "Mark read", icon: svg('<path d="M3 9.5 12 4l9 5.5V19a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/><path d="m3.5 10 8.5 6 8.5-6"/>') }
+      : { label: "Mark unread", icon: svg('<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m3.5 7.5 8.5 6 8.5-6"/>') };
+  }
+  return { label: "Archive", icon: svg('<rect x="3" y="4" width="18" height="5" rx="1.4"/><path d="M5 9v9.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V9"/><path d="M10 13h4"/>') };
+}
+
+/** Moves a row's conversation or message, with the Undo that files it back. */
+function swipeFile(m, target, said) {
+  const id = m.id;
+  // A summarising row stands for the whole exchange, the same rule the
+  // reader's scope chip follows.
+  const whole = Number(m.n || 1) > 1 && !!m.thread_key;
+  say(said);
+  messages = messages.filter((x) => x.id !== id);
+  if (whole && openThread === m.thread_key) { openThread = ""; threadRows = []; }
+  renderList();
+  if (whole) return fileThread(m.thread_key, m.folder || "inbox", target, said);
+  return fileMessage(id, target).then((d) => {
+    if (!d) return;
+    const back = d.from || m.folder || "inbox";
+    toast(said, async () => {
+      await fileMessage(id, back);
+      await Promise.all([loadList(), refreshCounts()]);
+    });
+    refreshCounts();
+  });
+}
+
+/**
+ * Sets one flag on the message a row names, and says so with an Undo that
+ * sets it back. On a row standing for a conversation that is its newest
+ * message, which is what the reader's own star and Mark unread act on too.
+ */
+async function swipeFlag(m, patch, said, oops) {
+  const id = m.id;
+  const flag = (p) =>
+    api(`/api/messages/${id}/flag`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })
+      .then((r) => !!r && r.ok)
+      .catch(() => false);
+  const single = Number(m.n || 1) <= 1;
+  const before = { starred: m.starred, unread: m.unread };
+  // A row for one message answers at once. A conversation's counts are the
+  // server's to say, so it is read again once the call is in.
+  if (single) {
+    if ("starred" in patch) m.starred = patch.starred ? 1 : 0;
+    if ("unread" in patch) m.unread = patch.unread ? 1 : 0;
+    renderList();
+  }
+  say(said);
+  if (!(await flag(patch))) {
+    if (single) Object.assign(m, before);
+    renderList();
+    return toast(oops);
+  }
+  const undo = "starred" in patch ? { starred: !patch.starred } : { unread: !patch.unread };
+  toast(said, async () => {
+    await flag(undo);
+    await Promise.all([loadList(), refreshCounts()]);
+  });
+  // The Starred view lists only starred mail, and a conversation's counts are
+  // the server's: both are read again rather than guessed at.
+  if (!single || starredOnly) loadList();
+  refreshCounts();
+}
+
+/** Does what a committed swipe was dragged to do. */
+function swipeRun(action, m) {
+  if (action === "archive") return swipeFile(m, "archive", "Archived");
+  if (action === "delete") return swipeFile(m, "trash", "Deleted");
+  if (action === "star") {
+    const on = !Number(m.starred);
+    return swipeFlag(m, { starred: on }, on ? "Starred" : "Unstarred", on ? "Could not star this message" : "Could not remove the star");
+  }
+  if (action === "read") {
+    const unread = Number(m.unread) > 0;
+    return swipeFlag(m, { unread: !unread }, unread ? "Marked read" : "Marked unread", unread ? "Could not mark it read" : "Could not mark it unread");
+  }
+}
+
 (function swipeAndHold() {
   const list = $("#list");
-  let wrap = null, startX = 0, startY = 0, dx = 0, holding = null, dragged = false, slides = false;
+  const FAR = 72, MAX = 150; // far enough that "Mark unread" is shown whole
+  let wrap = null, startX = 0, startY = 0, dx = 0, holding = null, dragged = false;
+  // What each side does for the row under the finger, decided once as it lands:
+  // null where the action is not allowed here or is set to Nothing. The long
+  // press below still works on a row that does not slide.
+  let does = { right: null, left: null };
 
   const clearHold = () => { if (holding) { clearTimeout(holding); holding = null; } };
+  const reset = (w) => {
+    w.classList.remove("dragging", "armed", "sw-r", "sw-l");
+    w.querySelector(".row").style.transform = "";
+  };
 
-  // Where archiving a row means nothing, or the wrong thing. In Archive the
-  // swipe filed the message into the folder it was already in and said
-  // "Archived"; in Drafts and Sent it moved your own mail out of its place;
-  // in Trash and Spam it pulled back what had been thrown away. Judged by the
-  // row's own folder, since a search or Starred lists every folder at once.
-  const NO_ARCHIVE = ["archive", "drafts", "sent", "trash", "spam"];
-  const canArchive = (w) => {
-    const m = listRow((w.querySelector(".row") || w).dataset.id);
-    return !!m && !NO_ARCHIVE.includes(String(m.folder || "inbox").toLowerCase());
+  /** Writes what a side will do into its layer behind the row. */
+  const reveal = (w, side, action, m) => {
+    const layer = w.querySelector(`.swipe-act.${side === "right" ? "r" : "l"}`);
+    if (!layer) return;
+    const { icon, label } = swipeFace(action, m);
+    layer.className = `swipe-act ${side === "right" ? "r" : "l"}${action === "delete" ? " del" : ""}`;
+    layer.innerHTML = `${icon}<span>${label}</span>`;
   };
 
   list.addEventListener("touchstart", (e) => {
@@ -9836,9 +9998,14 @@ addEventListener("keydown", (e) => {
     wrap = w;
     dragged = false;
     dx = 0;
-    // Decided once, as the finger lands. The long press below still works on
-    // a row that does not slide.
-    slides = canArchive(w);
+    const m = listRow((w.querySelector(".row") || w).dataset.id);
+    const pick = (side) => {
+      const a = swipeSetting(side);
+      return m && swipeAllowed(a, m.folder) ? a : null;
+    };
+    does = { right: pick("right"), left: pick("left") };
+    if (does.right) reveal(w, "right", does.right, m);
+    if (does.left) reveal(w, "left", does.left, m);
     startX = e.touches[0].clientX;
     startY = e.touches[0].clientY;
     wrap.classList.add("dragging");
@@ -9849,8 +10016,7 @@ addEventListener("keydown", (e) => {
       if (!wrap) return;
       const w2 = wrap;
       wrap = null;
-      w2.classList.remove("dragging");
-      w2.querySelector(".row").style.transform = "";
+      reset(w2);
       enterSelmode();
       togglePick(w2);
       if (navigator.vibrate) navigator.vibrate(8);
@@ -9865,20 +10031,19 @@ addEventListener("keydown", (e) => {
     // Scrolling, not swiping — hand the row back before it starts to slide.
     if (Math.abs(my) > 12 && Math.abs(my) > Math.abs(mx)) {
       clearHold();
-      wrap.classList.remove("dragging", "armed");
-      wrap.querySelector(".row").style.transform = "";
+      reset(wrap);
       wrap = null;
       return;
     }
     if (Math.abs(mx) > 8) { clearHold(); dragged = true; }
-    // A row that cannot be archived stays where it is: sliding it would
-    // promise an action that is not going to happen. dx stays 0, so letting
-    // go commits nothing.
-    if (!dragged || !slides) return;
-    // Rightward only. A left drag used to slide the row and paint it red —
-    // the look of a delete — and then do nothing at all when let go.
-    dx = Math.max(0, Math.min(120, mx));
-    wrap.classList.toggle("armed", dx > 72);
+    // A side with nothing to do does not slide: sliding would promise an
+    // action that is not going to happen. dx stays 0 there, so letting go
+    // commits nothing.
+    if (!dragged) return;
+    dx = Math.max(does.left ? -MAX : 0, Math.min(does.right ? MAX : 0, mx));
+    wrap.classList.toggle("sw-r", dx > 0);
+    wrap.classList.toggle("sw-l", dx < 0);
+    wrap.classList.toggle("armed", Math.abs(dx) > FAR);
     wrap.querySelector(".row").style.transform = dx ? `translateX(${dx}px)` : "";
   }, { passive: true });
 
@@ -9887,36 +10052,38 @@ addEventListener("keydown", (e) => {
     if (!wrap) return;
     const w = wrap;
     wrap = null;
-    w.classList.remove("dragging", "armed");
-    w.querySelector(".row").style.transform = "";
-    const committed = dragged && dx > 72;
+    reset(w);
+    // A short swipe springs back and does nothing: the row returns on its own.
+    const action = dragged && Math.abs(dx) > FAR ? (dx > 0 ? does.right : does.left) : null;
     dx = 0;
     dragged = false;
-    if (!committed) return;
-    const id = (w.querySelector(".row") || w).dataset.id;
-    const m = listRow(id);
-    if (!m) return;
-    say("Archived");
-    // A summarising row stands for the whole exchange, the same rule the
-    // reader's scope chip follows.
-    const whole = Number(m.n || 1) > 1 && !!m.thread_key;
-    messages = messages.filter((x) => x.id !== id);
-    if (whole && openThread === m.thread_key) { openThread = ""; threadRows = []; }
-    renderList();
-    if (whole) return fileThread(m.thread_key, m.folder || "inbox", "archive", "Archived");
-    fileMessage(id, "archive").then((d) => {
-      if (!d) return;
-      const back = d.from || m.folder || "inbox";
-      toast("Archived", async () => {
-        await fileMessage(id, back);
-        await Promise.all([loadList(), refreshCounts()]);
-      });
-      refreshCounts();
-    });
+    if (!action) return;
+    const m = listRow((w.querySelector(".row") || w).dataset.id);
+    if (m) swipeRun(action, m);
   };
   list.addEventListener("touchend", end, { passive: true });
   list.addEventListener("touchcancel", end, { passive: true });
 })();
+
+/* ── swipe settings, in Appearance ── */
+function paintSwipePick() {
+  for (const side of ["right", "left"]) {
+    const now = swipeSetting(side);
+    document.querySelectorAll(`#swipePick [data-swipe-${side}]`).forEach((b) => {
+      const on = b.dataset[side === "right" ? "swipeRight" : "swipeLeft"] === now;
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-pressed", String(on));
+    });
+  }
+}
+$("#swipePick").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-swipe-right],[data-swipe-left]");
+  if (!b) return;
+  const side = b.hasAttribute("data-swipe-right") ? "right" : "left";
+  try { localStorage.setItem(`dmzs-swipe-${side}`, b.dataset[side === "right" ? "swipeRight" : "swipeLeft"]); } catch {}
+  paintSwipePick();
+});
+paintSwipePick();
 
 /* ── bulk select ── */
 function enterSelmode() {
