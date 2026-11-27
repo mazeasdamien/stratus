@@ -8003,8 +8003,8 @@ function markToggle(btn, wrap, name) {
   $(btn).textContent = ($(wrap).hidden ? "+ " : "− ") + name;
 }
 const CC_TOGGLES = [
-  ["#cCcToggle", "#cCcWrap", "#cCc", "#cCcChips", "Cc"],
-  ["#cBccToggle", "#cBccWrap", "#cBcc", "#cBccChips", "Bcc"],
+  ["#cCcToggle", "#cCcWrap", "#cCc", "#cCcChips", t("Cc")],
+  ["#cBccToggle", "#cBccWrap", "#cBcc", "#cBccChips", t("Bcc")],
 ];
 for (const [btn, wrap, input, chips, name] of CC_TOGGLES) {
   $(btn).addEventListener("click", () => {
@@ -8035,10 +8035,10 @@ $("#cTools").addEventListener("click", (e) => {
   }
 });
 $("#cLink").addEventListener("click", async () => {
-  const url = await askText("Insert link", "https://", { ok: "Insert" });
+  const url = await askText(t("Insert link"), "https://", { ok: t("Insert") });
   if (!url) return;
   // Only http(s): a javascript: URL here would execute in your own compose pane.
-  if (!/^https?:\/\//i.test(url)) { toast("Links must start with http:// or https://"); return; }
+  if (!/^https?:\/\//i.test(url)) { toast(t("Links must start with http:// or https://")); return; }
   $("#cBody").focus();
   document.execCommand("createLink", false, url);
 });
@@ -8099,7 +8099,7 @@ async function assist(mode, btn) {
   const kept = [".sig", ".quote-head", "blockquote"].map((s) => body.querySelector(s)).filter(Boolean);
   const tail = kept.map((el) => el.outerHTML).join("");
   const text = (scoped || scratch.innerText).trim();
-  if (!text) { toast("Write something first"); return; }
+  if (!text) { toast(t("Write something first")); return; }
   const session = draftSession;
   const tools = document.querySelectorAll("#cTools .ai");
   tools.forEach((t) => (t.disabled = true));
@@ -8112,12 +8112,12 @@ async function assist(mode, btn) {
       body: JSON.stringify({ text, mode }),
     });
     const d = await res.json().catch(() => ({}));
-    if (!res.ok) { toast(d.error || "AI failed"); return; }
+    if (!res.ok) { toast(tw(d.error) || t("AI failed")); return; }
     // The answer is for the message as it was when it was asked. If the
     // composer has moved on to another message, or more was typed during the
     // wait, writing it in would replace words it never saw.
     if (draftSession !== session || body.innerHTML !== before) {
-      toast("The message changed while the assistant was working — nothing was replaced");
+      toast(t("The message changed while the assistant was working — nothing was replaced"));
       return;
     }
     // Plain text back, escaped and re-broken into paragraphs. Never innerHTML
@@ -8144,10 +8144,10 @@ async function assist(mode, btn) {
     }
     queueDraftSave();
     toast(
-      mode === "improve" ? (scoped ? "Selection rewritten" : "Rewritten") : scoped ? "Selection corrected" : "Corrected",
+      mode === "improve" ? (scoped ? t("Selection rewritten") : t("Rewritten")) : scoped ? t("Selection corrected") : t("Corrected"),
       () => { if (draftSession === session) { body.innerHTML = before; queueDraftSave(); } }
     );
-  } catch { toast("AI failed"); }
+  } catch { toast(t("AI failed")); }
   finally {
     tools.forEach((t) => (t.disabled = false));
     btn.textContent = was;
@@ -8195,9 +8195,9 @@ function signature() {
 async function draftReply(btn) {
   const body = $("#cBody");
   const quote = body.querySelector("blockquote");
-  if (!quote) { toast("Open a message and press Reply first"); return; }
+  if (!quote) { toast(t("Open a message and press Reply first")); return; }
   const original = quote.innerText.trim();
-  if (!original) { toast("Nothing to reply to"); return; }
+  if (!original) { toast(t("Nothing to reply to")); return; }
 
   // The brief is whatever is in the composer that is not the quote — and not
   // the signature, which is not something you are asking for.
@@ -8221,12 +8221,12 @@ async function draftReply(btn) {
       body: JSON.stringify({ mode: "reply", text: original, note, me: signature(), signed: !!sig }),
     });
     const d = await res.json().catch(() => ({}));
-    if (!res.ok) { toast(d.error || "AI failed"); return; }
+    if (!res.ok) { toast(tw(d.error) || t("AI failed")); return; }
     // Written for the message that was open when it was asked for. Dropped
     // into a composer that has since moved on, it overwrote another reply
     // with this one's text and this one's quote.
     if (draftSession !== session || body.innerHTML !== before) {
-      toast("The message changed while the assistant was working — nothing was replaced");
+      toast(t("The message changed while the assistant was working — nothing was replaced"));
       return;
     }
     // The same shape as anything typed here, and never innerHTML from a model.
@@ -8238,8 +8238,8 @@ async function draftReply(btn) {
     // Written by the assistant rather than typed, so no input event marked
     // the message as changed: closing the composer kept none of it.
     queueDraftSave();
-    toast("Reply written — read it before sending", () => { if (draftSession === session) { body.innerHTML = before; queueDraftSave(); } });
-  } catch { toast("AI failed"); }
+    toast(t("Reply written — read it before sending"), () => { if (draftSession === session) { body.innerHTML = before; queueDraftSave(); } });
+  } catch { toast(t("AI failed")); }
   finally {
     tools.forEach((t) => (t.disabled = false));
     btn.textContent = was;
@@ -8347,11 +8347,11 @@ function renderImageSenders() {
         .map(
           (email) => `<div class="mi">
             <span class="grow"><div class="tr">${esc(email)}</div></span>
-            <button class="side" data-untrust="${esc(email)}" style="color:var(--acc)">Remove</button>
+            <button class="side" data-untrust="${esc(email)}" style="color:var(--acc)">${t("Remove")}</button>
           </div>`
         )
         .join("")
-    : `<div class="sh-s" style="font-size:12px">None yet. Tap Images on a message, then Always, to add its sender.</div>`;
+    : `<div class="sh-s" style="font-size:12px">${t("None yet. Tap Images on a message, then Always, to add its sender.")}</div>`;
 }
 
 /** Lets one sender's images load from now on, or stops it. */
@@ -8363,11 +8363,11 @@ async function trustImages(email, on) {
       ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) }
       : { method: "DELETE" }
   ).catch(() => null);
-  if (!res || !res.ok) return toast(on ? "Could not trust this sender" : "Could not remove this sender");
+  if (!res || !res.ok) return toast(on ? t("Could not trust this sender") : t("Could not remove this sender"));
   if (on) imageSenders.add(email);
   else imageSenders.delete(email);
   renderImageSenders();
-  toast(on ? `Images from ${email} will load` : `Images from ${email} will wait to be asked for`);
+  toast(on ? t("Images from {email} will load", { email }) : t("Images from {email} will wait to be asked for", { email }));
   if (current && senderOf(current.message) === email) {
     if (!on) showImagesOnce = false;
     renderBody();
@@ -8382,13 +8382,13 @@ $("#imgSenders").addEventListener("click", (e) => {
 
 $("#signOutOthers").addEventListener("click", async () => {
   const sure = await ask(
-    "Sign out every other device?",
-    "Every other phone and browser, and the Chrome extension, will need the activation link again. This one stays signed in.",
-    { ok: "Sign out the others", danger: true }
+    t("Sign out every other device?"),
+    t("Every other phone and browser, and the Chrome extension, will need the activation link again. This one stays signed in."),
+    { ok: t("Sign out the others"), danger: true }
   );
   if (!sure) return;
   const res = await api("/api/sessions/sign-out-others", { method: "POST" }).catch(() => null);
-  toast(res && res.ok ? "Every other device is signed out" : "Could not sign the other devices out");
+  toast(res && res.ok ? t("Every other device is signed out") : t("Could not sign the other devices out"));
 });
 
 /* ── signatures ──
@@ -8526,8 +8526,8 @@ function renderSigPicker() {
   const has = cur && sigById(cur.dataset.sig);
   const opts = [
     ...signatures.map((s) => [s.id, s.name]),
-    ["none", "No signature"],
-    ...(cur && !has && cur.dataset.sig === undefined ? [["custom", "Custom"]] : []),
+    ["none", t("No signature")],
+    ...(cur && !has && cur.dataset.sig === undefined ? [["custom", t("Custom")]] : []),
   ];
   $("#cSigPick").innerHTML = opts.map(([v, n]) => `<option value="${esc(v)}">${esc(n)}</option>`).join("");
   $("#cSigPick").value = cur ? (has ? cur.dataset.sig : cur.dataset.sig === undefined ? "custom" : "none") : "none";
@@ -8539,7 +8539,7 @@ $("#cSigPick").addEventListener("change", async (e) => {
   const sig = v === "none" ? null : sigById(v);
   const cur = sigEl();
   if (cur && !sigUntouched(cur)) {
-    const go = await ask("Replace the signature you edited?", "You changed the signature in this message. Choosing another one replaces your changes.", { ok: "Replace" });
+    const go = await ask(t("Replace the signature you edited?"), t("You changed the signature in this message. Choosing another one replaces your changes."), { ok: t("Replace") });
     if (!go) return renderSigPicker();
   }
   composeSigPicked = true;
@@ -8570,15 +8570,15 @@ function bodyPlainText() {
 async function refreshSignatures() {
   await loadSignatures();
   $("#sigSummary").textContent = signatures.length
-    ? `${signatures.length} ${signatures.length === 1 ? "signature" : "signatures"}: ${signatures.map((s) => s.name).join(", ")}`
-    : "No signature yet.";
+    ? t("{n, plural, one {# signature} other {# signatures}}: {names}", { n: signatures.length, names: signatures.map((s) => s.name).join(", ") })
+    : t("No signature yet.");
 }
 
 /** Every address a message can leave from, across the accounts, once each. */
 const sendingAddresses = () => [...new Set(accounts.flatMap((a) => identitiesOf(a)))];
 
 const sigOptions = (selected) =>
-  [`<option value=""${selected ? "" : " selected"}>No signature</option>`]
+  [`<option value=""${selected ? "" : " selected"}>${t("No signature")}</option>`]
     .concat(signatures.map((s) => `<option value="${esc(s.id)}"${s.id === selected ? " selected" : ""}>${esc(s.name)}</option>`))
     .join("");
 
@@ -8593,20 +8593,20 @@ function renderSignatureSheet() {
     ? signatures
         .map(
           (s) => `<div class="sgrow">
-        <div class="grow"><b>${esc(s.name)}</b><span>${esc(sigPreview(s.html)) || "Empty"}</span></div>
-        <button class="ghost" data-sgedit="${esc(s.id)}" aria-label="Edit ${esc(s.name)}">Edit</button>
-        <button class="ghost" data-sgrename="${esc(s.id)}" aria-label="Rename ${esc(s.name)}">Rename</button>
-        <button class="ghost danger" data-sgdel="${esc(s.id)}" aria-label="Delete ${esc(s.name)}">Delete</button></div>`
+        <div class="grow"><b>${esc(s.name)}</b><span>${esc(sigPreview(s.html)) || t("Empty")}</span></div>
+        <button class="ghost" data-sgedit="${esc(s.id)}" aria-label="${t("Edit {name}", { name: esc(s.name) })}">${t("Edit")}</button>
+        <button class="ghost" data-sgrename="${esc(s.id)}" aria-label="${t("Rename {name}", { name: esc(s.name) })}">${t("Rename")}</button>
+        <button class="ghost danger" data-sgdel="${esc(s.id)}" aria-label="${t("Delete {name}", { name: esc(s.name) })}">${t("Delete")}</button></div>`
         )
         .join("")
-    : `<div class="sh-s">No signature yet.</div>`;
+    : `<div class="sh-s">${t("No signature yet.")}</div>`;
   $("#sgUse").innerHTML = sendingAddresses()
     .map((addr) => {
       const n = sigFor(addr, false);
       const r = sigFor(addr, true);
       return `<div class="sgaddr"><b>${esc(addr)}</b><div class="sgsel">
-        <label>New mail<div class="field"><select data-sguse="${esc(addr)}" data-which="new_id" aria-label="Signature for new mail from ${esc(addr)}">${sigOptions(n && n.id)}</select></div></label>
-        <label>Replies<div class="field"><select data-sguse="${esc(addr)}" data-which="reply_id" aria-label="Signature for replies from ${esc(addr)}">${sigOptions(r && r.id)}</select></div></label>
+        <label>${t("New mail")}<div class="field"><select data-sguse="${esc(addr)}" data-which="new_id" aria-label="${t("Signature for new mail from {address}", { address: esc(addr) })}">${sigOptions(n && n.id)}</select></div></label>
+        <label>${t("Replies")}<div class="field"><select data-sguse="${esc(addr)}" data-which="reply_id" aria-label="${t("Signature for replies from {address}", { address: esc(addr) })}">${sigOptions(r && r.id)}</select></div></label>
       </div></div>`;
     })
     .join("");
@@ -8626,7 +8626,7 @@ $("#sigOpen").addEventListener("click", openSignatures);
 let sgEditing = null;
 function editSignature(sig) {
   sgEditing = sig;
-  $("#sgEditTitle").textContent = sig ? "Edit signature" : "New signature";
+  $("#sgEditTitle").textContent = sig ? t("Edit signature") : t("New signature");
   $("#sgName").value = sig ? sig.name : "";
   $("#sgBody").innerHTML = sig ? cleanHtml(sig.html) : "";
   $("#sgErr").classList.remove("show");
@@ -8648,19 +8648,19 @@ $("#sgList").addEventListener("click", async (e) => {
   if (!sig) return;
   if (b.dataset.sgedit) return editSignature(sig);
   if (b.dataset.sgrename) {
-    const name = await askText("Rename the signature", sig.name, { ok: "Rename" });
+    const name = await askText(t("Rename the signature"), sig.name, { ok: t("Rename") });
     if (!name) return;
     const res = await api(`/api/signatures/${encodeURIComponent(id)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
     }).catch(() => null);
-    if (!res || !res.ok) return toast("Could not rename the signature");
+    if (!res || !res.ok) return toast(t("Could not rename the signature"));
   } else {
-    const go = await ask(`Delete “${sig.name}”?`, "Addresses that sign with it will sign with nothing. Messages already sent keep what they went with.", { ok: "Delete", danger: true });
+    const go = await ask(t("Delete “{name}”?", { name: sig.name }), t("Addresses that sign with it will sign with nothing. Messages already sent keep what they went with."), { ok: t("Delete"), danger: true });
     if (!go) return;
     const res = await api(`/api/signatures/${encodeURIComponent(id)}`, { method: "DELETE" }).catch(() => null);
-    if (!res || !res.ok) return toast("Could not delete the signature");
+    if (!res || !res.ok) return toast(t("Could not delete the signature"));
   }
   await refreshSignatures();
   renderSignatureSheet();
@@ -8684,11 +8684,11 @@ $("#sgUse").addEventListener("change", async (e) => {
     body: JSON.stringify(body),
   }).catch(() => null);
   if (!res || !res.ok) {
-    toast("Could not save that choice");
+    toast(t("Could not save that choice"));
     return renderSignatureSheet();
   }
   sigUse[address.toLowerCase()] = { new_id: body.new_id, reply_id: body.reply_id };
-  toast("Saved");
+  toast(t("Saved"));
 });
 
 // The editor's controls are the composer's: the same execCommand buttons.
@@ -8704,9 +8704,9 @@ $("#sgTools").addEventListener("click", (e) => {
 });
 $("#sgLink").addEventListener("click", async () => {
   const keep = sgRange;
-  const url = await askText("Insert link", "https://", { ok: "Insert" });
+  const url = await askText(t("Insert link"), "https://", { ok: t("Insert") });
   if (!url) return;
-  if (!/^https?:\/\//i.test(url)) { toast("Links must start with http:// or https://"); return; }
+  if (!/^https?:\/\//i.test(url)) { toast(t("Links must start with http:// or https://")); return; }
   $("#sgBody").focus();
   restoreSgRange(keep);
   document.execCommand("createLink", false, url);
@@ -8737,7 +8737,7 @@ $("#sgSave").addEventListener("click", async (e) => {
   err.classList.remove("show");
   const name = $("#sgName").value.trim();
   if (!name) {
-    err.textContent = "Give the signature a name";
+    err.textContent = t("Give the signature a name");
     err.classList.add("show");
     return $("#sgName").focus();
   }
@@ -8751,11 +8751,11 @@ $("#sgSave").addEventListener("click", async (e) => {
   btn.disabled = false;
   if (!res || !res.ok) {
     const d = res ? await res.json().catch(() => ({})) : {};
-    err.textContent = d.error || "Could not save the signature";
+    err.textContent = tw(d.error) || t("Could not save the signature");
     err.classList.add("show");
     return;
   }
-  toast(sgEditing ? "Signature saved" : "Signature added");
+  toast(sgEditing ? t("Signature saved") : t("Signature added"));
   await refreshSignatures();
   renderSignatureSheet();
   $("#sgEditView").hidden = true;
@@ -8783,18 +8783,18 @@ async function refreshAiKey() {
   // Nothing typed and abandoned earlier is left lying in the field.
   input.value = "";
   $("#aiKeyClear").hidden = true;
-  state.textContent = "Checking…";
+  state.textContent = t("Checking…");
   const res = await api("/api/ai-key").catch(() => null);
   const d = res && res.ok ? await res.json().catch(() => null) : null;
-  if (!d) { state.textContent = "Could not read the current setting."; return; }
+  if (!d) { state.textContent = t("Could not read the current setting."); return; }
   $("#aiKeyClear").hidden = !d.stored;
-  input.placeholder = d.stored || d.secret ? `Ends ${d.tail} — type a new key to replace it` : "Paste an Anthropic API key";
+  input.placeholder = d.stored || d.secret ? t("Ends {tail} — type a new key to replace it", { tail: d.tail }) : t("Paste an Anthropic API key");
   setModels([], d.model);
   state.textContent = d.stored
-    ? `Set here, ending ${d.tail}.`
+    ? t("Set here, ending {tail}.", { tail: d.tail })
     : d.secret
-      ? `Using the deployed key, ending ${d.tail}. Anything saved here replaces it.`
-      : "No key set — Write reply, Fix spelling and Improve will say so when you press them.";
+      ? t("Using the deployed key, ending {tail}. Anything saved here replaces it.", { tail: d.tail })
+      : t("No key set — Write reply, Fix spelling and Improve will say so when you press them.");
   // Opening a menu to find one entry in it is not a menu. Only Anthropic knows
   // what this key can reach, so it is asked as the sheet opens rather than
   // only behind Test — quietly, and without holding anything up.
@@ -8817,7 +8817,10 @@ async function fillModels(current) {
   // key, so Draft and Fix are about to fail on a name that no longer exists.
   if (d.ok === false && d.configured) {
     $("#aiKeyState").textContent +=
-      ` ${d.configured} is not on this key${d.suggestion ? ` — ${d.suggestion} is` : ""}.`;
+      " " +
+      (d.suggestion
+        ? t("{model} is not on this key — {suggestion} is.", { model: d.configured, suggestion: d.suggestion })
+        : t("{model} is not on this key.", { model: d.configured }));
   }
 }
 
@@ -8841,19 +8844,21 @@ async function testAi(btn) {
   const state = $("#aiKeyState");
   btn.disabled = true;
   const was = btn.textContent;
-  btn.textContent = "Asking Anthropic…";
+  btn.textContent = t("Asking Anthropic…");
   const res = await api("/api/ai-check").catch(() => null);
   btn.disabled = false;
   btn.textContent = was;
   const d = res ? await res.json().catch(() => ({})) : {};
   if (!res || !res.ok) {
-    state.textContent = d.error ? `Anthropic says: ${d.error}` : "Could not reach Anthropic";
+    state.textContent = d.error ? t("Anthropic says: {reason}", { reason: tw(d.error) }) : t("Could not reach Anthropic");
     return;
   }
   setModels(d.models, d.configured);
   state.textContent = d.ok
-    ? `Key works. ${d.total} models on it, and ${d.configured} is one of them.`
-    : `Key works, but ${d.configured} is not on it${d.suggestion ? ` — ${d.suggestion} is` : ""}.`;
+    ? t("Key works. {n, plural, one {# model on it} other {# models on it}}, and {model} is one of them.", { n: d.total, model: d.configured })
+    : d.suggestion
+      ? t("Key works, but {model} is not on it — {suggestion} is.", { model: d.configured, suggestion: d.suggestion })
+      : t("Key works, but {model} is not on it.", { model: d.configured });
 }
 $("#aiKeyTest").addEventListener("click", (e) => testAi(e.currentTarget));
 $("#aiModel").addEventListener("change", async (e) => {
@@ -8865,13 +8870,13 @@ $("#aiModel").addEventListener("change", async (e) => {
   }).catch(() => null);
   const d = res ? await res.json().catch(() => ({})) : {};
   if (!res || !res.ok) {
-    toast(d.error || "Could not change the model");
+    toast(tw(d.error) || t("Could not change the model"));
     // Back to whatever is actually stored, rather than leaving the menu
     // showing a choice that was refused.
     refreshAiKey();
     return;
   }
-  toast(`Writing with ${d.model}`);
+  toast(t("Writing with {model}", { model: d.model }));
 });
 
 async function saveAiKey(key) {
@@ -8880,7 +8885,7 @@ async function saveAiKey(key) {
   err.classList.remove("show");
   btn.disabled = true;
   const was = btn.textContent;
-  btn.textContent = key ? "Checking with Anthropic…" : "Removing…";
+  btn.textContent = key ? t("Checking with Anthropic…") : t("Removing…");
   const res = await api("/api/ai-key", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -8890,18 +8895,18 @@ async function saveAiKey(key) {
   btn.textContent = was;
   const d = res ? await res.json().catch(() => ({})) : {};
   if (!res || !res.ok) {
-    err.textContent = d.error || "Could not save that key";
+    err.textContent = tw(d.error) || t("Could not save that key");
     err.classList.add("show");
     return;
   }
   await refreshAiKey();
-  toast(key ? "AI key saved" : d.secret ? "Removed — back to the deployed key" : "AI key removed");
+  toast(key ? t("AI key saved") : d.secret ? t("Removed — back to the deployed key") : t("AI key removed"));
 }
 $("#aiKeySave").addEventListener("click", () => {
   const key = $("#aiKeyInput").value.trim();
   if (!key) {
     const err = $("#aiKeyErr");
-    err.textContent = "Paste a key first — or use Remove, below, to clear the one stored.";
+    err.textContent = t("Paste a key first — or use Remove, below, to clear the one stored.");
     err.classList.add("show");
     return;
   }
@@ -8924,17 +8929,17 @@ function keyToBytes(b64) {
 async function refreshNotifyButton() {
   const btn = $("#notifyBtn");
   if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
-    btn.textContent = "Notifications unsupported here";
+    btn.textContent = t("Notifications unsupported here");
     btn.disabled = true;
     return;
   }
   const reg = await navigator.serviceWorker.getRegistration();
   const sub = reg && (await reg.pushManager.getSubscription());
   btn.textContent = sub
-    ? "Notifications on — tap to turn off"
+    ? t("Notifications on — tap to turn off")
     : Notification.permission === "denied"
-    ? "Notifications blocked in browser settings"
-    : "Enable notifications";
+    ? t("Notifications blocked in browser settings")
+    : t("Enable notifications");
   btn.disabled = Notification.permission === "denied" && !sub;
 }
 
@@ -8950,27 +8955,27 @@ async function refreshNotifyButton() {
 $("#notifyTest").addEventListener("click", async () => {
   const res = await api("/api/push/test", { method: "POST" }).catch(() => null);
   const d = res && res.ok ? await res.json().catch(() => ({})) : {};
-  if (!res || !res.ok) { toast("Could not send a test"); return; }
-  if (!d.devices) { toast("No device is registered — tap Enable notifications first"); return; }
-  if (!d.unread) { toast(`Pushed to ${d.sent}/${d.devices} — but nothing is unread, so there is no badge to show`); return; }
-  toast(`Pushed to ${d.sent}/${d.devices} device${d.devices > 1 ? "s" : ""} · badge should read ${d.unread}`);
+  if (!res || !res.ok) { toast(t("Could not send a test")); return; }
+  if (!d.devices) { toast(t("No device is registered — tap Enable notifications first")); return; }
+  if (!d.unread) { toast(t("Pushed to {sent}/{devices} — but nothing is unread, so there is no badge to show", { sent: d.sent, devices: d.devices })); return; }
+  toast(t("{devices, plural, one {Pushed to {sent}/# device} other {Pushed to {sent}/# devices}} · badge should read {unread}", { sent: d.sent, devices: d.devices, unread: d.unread }));
 });
 
 $("#notifyOnly").addEventListener("click", async () => {
   const reg = await navigator.serviceWorker.getRegistration();
   const sub = reg && (await reg.pushManager.getSubscription());
-  if (!sub) { toast("Turn notifications on here first"); return; }
+  if (!sub) { toast(t("Turn notifications on here first")); return; }
   const res = await api("/api/push/only", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ endpoint: sub.endpoint }),
   }).catch(() => null);
   const d = res && res.ok ? await res.json().catch(() => ({})) : {};
-  if (!res || !res.ok) { toast("Could not clear the other registrations"); return; }
+  if (!res || !res.ok) { toast(t("Could not clear the other registrations")); return; }
   toast(
     d.removed
-      ? `Removed ${d.removed} — this device is the only one now`
-      : "This device was already the only one"
+      ? t("{n, plural, one {Removed # other registration} other {Removed # other registrations}}: this device is the only one now", { n: d.removed })
+      : t("This device was already the only one")
   );
 });
 
@@ -8987,12 +8992,12 @@ $("#notifyBtn").addEventListener("click", async () => {
       body: JSON.stringify({ endpoint }),
     }).catch(() => {});
     navigator.clearAppBadge?.();
-    toast("Notifications off");
+    toast(t("Notifications off"));
     return refreshNotifyButton();
   }
 
   if ((await Notification.requestPermission()) !== "granted") {
-    toast("Permission refused");
+    toast(t("Permission refused"));
     return refreshNotifyButton();
   }
   try {
@@ -9007,9 +9012,9 @@ $("#notifyBtn").addEventListener("click", async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(sub.toJSON()),
     });
-    toast(res.ok ? "Notifications on" : "Could not register this device");
+    toast(res.ok ? t("Notifications on") : t("Could not register this device"));
   } catch (e) {
-    toast("Could not enable notifications");
+    toast(t("Could not enable notifications"));
   }
   refreshNotifyButton();
 });
@@ -9019,7 +9024,11 @@ let attached = [];
 const SEND_LIMIT = 20 * 1024 * 1024; // matches the Worker's ceiling
 
 const humanSize = (n) =>
-  n < 1024 ? `${n} B` : n < 1048576 ? `${Math.round(n / 1024)} KB` : `${(n / 1048576).toFixed(1)} MB`;
+  n < 1024
+    ? t("{n} B", { n })
+    : n < 1048576
+      ? t("{n} KB", { n: Math.round(n / 1024).toLocaleString(LOCALE) })
+      : t("{n} MB", { n: (n / 1048576).toLocaleString(LOCALE, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) });
 
 function renderAtts() {
   $("#cAtts").innerHTML = attached
@@ -9027,7 +9036,7 @@ function renderAtts() {
       (a, i) => `<span class="att" title="${esc(a.filename)}">${fileIcon(a.type, a.filename)}
         <span class="nm">${esc(a.filename)}</span>
         <span class="sz">${humanSize(a.bytes)}</span>
-        <button data-drop="${i}" aria-label="Remove ${esc(a.filename)}">&times;</button></span>`
+        <button data-drop="${i}" aria-label="${t("Remove {name}", { name: esc(a.filename) })}">&times;</button></span>`
     )
     .join("");
 }
@@ -9056,14 +9065,14 @@ async function addFiles(files) {
       // than the file size on disk — it is about a third larger.
       const total = attached.reduce((n, a) => n + a.data.length, 0) + data.length;
       if (total > SEND_LIMIT) {
-        toast(`${f.name} would push this over 20 MB`);
+        toast(t("{name} would push this over 20 MB", { name: f.name }));
         continue;
       }
       attached.push({ filename: f.name, type: f.type || "application/octet-stream", data, bytes: f.size });
       added++;
     }
   } catch {
-    toast("Could not read that file");
+    toast(t("Could not read that file"));
   } finally {
     busy(-1);
   }
@@ -9071,7 +9080,7 @@ async function addFiles(files) {
   // A file is a change to the message like any other. Only typing used to
   // count, so a file added to a saved draft was dropped when it was closed.
   if (added) queueDraftSave();
-  if (added) say(`${added} attachment${added > 1 ? "s" : ""} added`);
+  if (added) say(t("{n, plural, one {# attachment added} other {# attachments added}}", { n: added }));
 }
 $("#cFile").addEventListener("change", async (e) => {
   const files = [...(e.target.files || [])];
@@ -9122,7 +9131,7 @@ $("#cBody").addEventListener("paste", async (e) => {
     const url = await downscale(file);
     document.execCommand("insertHTML", false, `<img src="${url}" style="width:75%">`);
   } catch {
-    toast("Could not read that image");
+    toast(t("Could not read that image"));
   } finally {
     busy(-1);
   }
