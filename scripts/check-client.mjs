@@ -58,6 +58,12 @@ check("no duplicate ids", dupes.length === 0, dupes.join(", "));
 
 // 3. Every id the script reaches for actually exists in the markup.
 const present = new Set(ids);
+// registerView builds a tab, #tab<Id>, and optionally a dot, #<id>Dot, so the
+// markup never names them.
+for (const m of script.matchAll(/registerView\(\{\s*id:\s*"([A-Za-z0-9_-]+)"/g)) {
+  present.add(`tab${m[1][0].toUpperCase()}${m[1].slice(1)}`);
+  present.add(`${m[1]}Dot`);
+}
 const referenced = [...new Set([...script.matchAll(/\$\("#([A-Za-z0-9_-]+)"\)/g)].map((m) => m[1]))];
 const missing = referenced.filter((id) => !present.has(id));
 check("every referenced id exists", missing.length === 0, missing.join(", "));

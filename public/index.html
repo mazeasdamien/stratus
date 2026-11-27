@@ -1488,17 +1488,9 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
         </button>
       </div>
     </div>
-    <nav class="viewtabs" id="viewTabs" role="tablist" aria-label="Sections">
-      <button class="vtab on" id="tabMail" role="tab" aria-selected="true" aria-controls="list">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
-        <span>Mail</span>
-      </button>
-      <button class="vtab" id="tabTimeline" role="tab" aria-selected="false" aria-controls="timelineView">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        <span>Timeline</span>
-        <span class="tldot" id="timelineDot" hidden></span>
-      </button>
-    </nav>
+    <!-- Filled by registerView (see "views" in the script): one tab for each
+         view that registers, and none for a view that does not. -->
+    <nav class="viewtabs" id="viewTabs" role="tablist" aria-label="Sections"></nav>
     <div class="toprow" id="topRow">
       <div class="searchwrap" id="searchWrap">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
@@ -7820,30 +7812,98 @@ $("#rInvite").addEventListener("click", (e) => {
   if (again) again.focus();
 });
 
-/* ── timeline: upcoming meetings ── */
-let currentTab = "mail";
-let timelineEvents = [];
+/* ── views: the tabs under the header ──
+ *
+ * A view is a pane in #main with a tab in #viewTabs. A feature adds one by
+ * calling registerView once; nothing else in this file knows how many views
+ * there are, and a view that never registers has no tab.
+ *
+ *   registerView({ id, label, icon, pane, search, dot, onShow, onHide })
+ *
+ *   id      Short and unique. The tab is #tab<Id> (id "mail" → #tabMail) and
+ *           switchTab(id) shows the view.
+ *   label   The tab's text.
+ *   icon    The inside of a 24x24 stroke icon, as SVG markup.
+ *   pane    The element (or a selector for it) that holds the view. It is
+ *           hidden while another view is up, and is what the tab controls.
+ *   search  True when the search and folder row under the tabs belongs to
+ *           this view. Every other view hides it.
+ *   dot     True to give the tab a small dot, #<id>Dot, hidden until its view
+ *           shows it by clearing `hidden`.
+ *   onShow / onHide
+ *           Called as the view becomes the current one, and as it stops being.
+ *           Neither runs for the first registered view as the page loads.
+ *
+ * Tabs appear in the order the views register. The first one is the page's
+ * starting view. Returns the tab button.
+ */
+const views = new Map();
+let currentTab = null;
 
-function switchTab(tab) {
-  if (tab === currentTab) return;
-  currentTab = tab;
-  const isTl = tab === "timeline";
-  $("#tabMail").classList.toggle("on", !isTl);
-  $("#tabMail").setAttribute("aria-selected", String(!isTl));
-  $("#tabTimeline").classList.toggle("on", isTl);
-  $("#tabTimeline").setAttribute("aria-selected", String(isTl));
-  $("#topRow").hidden = isTl;
-  $("#list").hidden = isTl;
-  $("#timelineView").hidden = !isTl;
-  if (isTl) {
-    loadTimeline();
-  } else {
-    renderFolders();
+function registerView({ id, label, icon, pane, search = false, dot = false, onShow, onHide }) {
+  const el = typeof pane === "string" ? $(pane) : pane;
+  const tab = document.createElement("button");
+  tab.className = "vtab";
+  tab.id = `tab${id[0].toUpperCase()}${id.slice(1)}`;
+  tab.setAttribute("role", "tab");
+  tab.setAttribute("aria-controls", el.id);
+  tab.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${icon}</svg><span></span>`;
+  tab.lastChild.textContent = label;
+  if (dot) {
+    const d = document.createElement("span");
+    d.className = "tldot";
+    d.id = `${id}Dot`;
+    d.hidden = true;
+    tab.append(d);
   }
+  tab.addEventListener("click", () => switchTab(id));
+  $("#viewTabs").append(tab);
+  views.set(id, { tab, pane: el, search, onShow, onHide });
+
+  const first = currentTab === null;
+  if (first) currentTab = id;
+  tab.classList.toggle("on", first);
+  tab.setAttribute("aria-selected", String(first));
+  el.hidden = !first;
+  if (first) $("#topRow").hidden = !search;
+  return tab;
 }
 
-$("#tabMail").addEventListener("click", () => switchTab("mail"));
-$("#tabTimeline").addEventListener("click", () => switchTab("timeline"));
+function switchTab(id) {
+  const next = views.get(id);
+  if (!next || id === currentTab) return;
+  const prev = views.get(currentTab);
+  currentTab = id;
+  for (const [k, v] of views) {
+    v.tab.classList.toggle("on", k === id);
+    v.tab.setAttribute("aria-selected", String(k === id));
+    v.pane.hidden = k !== id;
+  }
+  $("#topRow").hidden = !next.search;
+  if (prev.onHide) prev.onHide();
+  if (next.onShow) next.onShow();
+}
+
+registerView({
+  id: "mail",
+  label: "Mail",
+  icon: '<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
+  pane: "#list",
+  search: true,
+  onShow: () => renderFolders(),
+});
+registerView({
+  id: "timeline",
+  label: "Timeline",
+  icon: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  pane: "#timelineView",
+  dot: true,
+  onShow: () => loadTimeline(),
+});
+
+/* ── timeline: upcoming meetings ── */
+let timelineEvents = [];
+
 // Announced as a tablist, so it answers to the keys a tablist answers to:
 // the arrows move between the tabs and Home and End go to the ends, the way
 // the settings sections already do. Each tab also names what it shows.
