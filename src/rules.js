@@ -18,6 +18,7 @@
  */
 
 import { parseAddressList } from "./mime.js";
+import { ui } from "./util.js";
 
 /** Lowercase, accents and combining marks removed, runs of space made one. */
 export const fold = (s) =>
@@ -30,12 +31,12 @@ export const fold = (s) =>
  * holds. "Does not" holds only when no candidate does.
  */
 export const OPS = {
-  contains: { label: "contains", test: (c, v) => c.some((x) => x.includes(v)) },
-  not_contains: { label: "does not contain", test: (c, v) => !c.some((x) => x.includes(v)) },
-  is: { label: "is", test: (c, v) => c.some((x) => x === v) },
-  is_not: { label: "is not", test: (c, v) => !c.some((x) => x === v) },
-  starts: { label: "starts with", test: (c, v) => c.some((x) => x.startsWith(v)) },
-  ends: { label: "ends with", test: (c, v) => c.some((x) => x.endsWith(v)) },
+  contains: { label: ui("contains"), test: (c, v) => c.some((x) => x.includes(v)) },
+  not_contains: { label: ui("does not contain"), test: (c, v) => !c.some((x) => x.includes(v)) },
+  is: { label: ui("is"), test: (c, v) => c.some((x) => x === v) },
+  is_not: { label: ui("is not"), test: (c, v) => !c.some((x) => x === v) },
+  starts: { label: ui("starts with"), test: (c, v) => c.some((x) => x.startsWith(v)) },
+  ends: { label: ui("ends with"), test: (c, v) => c.some((x) => x.endsWith(v)) },
 };
 
 const TEXT_OPS = ["contains", "not_contains", "is", "starts", "ends"];
@@ -54,33 +55,33 @@ const people = (line) => [...parseAddressList(line).flatMap((a) => [a.email, a.n
  */
 export const FIELDS = {
   from: {
-    label: "From",
+    label: ui("From"),
     kind: "text",
     ops: TEXT_OPS,
     read: (m) => [m.from_email, m.from_name, `${m.from_name || ""} <${m.from_email || ""}>`],
   },
-  to: { label: "To", kind: "text", ops: TEXT_OPS, read: (m) => people(m.to_line || "") },
-  cc: { label: "Cc", kind: "text", ops: TEXT_OPS, read: (m) => people(m.cc_line || "") },
-  subject: { label: "Subject", kind: "text", ops: TEXT_OPS, read: (m) => [m.subject] },
-  body: { label: "Text", kind: "text", ops: ["contains", "not_contains"], read: (m) => [m.body ?? m.snippet] },
+  to: { label: ui("To"), kind: "text", ops: TEXT_OPS, read: (m) => people(m.to_line || "") },
+  cc: { label: ui("Cc"), kind: "text", ops: TEXT_OPS, read: (m) => people(m.cc_line || "") },
+  subject: { label: ui("Subject"), kind: "text", ops: TEXT_OPS, read: (m) => [m.subject] },
+  body: { label: ui("Text"), kind: "text", ops: ["contains", "not_contains"], read: (m) => [m.body ?? m.snippet] },
   attachment: {
-    label: "Attachment name",
+    label: ui("Attachment name"),
     kind: "text",
     ops: TEXT_OPS,
     read: (m) => String(m.att_names || "").split("\n").filter(Boolean),
   },
   has_attachment: {
-    label: "Has attachment",
+    label: ui("Has attachment"),
     kind: "choice",
     ops: ["is"],
-    values: [["yes", "Yes"], ["no", "No"]],
+    values: [["yes", ui("Yes")], ["no", ui("No")]],
     read: (m) => [String(m.att_names || "").trim() ? "yes" : "no"],
   },
   importance: {
-    label: "Importance",
+    label: ui("Importance"),
     kind: "choice",
     ops: ["is", "is_not"],
-    values: [["high", "High"], ["normal", "Normal"], ["low", "Low"]],
+    values: [["high", ui("High")], ["normal", ui("Normal")], ["low", ui("Low")]],
     read: (m) => [Number(m.importance) === 1 ? "high" : Number(m.importance) === -1 ? "low" : "normal"],
   },
 };
@@ -97,17 +98,17 @@ const set = (v) => v !== undefined && v !== null;
  *          only from the fields the caller gave: an unknown state is not a no-op.
  */
 export const ACTIONS = {
-  move: { label: "Move to folder", value: "folder", via: "imap", noop: (m, v) => set(m.folder) && sameFolder(m, v) },
+  move: { label: ui("Move to folder"), value: "folder", via: "imap", noop: (m, v) => set(m.folder) && sameFolder(m, v) },
   category: {
-    label: "Add category",
+    label: ui("Add category"),
     value: "category",
     via: "local",
     noop: (m, v) => Array.isArray(m.cats) && m.cats.includes(Number(v)),
   },
-  star: { label: "Star", value: null, via: "imap", noop: (m) => set(m.starred) && Number(m.starred) === 1 },
-  read: { label: "Mark as read", value: null, via: "imap", noop: (m) => set(m.unread) && Number(m.unread) === 0 },
-  pin: { label: "Pin", value: null, via: "local", noop: (m) => set(m.pinned) && Number(m.pinned) === 1 },
-  trash: { label: "Move to Trash", value: null, via: "imap", noop: (m) => set(m.folder) && sameFolder(m, "trash") },
+  star: { label: ui("Star"), value: null, via: "imap", noop: (m) => set(m.starred) && Number(m.starred) === 1 },
+  read: { label: ui("Mark as read"), value: null, via: "imap", noop: (m) => set(m.unread) && Number(m.unread) === 0 },
+  pin: { label: ui("Pin"), value: null, via: "local", noop: (m) => set(m.pinned) && Number(m.pinned) === 1 },
+  trash: { label: ui("Move to Trash"), value: null, via: "imap", noop: (m) => set(m.folder) && sameFolder(m, "trash") },
 };
 
 /** What the client needs to build the editor: the two tables, without their code. */
