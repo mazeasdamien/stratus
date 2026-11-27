@@ -1510,6 +1510,58 @@ header::before{-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-im
 .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
   clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
 
+/* ── tasks ── */
+#tasksView{padding:10px 16px 40px;display:flex;flex-direction:column;gap:14px}
+.tk-add{margin:0;padding-right:4px}
+.tk-addbtn{width:36px;height:36px;border-radius:50%;flex:none;background:var(--acc);color:var(--on-acc);transition:opacity .12s,transform .08s}
+.tk-addbtn:active{transform:scale(.93);opacity:.85}
+#tasksList{display:flex;flex-direction:column;gap:16px}
+#tasksList:focus{outline:0}
+.tk-group{display:flex;flex-direction:column;gap:4px}
+.tk-h{display:flex;align-items:center;gap:8px;min-height:30px;padding:2px 4px;font-size:11.5px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.05em;color:var(--t3)}
+.tk-h.overdue{color:var(--red)}
+.tk-h.today{color:var(--acc)}
+.tk-h .n2{font-weight:600;letter-spacing:0}
+.tk-h .grow{flex:1}
+.tk-toggle{display:flex;align-items:center;gap:8px;min-height:32px;padding:0 6px 0 0;font:inherit;letter-spacing:inherit;
+  text-transform:inherit;color:inherit}
+.tk-toggle svg{transition:transform .15s}
+.tk-toggle[aria-expanded="true"] svg{transform:rotate(90deg)}
+.tk-clear{text-transform:none;letter-spacing:0;font-size:12.5px;font-weight:600;color:var(--t2);min-height:32px;padding:0 10px;border-radius:16px}
+.tk-list{background:var(--elev);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.tk{display:flex;align-items:flex-start;border-bottom:1px solid var(--line);transition:background .12s}
+.tk:last-child{border-bottom:0}
+.tk:hover{background:var(--press2)}
+.tk-chk{width:48px;height:48px;flex:none}
+.tk-chk .box{width:22px;height:22px;border-radius:50%;border:2px solid var(--line-strong);display:grid;place-items:center;
+  color:transparent;transition:background .15s,border-color .15s,color .15s}
+.tk-chk:hover .box{border-color:var(--acc)}
+.tk.done .tk-chk .box,.tk-chk[aria-checked="true"] .box{background:var(--acc);border-color:var(--acc);color:var(--on-acc)}
+.tk-body{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;padding:0 12px 6px 0}
+.tk-main{display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:3px;width:100%;
+  min-height:48px;padding:11px 0 6px;text-align:left}
+.tk-t{font-size:14.5px;font-weight:550;line-height:1.3;color:var(--t1);overflow-wrap:anywhere}
+.tk.done .tk-t{text-decoration:line-through;color:var(--t3);font-weight:450}
+.tk-m{display:flex;align-items:center;gap:4px 12px;flex-wrap:wrap;font-size:12px;color:var(--t2)}
+.tk-m span{display:inline-flex;align-items:center;gap:4px}
+.tk-m .late{color:var(--red);font-weight:600}
+.tk-m .imp{color:var(--acc);font-weight:600}
+.tk-open{min-height:32px;margin:-2px 0 2px -9px;font-size:12.5px;font-weight:600;color:var(--acc);gap:5px}
+.tk-empty{padding:36px 16px;text-align:center;color:var(--t2);display:flex;flex-direction:column;align-items:center;gap:8px;font-size:14px}
+.tk-empty svg{color:var(--t3);opacity:.7}
+#taskNotes{min-height:84px}
+.tk-l{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--t3);margin:8px 2px 4px;min-height:28px}
+.tk-l .ghost{min-height:28px}
+.tk-two{display:flex;gap:8px}
+.tk-two .field{flex:1;min-width:0}
+.tk-hint{font-size:12px;color:var(--t3);margin:-2px 2px 6px}
+.tk-imp{height:36px;padding:0 14px;border-radius:18px;border:1px solid var(--line-strong);gap:6px;font-weight:600;margin:4px 0 6px}
+.tk-imp[aria-pressed="true"]{background:var(--acc);color:var(--on-acc);border-color:var(--acc)}
+.tk-foot{display:flex;gap:8px;margin-top:10px}
+.tk-foot .cta{margin-top:0;flex:1}
+.tk-del{height:46px;padding:0 16px;color:var(--red);font-weight:600}
+
 /* ── reminders ── */
 #remindersBtn{position:relative}
 .remn{position:absolute;top:-1px;right:-1px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;
@@ -1662,6 +1714,42 @@ body.composing #peopleCard{display:none}
   </header>
   <main id="main">
     <div id="ptr"><span class="lift"><span class="ring"></span></span></div>
+    <!-- Tasks (see "tasks" in the script): the pane, and the sheet a task is
+         edited in. The sheet is fixed to the window, so it sits fine in here. -->
+    <div id="tasksView" role="region" aria-label="Tasks" hidden>
+      <div class="field tk-add">
+        <input id="taskAdd" type="text" placeholder="Add a task" aria-label="Add a task" autocomplete="off" enterkeyhint="done" maxlength="300">
+        <button class="tk-addbtn" id="taskAddBtn" type="button" aria-label="Add task" title="Add task">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+      <div id="tasksList" tabindex="-1"></div>
+    </div>
+    <div class="sheet" id="taskSheet" role="dialog" aria-labelledby="taskSheetTitle">
+      <div class="grab"></div>
+      <div class="sh-t" id="taskSheetTitle">Task</div>
+      <div class="field"><input id="taskTitle" type="text" placeholder="Title" aria-label="Title" autocomplete="off" maxlength="300"></div>
+      <textarea class="field" id="taskNotes" placeholder="Notes" aria-label="Notes" maxlength="5000"></textarea>
+      <div class="tk-l"><label for="taskDate">Due</label><button class="ghost" id="taskDueClear" type="button" aria-label="Remove the due date">Clear</button></div>
+      <div class="tk-two">
+        <div class="field"><input id="taskDate" type="date"></div>
+        <div class="field"><input id="taskTime" type="time" aria-label="Due time, optional"></div>
+      </div>
+      <div class="tk-hint">With no time, it is due any time that day.</div>
+      <div class="tk-l"><label for="taskRem">Reminder</label><button class="ghost" id="taskRemClear" type="button" aria-label="Remove the reminder">Clear</button></div>
+      <div class="field"><input id="taskRem" type="datetime-local"></div>
+      <button class="ghost tk-imp" id="taskImp" type="button" aria-pressed="false">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V4"/><path d="M5 4h12l-2 4 2 4H5"/></svg>Important
+      </button>
+      <button class="mi" id="taskOpenMsg" type="button" hidden>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m3.5 7 8.5 6 8.5-6"/></svg>
+        <span class="grow"><span>Open message</span><div class="sub tr" id="taskOpenMsgS"></div></span>
+      </button>
+      <div class="tk-foot">
+        <button class="ghost tk-del" id="taskDel" type="button">Delete</button>
+        <button class="cta" id="taskSave" type="button">Save</button>
+      </div>
+    </div>
     <!-- The list is a list, and every row in it is reachable from the keyboard
          with a name that carries what sighted users get from the layout. -->
     <div id="list" role="list" aria-label="Messages"></div>
@@ -9544,6 +9632,371 @@ if ("serviceWorker" in navigator) {
   });
 }
 if (new URLSearchParams(location.search).has("reminders")) openReminders();
+
+/* ── tasks ──
+ *
+ * A to-do list (src/tasks.js). The server returns the tasks already grouped
+ * (Overdue, Today, Upcoming, No date, Done) for the zone this page sends, so
+ * nothing here decides which group a task is in; this only draws them.
+ *
+ * Everything the feature adds to the page is in this block, the pane and
+ * sheet markup near #ptr, and the CSS under "tasks". It reaches the rest of
+ * the page in three places: registerView (the tab, with its dot counting what
+ * is overdue or due today), reminderOpeners.task (a fired reminder opens its
+ * task) and the reader's bar, where "Add to tasks" is added below. That
+ * button is made here rather than written into the bar's markup, as
+ * registerView makes a tab, so the reader's markup is not touched.
+ */
+let tasksData = null;        // the last read that worked
+let tasksFailed = false;
+let tasksDoneOpen = false;
+let tasksSeq = 0;
+let taskOpen = null;         // the task in the sheet, with the field values it opened with
+
+registerView({
+  id: "tasks",
+  label: "Tasks",
+  icon: '<circle cx="12" cy="12" r="10"/><path d="m8 12.5 2.8 2.8L16.2 9.5"/>',
+  pane: "#tasksView",
+  dot: true,
+  onShow: () => { renderTasks(); loadTasks(); },
+});
+
+const TASK_SVG = (d, w = 12, sw = 2) =>
+  `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const TASK_ICON = {
+  check: TASK_SVG('<path d="m5 12.5 4.5 4.5L19 7.5"/>', 13, 3.2),
+  bell: TASK_SVG('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>'),
+  flag: TASK_SVG('<path d="M5 21V4"/><path d="M5 4h12l-2 4 2 4H5"/>'),
+  mail: TASK_SVG('<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m3.5 7 8.5 6 8.5-6"/>', 13),
+  chev: TASK_SVG('<path d="m9 6 6 6-6 6"/>', 12, 2.4),
+};
+const taskUrl = (id) => `/api/tasks/${encodeURIComponent(id)}`;
+const taskJson = (method, body) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+
+async function loadTasks() {
+  const seq = ++tasksSeq;
+  const res = await api(`/api/tasks?tz=${new Date().getTimezoneOffset()}`).catch(() => null);
+  const d = res && res.ok ? await res.json().catch(() => null) : null;
+  if (seq !== tasksSeq) return; // a newer read is on its way, and will draw
+  // A failed read keeps what is shown, as the timeline does.
+  tasksFailed = !d;
+  if (d) tasksData = d;
+  renderTasks();
+}
+
+/** "Today", "Tomorrow", or the date, then the time unless the task is due any time that day. */
+function taskDueText(t) {
+  const off = new Date().getTimezoneOffset();
+  const day = (ms) => Math.floor(ms / 86400_000);
+  const diff = day(t.allDay ? t.due : t.due - off * 60_000) - day(Date.now() - off * 60_000);
+  const d = new Date(t.due);
+  const zone = t.allDay ? { timeZone: "UTC" } : {};
+  let text;
+  if (diff === 0) text = "Today";
+  else if (diff === 1) text = "Tomorrow";
+  else if (diff === -1) text = "Yesterday";
+  else {
+    const year = (t.allDay ? d.getUTCFullYear() : d.getFullYear()) !== new Date().getFullYear() ? { year: "numeric" } : {};
+    text = d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", ...year, ...zone });
+  }
+  return t.allDay ? text : `${text}, ${d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
+}
+
+function taskRow(t, group) {
+  const id = esc(t.id);
+  const done = t.doneAt != null;
+  const meta = [];
+  if (done) meta.push(`<span>Done ${esc(whenText(t.doneAt))}</span>`);
+  else {
+    if (t.due != null) {
+      const late = group === "overdue" || (!t.allDay && t.due < Date.now());
+      meta.push(`<span${late ? ' class="late"' : ""}>${esc(taskDueText(t))}</span>`);
+    }
+    if (t.reminder != null) meta.push(`<span>${TASK_ICON.bell}${esc(whenText(t.reminder))}</span>`);
+    if (t.important) meta.push(`<span class="imp">${TASK_ICON.flag}Important</span>`);
+  }
+  return `<div class="tk${done ? " done" : ""}" data-id="${id}">
+    <button class="tk-chk" type="button" role="checkbox" aria-checked="${done}" aria-label="${done ? "Mark not done" : "Mark done"}: ${esc(t.title)}" data-fk="chk:${id}" data-tk-chk><span class="box">${TASK_ICON.check}</span></button>
+    <div class="tk-body">
+      <button class="tk-main" type="button" data-fk="edit:${id}" data-tk-edit><span class="tk-t">${esc(t.title)}</span>${meta.length ? `<span class="tk-m">${meta.join("")}</span>` : ""}</button>
+      ${t.message ? `<button class="ghost tk-open" type="button" data-fk="msg:${id}" data-tk-msg>${TASK_ICON.mail}Open message</button>` : ""}
+    </div></div>`;
+}
+
+function renderTasks() {
+  const due = tasksData ? tasksData.due : 0;
+  $("#tasksDot").hidden = !due;
+  $("#tabTasks").setAttribute("aria-label", due ? `Tasks, ${due} due` : "Tasks");
+  if (currentTab === "tasks") {
+    $("#hmeta").textContent = tasksFailed && !tasksData ? "Tasks · could not be loaded" : due ? `Tasks · ${due} due` : "Tasks";
+  }
+
+  const list = $("#tasksList");
+  const f = document.activeElement;
+  const keep = f && list.contains(f) && f.dataset.fk ? f.dataset.fk : "";
+
+  if (!tasksData) {
+    list.innerHTML = tasksFailed
+      ? `<div class="tk-empty"><div><b>Could not load your tasks</b></div><button class="ghost" type="button" data-tk-retry>Try again</button></div>`
+      : "";
+    return;
+  }
+  const groups = tasksData.groups.filter((g) => g.tasks.length);
+  if (!groups.length) {
+    list.innerHTML = `<div class="tk-empty">${TASK_SVG('<circle cx="12" cy="12" r="10"/><path d="m8 12.5 2.8 2.8L16.2 9.5"/>', 40, 1.8)}<div><b>Nothing to do</b></div><div style="font-size:12.5px;color:var(--t3);max-width:260px">Add a task above, or choose Add to tasks on any message.</div></div>`;
+    return;
+  }
+  list.innerHTML = groups
+    .map((g) => {
+      if (g.id !== "done") {
+        return `<section class="tk-group" aria-label="${esc(g.label)}"><div class="tk-h ${g.id}">${esc(g.label)}<span class="n2">${g.tasks.length}</span></div>
+          <div class="tk-list">${g.tasks.map((t) => taskRow(t, g.id)).join("")}</div></section>`;
+      }
+      return `<section class="tk-group" aria-label="Done"><div class="tk-h">
+          <button class="tk-toggle" type="button" aria-expanded="${tasksDoneOpen}" data-fk="done" data-tk-done>${TASK_ICON.chev}Done<span class="n2">${tasksData.doneCount}</span></button>
+          <span class="grow"></span>
+          <button class="ghost tk-clear" type="button" data-fk="clear" data-tk-clear>Clear completed</button></div>
+          ${tasksDoneOpen ? `<div class="tk-list">${g.tasks.map((t) => taskRow(t, g.id)).join("")}</div>` : ""}</section>`;
+    })
+    .join("");
+  // The row that had focus may have moved, into a collapsed Done: focus then
+  // stays at the list, so a keyboard user is not sent back to the top of the page.
+  if (keep) (list.querySelector(`[data-fk="${keep}"]`) || list).focus({ preventScroll: true });
+}
+
+async function addTask(title, messageId) {
+  const res = await api("/api/tasks", taskJson("POST", { title, ...(messageId ? { messageId } : {}) })).catch(() => null);
+  const d = res ? await res.json().catch(() => ({})) : {};
+  if (!res || !res.ok) {
+    toast(d.error || "Could not add that task");
+    return null;
+  }
+  return d.task;
+}
+
+async function quickAddTask() {
+  const input = $("#taskAdd");
+  const title = input.value.trim();
+  if (!title) return;
+  input.value = "";
+  const t = await addTask(title);
+  if (!t) { input.value = title; return; }
+  say("Task added");
+  await loadTasks();
+}
+$("#taskAddBtn").addEventListener("click", () => { quickAddTask(); $("#taskAdd").focus(); });
+$("#taskAdd").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); quickAddTask(); }
+});
+
+async function setTaskDone(id, done, quiet = false) {
+  // The box answers at once; the list is redrawn once the server has agreed.
+  const box = $("#tasksList").querySelector(`.tk[data-id="${CSS.escape(id)}"] .tk-chk`);
+  if (box) box.setAttribute("aria-checked", String(done));
+  const res = await api(`${taskUrl(id)}/${done ? "complete" : "reopen"}`,{ method: "POST" }).catch(() => null);
+  if (!res || !res.ok) {
+    toast("Could not update that task");
+    return loadTasks();
+  }
+  await loadTasks();
+  if (quiet) toast(done ? "Task done" : "Task reopened");
+  else toast(done ? "Task done" : "Task reopened", () => setTaskDone(id, !done, true));
+}
+
+function findTask(id) {
+  for (const g of tasksData ? tasksData.groups : []) {
+    const t = g.tasks.find((x) => x.id === id);
+    if (t) return t;
+  }
+  return null;
+}
+
+const pad2 = (n) => String(n).padStart(2, "0");
+/** What a task's due and reminder look like in the three inputs. */
+function taskFields(t) {
+  let date = "", time = "", rem = "";
+  if (t.due != null) {
+    const d = new Date(t.due);
+    if (t.allDay) date = `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+    else {
+      date = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+      time = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+    }
+  }
+  if (t.reminder != null) {
+    const r = new Date(t.reminder);
+    rem = `${r.getFullYear()}-${pad2(r.getMonth() + 1)}-${pad2(r.getDate())}T${pad2(r.getHours())}:${pad2(r.getMinutes())}`;
+  }
+  return { date, time, rem };
+}
+
+async function openTask(id) {
+  let t = findTask(id);
+  if (!t) {
+    const res = await api(taskUrl(id)).catch(() => null);
+    if (!res || !res.ok) { toast("That task is gone"); return; }
+    t = (await res.json()).task;
+  }
+  const f = taskFields(t);
+  taskOpen = { ...t, init: f };
+  $("#taskTitle").value = t.title;
+  $("#taskNotes").value = t.notes;
+  $("#taskDate").value = f.date;
+  $("#taskTime").value = f.time;
+  $("#taskTime").disabled = !f.date;
+  $("#taskRem").value = f.rem;
+  $("#taskImp").setAttribute("aria-pressed", String(t.important));
+  $("#taskOpenMsg").hidden = !t.message;
+  $("#taskOpenMsgS").textContent = t.message ? t.message.subject || "(no subject)" : "";
+  openSheet("#taskSheet");
+}
+
+$("#taskDate").addEventListener("input", () => {
+  const none = !$("#taskDate").value;
+  if (none) $("#taskTime").value = "";
+  $("#taskTime").disabled = none;
+});
+$("#taskDueClear").addEventListener("click", () => {
+  $("#taskDate").value = "";
+  $("#taskTime").value = "";
+  $("#taskTime").disabled = true;
+});
+$("#taskRemClear").addEventListener("click", () => { $("#taskRem").value = ""; });
+$("#taskImp").addEventListener("click", () => {
+  const on = $("#taskImp").getAttribute("aria-pressed") !== "true";
+  $("#taskImp").setAttribute("aria-pressed", String(on));
+});
+$("#taskTitle").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); saveTask(); }
+});
+
+async function saveTask() {
+  const t = taskOpen;
+  if (!t) return;
+  const title = $("#taskTitle").value.trim();
+  if (!title) { toast("A task needs a title"); $("#taskTitle").focus(); return; }
+  const date = $("#taskDate").value;
+  const time = $("#taskTime").value;
+  const rem = $("#taskRem").value;
+  const body = { title, notes: $("#taskNotes").value, important: $("#taskImp").getAttribute("aria-pressed") === "true" };
+  // Only what was changed is sent for the two times. The inputs show minutes,
+  // so sending them back unchanged could move a time that has seconds, and a
+  // reminder that has since passed must not be refused for being left alone.
+  if (date !== t.init.date || time !== t.init.time) {
+    if (!date) { body.due = null; body.allDay = false; }
+    else if (!time) { const [y, m, d] = date.split("-").map(Number); body.due = Date.UTC(y, m - 1, d); body.allDay = true; }
+    else { body.due = new Date(`${date}T${time}`).getTime(); body.allDay = false; }
+  }
+  if (rem !== t.init.rem) body.reminder = rem ? new Date(rem).getTime() : null;
+  $("#taskSave").disabled = true;
+  const res = await api(taskUrl(t.id), taskJson("POST", body)).catch(() => null);
+  $("#taskSave").disabled = false;
+  const d = res ? await res.json().catch(() => ({})) : {};
+  if (!res || !res.ok) { toast(d.error || "Could not save that task"); return; }
+  closeSheets();
+  taskOpen = null;
+  await loadTasks();
+}
+$("#taskSave").addEventListener("click", saveTask);
+
+async function deleteTask() {
+  const t = taskOpen;
+  if (!t) return;
+  closeSheets();
+  taskOpen = null;
+  const res = await api(taskUrl(t.id), { method: "DELETE" }).catch(() => null);
+  if (!res || !res.ok) { toast("Could not delete that task"); return loadTasks(); }
+  await loadTasks();
+  // Undo makes the task again, with the same words, dates and link. It is a
+  // new row, so a reminder that has passed is left off rather than refused.
+  toast("Task deleted", async () => {
+    const back = await addTaskFull(t);
+    if (back && t.doneAt != null) await api(`${taskUrl(back.id)}/complete`,{ method: "POST" }).catch(() => null);
+    await loadTasks();
+  });
+}
+async function addTaskFull(t) {
+  const body = { title: t.title, notes: t.notes, important: t.important, due: t.due, allDay: t.allDay };
+  if (t.reminder != null && t.reminder > Date.now()) body.reminder = t.reminder;
+  if (t.message) body.messageId = t.message.id;
+  const res = await api("/api/tasks", taskJson("POST", body)).catch(() => null);
+  return res && res.ok ? (await res.json()).task : null;
+}
+$("#taskDel").addEventListener("click", deleteTask);
+
+function openTaskMessage(id) {
+  closeSheets();
+  switchTab("mail");
+  openMsg(id);
+}
+$("#taskOpenMsg").addEventListener("click", () => {
+  if (taskOpen && taskOpen.message) openTaskMessage(taskOpen.message.id);
+});
+
+$("#tasksList").addEventListener("click", async (e) => {
+  if (e.target.closest("[data-tk-retry]")) { loadTasks(); return; }
+  if (e.target.closest("[data-tk-done]")) {
+    tasksDoneOpen = !tasksDoneOpen;
+    renderTasks();
+    return;
+  }
+  if (e.target.closest("[data-tk-clear]")) {
+    const n = tasksData ? tasksData.doneCount : 0;
+    const yes = await ask("Clear completed tasks?", `${n} done ${n === 1 ? "task" : "tasks"} will be deleted. This cannot be undone.`, { ok: "Clear", danger: true });
+    if (!yes) return;
+    const res = await api("/api/tasks/clear-completed", { method: "POST" }).catch(() => null);
+    toast(res && res.ok ? "Cleared" : "Could not clear them");
+    loadTasks();
+    return;
+  }
+  const row = e.target.closest(".tk");
+  if (!row) return;
+  const id = row.dataset.id;
+  if (e.target.closest("[data-tk-chk]")) {
+    const t = findTask(id);
+    if (t) setTaskDone(id, t.doneAt == null);
+  } else if (e.target.closest("[data-tk-msg]")) {
+    const t = findTask(id);
+    if (t && t.message) openTaskMessage(t.message.id);
+  } else if (e.target.closest("[data-tk-edit]")) openTask(id);
+});
+
+// A reminder that has fired opens its task: the Tasks tab, then the sheet.
+reminderOpeners.task = async (ref) => {
+  switchTab("tasks");
+  await loadTasks();
+  await openTask(ref);
+};
+
+// Kept fresh without the page's own refresh: tasks change only here, and by
+// the day turning over, so a minute is often enough for the tab's dot.
+setInterval(() => { if (!document.hidden) loadTasks(); }, 60_000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) loadTasks(); });
+loadTasks();
+
+// "Add to tasks" in the reader: a bar button at desktop width, a line in the
+// More sheet below 900px, like the buttons beside it.
+const rTask = document.createElement("button");
+rTask.type = "button";
+rTask.id = "rTask";
+rTask.className = "rbtn ico overflowable";
+rTask.title = "Add to tasks";
+rTask.setAttribute("aria-label", "Add to tasks");
+rTask.innerHTML = TASK_SVG('<circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.8 2.8L16.2 9.5"/>', 16);
+$("#rPdf").after(rTask);
+OVERFLOW_IDS.splice(OVERFLOW_IDS.indexOf("#rPdf") + 1, 0, "#rTask");
+rTask.addEventListener("click", async () => {
+  if (!current) return;
+  const m = current.message;
+  const t = await addTask((m.subject || "").trim() || "(no subject)", m.id);
+  if (!t) return;
+  loadTasks();
+  toast("Added to tasks", async () => {
+    await api(taskUrl(t.id), { method: "DELETE" }).catch(() => null);
+    loadTasks();
+  });
+});
 
 /* ── init ── */
 (async function init() {
