@@ -3075,6 +3075,24 @@ const picked = new Set();     // ids ticked in selection mode
 /** Our own bucket names, title-cased for display. */
 const pretty = (s) => String(s).charAt(0).toUpperCase() + String(s).slice(1);
 
+/**
+ * A word English uses for two things another language says differently
+ * ("Archive" the folder and the action, "Done" ending an edit and a finished
+ * task) has a key with its sense in brackets; English shows the bare word.
+ */
+const sense = (s) => s.replace(/ \[[^\]]+\]$/, "");
+
+/** The standard folders by id. The server names them by id, so this is the only place their names are written. */
+const FOLDER_NAMES = {
+  inbox: t("Inbox"),
+  archive: sense(t("Archive [folder]")),
+  sent: sense(t("Sent [folder]")),
+  drafts: sense(t("Drafts [folder]")),
+  spam: sense(t("Spam [folder]")),
+  trash: sense(t("Trash [folder]")),
+};
+const STARRED_NAME = sense(t("Starred [view]"));
+
 // The order a mailbox is usually read in, rather than alphabetical.
 const FOLDER_ORDER = ["inbox", "archive", "sent", "drafts", "spam", "trash"];
 const folderRank = (f) => {
@@ -3998,6 +4016,7 @@ const refreshCounts = () => Promise.all([loadFolders(), loadAccounts()]);
  * folder called "v1.2" as "2".
  */
 const folderLabel = (name) => {
+  if (Object.hasOwn(FOLDER_NAMES, name)) return FOLDER_NAMES[name];
   // The server's decoded name, where it gives one. A mailbox with an accent
   // is listed in IMAP's modified UTF-7 ("R&AOk-unions"), and that key is what
   // mail is filed under, so only the label changes.
@@ -4008,12 +4027,12 @@ const folderLabel = (name) => {
 };
 /** The whole path, for the one place that has to tell two leaves apart. */
 const folderPath = (name) =>
-  String(name).split("/").filter(Boolean).map((p, i, all) => (i === all.length - 1 ? pretty(p) : p)).join(" › ");
+  Object.hasOwn(FOLDER_NAMES, name) ? FOLDER_NAMES[name] : String(name).split("/").filter(Boolean).map((p, i, all) => (i === all.length - 1 ? pretty(p) : p)).join(" › ");
 
 function renderFolders() {
   renderEmptyReader(); // its unread count comes from here
   const cur = folders.find((f) => f.folder === folder);
-  $("#folderName").textContent = starredOnly ? "Starred" : folderLabel(folder);
+  $("#folderName").textContent = starredOnly ? STARRED_NAME : folderLabel(folder);
 
   // Two different questions, so two different marks. The badge answers "how
   // much is unread where I am"; the dot answers "is there new mail at all",
@@ -4024,7 +4043,7 @@ function renderFolders() {
   $("#folderCount").innerHTML = here
     ? `<span class="n num">${here}</span>`
     : total
-    ? `<span class="newdot" title="${total} unread elsewhere"></span>`
+    ? `<span class="newdot" title="${t("{n, plural, one {# unread elsewhere} other {# unread elsewhere}}", { n: total })}"></span>`
     : "";
   $("#folderBtn").classList.toggle("hasnew", total > 0);
 
@@ -4056,14 +4075,16 @@ function renderFolders() {
   // labelled with its folder: "Delete" five times over says nothing about
   // which. The row around them keeps the highlight and the whole-row click.
   const row = (key, attr, name, count, unread, editable, raw) => {
-    const tool = (what, label, danger) =>
-      `<button class="side" type="button" data-${what}="${esc(raw)}" aria-label="${label} ${esc(name)}"${danger ? ' style="color:var(--red)"' : ""}>${label}</button>`;
+    const tool = (what, label, aria, danger) =>
+      `<button class="side" type="button" data-${what}="${esc(raw)}" aria-label="${aria}"${danger ? ' style="color:var(--red)"' : ""}>${label}</button>`;
     const tools = editable
-      ? `<span class="ftools">${tool("ren", "Rename")}${tool("del", "Delete", true)}</span>`
+      ? `<span class="ftools">${tool("ren", t("Rename"), t("Rename {folder}", { folder: esc(name) }))}${tool("del", t("Delete"), t("Delete {folder}", { folder: esc(name) }), true)}</span>`
       : raw === "trash" || raw === "spam"
-      ? `<span class="ftools">${tool("empty", "Empty", true)}</span>`
+      ? `<span class="ftools">${tool("empty", sense(t("Empty [action]")), t("Empty {folder}", { folder: esc(name) }), true)}</span>`
       : "";
-    const said = `${name}, ${Number(count)} message${Number(count) === 1 ? "" : "s"}${unread ? `, ${Number(unread)} unread` : ""}`;
+    const said = unread
+      ? t("{folder}, {n, plural, one {# message} other {# messages}}, {unread, plural, one {# unread} other {# unread}}", { folder: name, n: Number(count), unread: Number(unread) })
+      : t("{folder}, {n, plural, one {# message} other {# messages}}", { folder: name, n: Number(count) });
     return `<div class="frow${key ? " on" : ""}${unread ? " unread" : ""}${tools ? " actionable" : ""}" ${attr}>
        <button class="fgo" type="button" aria-label="${esc(said)}"${key ? ' aria-current="true"' : ""}>
          <span class="grow">${esc(name)}</span>
@@ -4078,14 +4099,14 @@ function renderFolders() {
       .map((f) => row(folder === f.folder, `data-folder="${esc(f.folder)}"`, folderLabel(f.folder), f.n, f.unread, false, f.folder))
       .join("") +
     `<button class="frow${starredOnly ? " on" : ""}" data-starred="1"${starredOnly ? ' aria-current="true"' : ""}>
-       <span class="grow">Starred</span></button>` +
+       <span class="grow">${STARRED_NAME}</span></button>` +
     // The digest (monthly since 2026-11-25): its own page, under this app's sign-in (src/veille.js),
     // offered only where the deployment is linked to one.
     (veilleOn
       ? `<a class="frow" href="/veille" style="text-decoration:none;color:inherit">
-       <span class="grow">Veille</span></a>`
+       <span class="grow">${t("Veille")}</span></a>`
       : "") +
-    (mine.length ? `<div class="fgroup">Your folders</div>` : "") +
+    (mine.length ? `<div class="fgroup">${t("Your folders")}</div>` : "") +
     mine
       .map((f) => row(folder === f.folder, `data-folder="${esc(f.folder)}"`, folderLabel(f.folder), f.n, f.unread, true, f.folder))
       .join("");
@@ -4144,34 +4165,34 @@ $("#folderEdit").addEventListener("click", (e) => {
   e.stopPropagation();
   folderEditing = !folderEditing;
   document.body.classList.toggle("fedit", folderEditing);
-  $("#folderEdit").textContent = folderEditing ? "Done" : "Edit";
+  $("#folderEdit").textContent = folderEditing ? sense(t("Done [editing]")) : t("Edit");
   renderFolders();
 });
 
 async function folderCall(path, opts) {
   const res = await api(path, opts).catch(() => null);
   const d = res ? await res.json().catch(() => ({})) : {};
-  if (!res || !res.ok) { toast(d.error || "That didn't work"); return null; }
+  if (!res || !res.ok) { toast(d.error || t("That didn't work")); return null; }
   await Promise.all([loadFolders(), loadList(), loadAccounts()]);
   return d;
 }
 
 $("#folderNew").addEventListener("click", async (e) => {
   e.stopPropagation();
-  const name = await askText("New folder", "", { placeholder: "Name", ok: "Create" });
+  const name = await askText(t("New folder"), "", { placeholder: t("Name"), ok: t("Create") });
   if (!name || !name.trim()) return;
   if (await folderCall("/api/folders", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name: name.trim() }),
-  })) toast(`Created ${name.trim()}`);
+  })) toast(t("Created {folder}", { folder: name.trim() }));
 });
 
 async function renameFolder(from) {
   // Only the leaf is offered and only the leaf is sent: the server keeps the
   // parent. Comparing against the full path called an untouched "INBOX/X" a
   // rename, and sending the leaf as a path moved it to the top level.
-  const to = await askText(`Rename "${folderLabel(from)}"`, folderLabel(from), { ok: "Rename" });
+  const to = await askText(t('Rename "{folder}"', { folder: folderLabel(from) }), folderLabel(from), { ok: t("Rename") });
   if (!to || !to.trim() || to.trim() === folderLabel(from)) return;
   // Moved before the reload rather than after it: the reload repaints the
   // list, and a folder that no longer exists by its old name lists nothing.
@@ -4180,13 +4201,13 @@ async function renameFolder(from) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ from, to: to.trim() }),
-  }).then((r) => r.json().then((j) => (r.ok ? j : (toast(j.error || "That didn't work"), null))))
-    .catch(() => (toast("That didn't work"), null));
+  }).then((r) => r.json().then((j) => (r.ok ? j : (toast(j.error || t("That didn't work")), null))))
+    .catch(() => (toast(t("That didn't work")), null));
   if (!d) return;
   if (wasHere && d.name) folder = d.name;
   await Promise.all([loadFolders(), loadList(), loadAccounts()]);
   renderFolders();
-  toast("Renamed");
+  toast(sense(t("Renamed [folder]")));
 }
 
 async function deleteFolder(name) {
@@ -4194,33 +4215,34 @@ async function deleteFolder(name) {
   const n = f ? f.n : 0;
   // Deleting a mailbox destroys its messages at Apple. No bin, no undo.
   const gone = await ask(
-    `Delete the folder "${folderLabel(name)}"?`,
-    (n ? `Its ${n} message${n > 1 ? "s" : ""} will be permanently deleted from iCloud too. ` : "") +
-      "This cannot be undone.",
-    { ok: "Delete", danger: true }
+    t('Delete the folder "{folder}"?', { folder: folderLabel(name) }),
+    n
+      ? t("Its {n, plural, one {# message} other {# messages}} will be permanently deleted from iCloud too. This cannot be undone.", { n })
+      : t("This cannot be undone."),
+    { ok: t("Delete"), danger: true }
   );
   if (!gone) return;
   if (await folderCall(`/api/folders/${encodeURIComponent(name)}`, { method: "DELETE" })) {
     if (folder === name) folder = "inbox";
-    toast(`Deleted ${folderLabel(name)}`);
+    toast(t("Deleted {folder}", { folder: folderLabel(name) }));
   }
 }
 
 async function emptyFolder(which) {
   const f = folders.find((x) => x.folder === which);
   const n = f ? f.n : 0;
-  if (!n) { toast(`${folderLabel(which)} is already empty`); return; }
+  if (!n) { toast(t("{folder} is already empty", { folder: folderLabel(which) })); return; }
   const sure = await ask(
-    `Permanently delete all ${n} message${n > 1 ? "s" : ""} in ${folderLabel(which)}?`,
-    "They are removed from iCloud itself. This cannot be undone.",
-    { ok: "Empty", danger: true }
+    t("Permanently delete all {n, plural, one {# message} other {# messages}} in {folder}?", { n, folder: folderLabel(which) }),
+    t("They are removed from iCloud itself. This cannot be undone."),
+    { ok: sense(t("Empty [action]")), danger: true }
   );
   if (!sure) return;
   if (await folderCall("/api/folders/empty", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ folder: which }),
-  })) toast(`${folderLabel(which)} emptied`);
+  })) toast(t("{folder} emptied", { folder: folderLabel(which) }));
 }
 
 /* ── search ── */
@@ -4445,7 +4467,7 @@ function rowHtml(m, sub = false) {
 function renderEmptyReader() {
   const box = $("#rEmpty");
   if (!box) return;
-  const name = starredOnly ? "Starred" : folderLabel(folder);
+  const name = starredOnly ? STARRED_NAME : folderLabel(folder);
   const f = folders.find((x) => x.folder === folder);
   const unread = query ? 0 : (f && !starredOnly ? Number(f.unread) : messages.filter((m) => m.unread).length) || 0;
   const arrow = (d) =>
