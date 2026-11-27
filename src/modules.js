@@ -38,6 +38,7 @@ import { contacts } from "./contacts.js";
 import { followupModule } from "./followup.js";
 import { rulesModule } from "./sorting.js";
 import { transfer } from "./transfer.js";
+import { signaturesModule } from "./signatures.js";
 
 // One module to a line, so two branches that each add one do not collide.
 export const MODULES = [
@@ -49,6 +50,7 @@ export const MODULES = [
   rulesModule,
   transfer,
   calendarModule,
+  signaturesModule,
 ];
 
 /** The first Response a module gives for this request, or null. */

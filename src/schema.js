@@ -352,6 +352,25 @@ export const SCHEMA = [
 )`,
   `CREATE INDEX IF NOT EXISTS idx_cal_events_start ON cal_events(calendar_id, start_ms)`,
   `CREATE INDEX IF NOT EXISTS idx_cal_events_uid ON cal_events(calendar_id, uid)`,
+  // Signatures, src/signatures.js. html is already made safe on the way in.
+  // signature_use says which one an address signs with: new_id for mail it
+  // starts, reply_id for replies, either may be NULL (no signature). The
+  // address '*' is the row for every address that has none of its own, which
+  // is how the one signature everybody had before keeps signing every address
+  // without a row per address having to be made for it.
+  `CREATE TABLE IF NOT EXISTS signatures (
+  id          TEXT PRIMARY KEY,
+  name        TEXT NOT NULL,
+  html        TEXT NOT NULL DEFAULT '',
+  position    INTEGER NOT NULL DEFAULT 0,
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL
+)`,
+  `CREATE TABLE IF NOT EXISTS signature_use (
+  address     TEXT PRIMARY KEY,             -- lowercase address, or '*'
+  new_id      TEXT,
+  reply_id    TEXT
+)`,
 ];
 
 /**
@@ -457,6 +476,19 @@ export const MIGRATIONS = [
             json_array(json_object('type', '', 'value', email)), created_at, created_at
        FROM contacts_added`,
   ],
+  // The one plain-text signature becomes a signature named "Default", used by
+  // every address for new mail and for replies, so nobody's mail changes on
+  // the day this ships. Its text is escaped and its line breaks made <br>.
+  // Nothing happens where there was no signature.
+  ["signatures_default", [
+    `INSERT INTO signatures (id, name, html, position, created_at, updated_at)
+     SELECT lower(hex(randomblob(8))), 'Default',
+            replace(replace(replace(replace(replace(value, char(13), ''), '&', '&amp;'), '<', '&lt;'), '>', '&gt;'), char(10), '<br>'),
+            0, CAST(strftime('%s','now') AS INTEGER)*1000, CAST(strftime('%s','now') AS INTEGER)*1000
+       FROM settings WHERE key='signature' AND trim(value) <> ''`,
+    `INSERT OR IGNORE INTO signature_use (address, new_id, reply_id) SELECT '*', id, id FROM signatures WHERE name='Default'`,
+    `DELETE FROM settings WHERE key='signature'`,
+  ]],
 ];
 
 /** What schema.sql looks like on disk, comments and all. */

@@ -306,6 +306,21 @@ CREATE INDEX IF NOT EXISTS idx_cal_events_start ON cal_events(calendar_id, start
 
 CREATE INDEX IF NOT EXISTS idx_cal_events_uid ON cal_events(calendar_id, uid);
 
+CREATE TABLE IF NOT EXISTS signatures (
+  id          TEXT PRIMARY KEY,
+  name        TEXT NOT NULL,
+  html        TEXT NOT NULL DEFAULT '',
+  position    INTEGER NOT NULL DEFAULT 0,
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS signature_use (
+  address     TEXT PRIMARY KEY,             -- lowercase address, or '*'
+  new_id      TEXT,
+  reply_id    TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_messages_uid     ON messages(account_id, mailbox, uid);
 
 CREATE INDEX IF NOT EXISTS idx_messages_att_todo ON messages(account_id) WHERE att_names IS NULL;

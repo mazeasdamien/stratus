@@ -565,6 +565,28 @@ body.composing:not(.overlay) #scrim{opacity:0;pointer-events:none}
 .fromrow{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;min-height:34px}
 .fromrow .flabel{line-height:30px}
 .fromrow .chips{margin-bottom:0;flex:1;min-width:0}
+/* Signatures: the picker under From, and the sheet's rows and editor. */
+.sigrow{margin-bottom:6px;align-items:center}
+.sigrow select{flex:1;min-width:0;max-width:260px;height:30px;padding:0 10px;border-radius:999px;background:var(--fill);
+  color:var(--t1);border:0;font-size:13px}
+.sgrow{display:flex;align-items:center;gap:8px;min-height:46px;border-bottom:1px solid var(--line)}
+.sgrow:last-of-type{border-bottom:0}
+.sgrow .grow{flex:1;min-width:0}
+.sgrow .grow b{display:block;font-size:14.5px;font-weight:600}
+.sgrow .grow span{display:block;font-size:12px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sgrow .ghost{min-height:32px}
+.sgaddr{padding:8px 0;border-bottom:1px solid var(--line)}
+.sgaddr:last-child{border-bottom:0}
+.sgaddr > b{display:block;font-size:13.5px;font-weight:600;margin-bottom:6px;word-break:break-all}
+.sgsel{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sgsel label{font-size:12px;color:var(--t3);display:block;min-width:0}
+.sgsel .field{margin:3px 0 0;min-height:38px;padding:0 8px}
+.sgsel select{height:38px;font-size:13.5px}
+.sgtools{border-top:0;padding:0 0 6px}
+.sgcolor{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;cursor:pointer}
+.sgcolor input{width:24px;height:24px;padding:0;border:1px solid var(--line-strong);border-radius:50%;background:none;cursor:pointer}
+.sgedit{min-height:150px;max-height:34vh;background:var(--input);border:1px solid var(--line-strong);border-radius:var(--r)}
+.sgedit:focus{outline:0;border-color:color-mix(in srgb,var(--acc) 55%,transparent);box-shadow:0 0 0 2px color-mix(in srgb,var(--acc) 22%,transparent)}
 .suggest{margin:-6px 0 8px;background:var(--elev2);border:1px solid var(--line-strong);
   border-radius:var(--r);overflow:hidden;display:none;max-height:190px;overflow-y:auto}
 .suggest.on{display:block}
@@ -2370,10 +2392,9 @@ body.selmode .xf-chip{bottom:calc(var(--sab) + 92px)}
     <textarea class="field" id="idAliases" rows="2" placeholder="alias@icloud.com, you@your-domain.com" spellcheck="false" aria-label="Other addresses to send from" style="min-height:60px"></textarea>
     <button class="ghost" id="idSave" style="width:100%;justify-content:center;min-height:34px">Save name and addresses</button>
     <div class="sh-s" style="margin:6px 0 14px;font-size:12px">Your name goes on the From line instead of the bare address. The addresses are your iCloud aliases or custom-domain addresses; each becomes a From choice in the composer. A reply to mail that arrived at one of them &mdash; or at a Hide My Email address &mdash; goes out from that address, so the sender never learns your main one.</div>
-    <div class="sh-s">Signature</div>
-    <textarea class="field" id="sigText" rows="4" placeholder="Your name" spellcheck="false" style="min-height:96px"></textarea>
-    <button class="ghost" id="sigSave" style="width:100%;justify-content:center;min-height:34px">Save the signature</button>
-    <div class="sh-s" style="margin:6px 0 0;font-size:12px">Goes under what you write and above the quote, in a new message and in a reply alike. Plain text, one line per line, kept in the database so it is the same signature on every device. Empty removes it.</div>
+    <div class="sh-s">Signatures</div>
+    <button class="cta" id="sigOpen" style="background:var(--elev2);color:var(--t1);margin-top:0">Signatures&hellip;</button>
+    <div class="sh-s" id="sigSummary" style="margin:6px 0 0;font-size:12px">&mdash;</div>
     <div class="sh-s" style="margin:14px 0 6px">Writing assistant</div>
     <div class="sh-s" id="aiKeyState" style="margin:0 0 8px;font-size:12px">&mdash;</div>
     <div class="field"><input id="aiKeyInput" type="password" placeholder="Anthropic API key" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
@@ -2449,6 +2470,40 @@ body.selmode .xf-chip{bottom:calc(var(--sab) + 92px)}
   <div id="laterList"></div>
   <div class="field"><input id="laterAt" type="datetime-local" aria-label="Date and time to send"></div>
   <button class="cta" id="laterGo">Schedule</button>
+</div>
+
+<!-- ── signatures ── The sheet from Settings, Writing. A list and, in the same
+     sheet, an editor: the composer's own formatting buttons over its own kind of
+     editing surface, so a signature is written the way a message is. -->
+<div class="sheet" id="sigSheet" role="dialog" aria-label="Signatures" tabindex="-1">
+  <div class="grab"></div>
+  <div id="sgListView">
+    <div class="sh-t">Signatures</div>
+    <div class="sh-s">Formatted text that goes under what you write and above the quote. Each address can sign new mail with one and replies with another, or with none. Kept in the database, so it is the same on every device.</div>
+    <div id="sgList"></div>
+    <button class="cta" id="sgNew" style="background:var(--elev2);color:var(--t1);margin-top:2px">New signature</button>
+    <div class="sh-s" style="margin:16px 0 6px">For each address</div>
+    <div id="sgUse"></div>
+  </div>
+  <div id="sgEditView" hidden>
+    <div class="sh-t" id="sgEditTitle">Signature</div>
+    <div class="field"><input id="sgName" type="text" maxlength="60" placeholder="Name, for example Work" autocomplete="off" spellcheck="false" aria-label="Signature name"></div>
+    <div class="toolbar sgtools" id="sgTools">
+      <button data-cmd="bold" title="Bold" aria-label="Bold"><b>B</b></button>
+      <button data-cmd="italic" title="Italic" aria-label="Italic"><i>I</i></button>
+      <button data-cmd="underline" title="Underline" aria-label="Underline"><u>U</u></button>
+      <label class="sgcolor" title="Text colour"><span class="sr">Text colour</span><input type="color" id="sgColor" value="#2f6fed" aria-label="Text colour"></label>
+      <button id="sgLink" title="Insert link">Link</button>
+      <button data-cmd="removeFormat" title="Clear formatting" aria-label="Clear formatting">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6V4.5h12V6M10 4.5V19M7.5 19h5"/><path d="m16 14 5 5M21 14l-5 5"/></svg>
+      </button>
+    </div>
+    <div class="editor sgedit" id="sgBody" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Signature" data-ph="Your name, your title&hellip;" spellcheck="true"></div>
+    <div class="sh-s" style="margin:6px 0 0;font-size:12px">Bold, italic, underline, colour, links and line breaks. Pictures and anything that loads from elsewhere are left out, so a signature never tells a reader's server that the mail was opened.</div>
+    <div class="formerr" id="sgErr"></div>
+    <button class="cta" id="sgSave">Save</button>
+    <button class="ghost" id="sgBack" style="width:100%;justify-content:center;min-height:34px;margin-top:6px">Back to the list</button>
+  </div>
 </div>
 
 <div class="sheet" id="snoozeSheet">
@@ -2702,6 +2757,7 @@ body.selmode .xf-chip{bottom:calc(var(--sab) + 92px)}
     </div>
   </div>
   <div class="fromrow"><span class="flabel">From</span><div class="chips" id="cAccounts"></div></div>
+  <div class="fromrow sigrow" id="cSigRow" hidden><label class="flabel" for="cSigPick">Sign</label><select id="cSigPick" aria-label="Signature for this message"></select></div>
 
   <!-- Addresses become chips as they parse. The input keeps taking commas and
        newlines, so typing a list still works; what changes is that each address
@@ -6607,6 +6663,9 @@ function mailHtml() {
       // by hand still wins.
       .forEach((el) => el.setAttribute("style", css + ";" + (el.getAttribute("style") || "")));
 
+  // The bookkeeping that tells the composer a signature is untouched is for
+  // this window, not for whoever reads the mail.
+  copy.querySelectorAll(".sig").forEach((el) => ["data-sig", "data-sig-h", "data-sig-pick"].forEach((a) => el.removeAttribute(a)));
   // Wherever they came from: the AI pass, the Quote button, a paste.
   style("p", "margin:0");
   // Hex, not the palette variables: this is read somewhere that has never
@@ -7487,7 +7546,7 @@ $("#acctBtn").addEventListener("click", () => {
   renderAccounts();
   refreshNotifyButton();
   refreshAiKey();
-  refreshSignature();
+  refreshSignatures();
   openSheet("#acctSheet");
 });
 $("#repairSelf").addEventListener("click", async (e) => {
@@ -7717,7 +7776,8 @@ function openCompose(opts = {}) {
   $("#cImp").value = String(Number(opts.importance) || 0);
   fuReset();
   $("#cImpWrap").classList.toggle("hi", Number(opts.importance) === 1);
-  $("#cBody").innerHTML = withSignature(cleanHtml(opts.html));
+  $("#cBody").innerHTML = withSignature(cleanHtml(opts.html), sigFor(composeAddress(), !!replyTo));
+  syncSignatureState();
   // Nothing to answer in a message that is not a reply to anything.
   $("#aiDraft").hidden = !replyTo;
   $("#cErr").classList.remove("show");
@@ -8239,38 +8299,63 @@ $("#signOutOthers").addEventListener("click", async () => {
   toast(res && res.ok ? "Every other device is signed out" : "Could not sign the other devices out");
 });
 
-/* ── the signature ── */
+/* ── signatures ──
+   Several, each formatted text, kept in the database (src/signatures.js) so the
+   phone signs mail the way the laptop does. Which one signs a message follows
+   the From address: signatures.use says, per address, which one new mail takes
+   and which one replies take.
 
-/**
- * What goes under everything you write.
- *
- * Read once at startup and kept here, because openCompose needs it the
- * instant a reply opens and cannot wait on a request; written to the database
- * rather than this browser, so the phone signs your mail the same way the
- * laptop does.
- */
-let signatureText = "";
+   In the composer a signature is one block, <div class="sig">, carrying the id
+   of the signature it came from and a hash of what it held when it went in. The
+   hash is how "untouched" is known: changing From swaps a block whose content
+   still hashes to it, and leaves alone one that has been edited in this draft,
+   because a hand-corrected signature is the one thing that must never be
+   replaced silently. A block with no hash — one from a draft saved before there
+   were several signatures — counts as edited. */
 
-async function loadSignature() {
-  const res = await api("/api/signature").catch(() => null);
+let signatures = [];
+/** address -> { new_id, reply_id }; the address "*" is every address without a row. */
+let sigUse = {};
+
+async function loadSignatures() {
+  const res = await api("/api/signatures").catch(() => null);
   if (!res || !res.ok) return;
   const d = await res.json().catch(() => ({}));
-  signatureText = String(d.text || "");
+  signatures = d.signatures || [];
+  sigUse = d.use || {};
 }
 
-/**
- * The signature as the editor's own markup: one div per line, marked so the
- * rest of the composer can find it again. draftReply rewrites everything
- * above the quote, and without a handle on this block it would rewrite the
- * signature away with it.
- */
-function signatureHtml() {
-  const t = signatureText.trim();
-  if (!t) return "";
-  return `<div class="sig">${t
-    .split("\n")
-    .map((l) => `<div>${esc(l) || "<br>"}</div>`)
-    .join("")}</div>`;
+const sigById = (id) => signatures.find((s) => s.id === id) || null;
+
+/** The signature an address signs with, for new mail or for a reply; null for none. */
+function sigFor(address, reply) {
+  const row = sigUse[String(address || "").toLowerCase()] || sigUse["*"];
+  return row ? sigById(reply ? row.reply_id : row.new_id) : null;
+}
+
+/** The address the message in the composer leaves from. */
+const composeAddress = () => composeFrom || (acctById(composeAcct) || {}).email || "";
+
+/** A short hash, to tell whether a block is as it was put in. */
+function sigHash(s) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193) >>> 0;
+  return h.toString(36);
+}
+
+/** The signature block in the composer's body, never one inside a quoted message. */
+const sigEl = () => [...$("#cBody").querySelectorAll(".sig")].find((e) => !e.closest("blockquote")) || null;
+const sigUntouched = (el) => !!el.dataset.sigH && sigHash(el.innerHTML) === el.dataset.sigH;
+
+/** The block for a signature, as an element. Cleaned again here: nothing a stored string carries goes into the editor as it is. */
+function sigNode(sig, picked) {
+  const el = document.createElement("div");
+  el.className = "sig";
+  el.dataset.sig = sig.id;
+  el.innerHTML = cleanHtml(sig.html);
+  el.dataset.sigH = sigHash(el.innerHTML);
+  if (picked) el.dataset.sigPick = "1";
+  return el;
 }
 
 /**
@@ -8280,8 +8365,7 @@ function signatureHtml() {
  * answering reads as a signature on somebody else's letter. Everything else —
  * a new message, a forward — takes it at the end, which is the same place.
  */
-function withSignature(html) {
-  const sig = signatureHtml();
+function withSignature(html, sig) {
   if (!sig) return html || "";
   // Already signed. A draft, a message kept in this browser and a scheduled
   // message taken out for editing all come back with the signature they were
@@ -8292,33 +8376,298 @@ function withSignature(html) {
   const probe = document.createElement("template");
   probe.innerHTML = html || "";
   if (probe.content.querySelector(".sig")) return html;
+  const block = sigNode(sig, false).outerHTML;
   const at = (html || "").indexOf('<div class="quote-head">');
-  if (at < 0) return (html || "<div><br></div>") + sig;
-  return html.slice(0, at) + sig + html.slice(at);
+  if (at < 0) return (html || "<div><br></div>") + block;
+  return html.slice(0, at) + block + html.slice(at);
 }
 
-async function refreshSignature() {
-  await loadSignature();
-  $("#sigText").value = signatureText;
+/** What the composer's signature was when this message opened, or null: "was there one for the user to delete?" */
+let composeSigId = null;
+/** True once the signature was chosen from the picker; From no longer moves it. */
+let composeSigPicked = false;
+
+/** Called once the composer's body is in place. */
+function syncSignatureState() {
+  const el = sigEl();
+  composeSigId = el ? el.dataset.sig || "" : null;
+  composeSigPicked = !!(el && el.dataset.sigPick);
+  renderSigPicker();
 }
 
-$("#sigSave").addEventListener("click", async (e) => {
-  const btn = e.currentTarget;
-  btn.disabled = true;
-  const was = btn.textContent;
-  btn.textContent = "Saving…";
-  const res = await api("/api/signature", {
+/** Puts `sig` in the draft where the signature goes; null takes it out. */
+function setSignature(sig, picked) {
+  const cur = sigEl();
+  if (!sig) {
+    if (cur) cur.remove();
+    composeSigId = null;
+    return;
+  }
+  const node = sigNode(sig, picked);
+  if (cur) cur.replaceWith(node);
+  else {
+    const head = $("#cBody").querySelector(".quote-head");
+    if (head) head.before(node);
+    else $("#cBody").append(node);
+  }
+  composeSigId = sig.id;
+}
+
+/** From changed: the signature changes with it, unless the draft's own has been edited or chosen by hand. */
+function followFrom() {
+  if (composeSigPicked) return renderSigPicker();
+  const want = sigFor(composeAddress(), !!replyTo);
+  const cur = sigEl();
+  if (cur) {
+    if (!sigUntouched(cur)) return renderSigPicker();
+    if ((cur.dataset.sig || "") !== (want ? want.id : "")) setSignature(want, false);
+  } else if (want && composeSigId === null) {
+    // None before. Where there was one and it is gone, it was taken out by hand.
+    setSignature(want, false);
+  }
+  renderSigPicker();
+}
+
+function renderSigPicker() {
+  $("#cSigRow").hidden = !signatures.length;
+  const cur = sigEl();
+  const has = cur && sigById(cur.dataset.sig);
+  const opts = [
+    ...signatures.map((s) => [s.id, s.name]),
+    ["none", "No signature"],
+    ...(cur && !has && cur.dataset.sig === undefined ? [["custom", "Custom"]] : []),
+  ];
+  $("#cSigPick").innerHTML = opts.map(([v, n]) => `<option value="${esc(v)}">${esc(n)}</option>`).join("");
+  $("#cSigPick").value = cur ? (has ? cur.dataset.sig : cur.dataset.sig === undefined ? "custom" : "none") : "none";
+}
+
+$("#cSigPick").addEventListener("change", async (e) => {
+  const v = e.target.value;
+  if (v === "custom") return;
+  const sig = v === "none" ? null : sigById(v);
+  const cur = sigEl();
+  if (cur && !sigUntouched(cur)) {
+    const go = await ask("Replace the signature you edited?", "You changed the signature in this message. Choosing another one replaces your changes.", { ok: "Replace" });
+    if (!go) return renderSigPicker();
+  }
+  composeSigPicked = true;
+  setSignature(sig, true);
+  renderSigPicker();
+  queueDraftSave();
+});
+
+/** The body as plain text, a signature's links written out, since a plain-text reader sees no link. */
+function bodyPlainText() {
+  const body = $("#cBody");
+  const links = [...body.querySelectorAll(".sig a[href]")];
+  const kept = links.map((a) => a.innerHTML);
+  for (const a of links) {
+    const href = (a.getAttribute("href") || "").replace(/^mailto:/i, "");
+    const shown = a.textContent.trim();
+    if (shown && href && !shown.includes(href)) a.textContent = `${shown} (${href})`;
+  }
+  // innerText needs the element on the page to break lines at its blocks, so
+  // the links are put back straight after, in the same turn.
+  const text = body.innerText.trim();
+  links.forEach((a, i) => (a.innerHTML = kept[i]));
+  return text;
+}
+
+/* settings: the list, the editor and the per-address choices */
+
+async function refreshSignatures() {
+  await loadSignatures();
+  $("#sigSummary").textContent = signatures.length
+    ? `${signatures.length} ${signatures.length === 1 ? "signature" : "signatures"}: ${signatures.map((s) => s.name).join(", ")}`
+    : "No signature yet.";
+}
+
+/** Every address a message can leave from, across the accounts, once each. */
+const sendingAddresses = () => [...new Set(accounts.flatMap((a) => identitiesOf(a)))];
+
+const sigOptions = (selected) =>
+  [`<option value=""${selected ? "" : " selected"}>No signature</option>`]
+    .concat(signatures.map((s) => `<option value="${esc(s.id)}"${s.id === selected ? " selected" : ""}>${esc(s.name)}</option>`))
+    .join("");
+
+const sigPreview = (html) => {
+  const t = document.createElement("template");
+  t.innerHTML = cleanHtml(html).replace(/<br\s*\/?>|<\/(?:div|p|li)>/gi, " ");
+  return (t.content.textContent || "").replace(/\s+/g, " ").trim();
+};
+
+function renderSignatureSheet() {
+  $("#sgList").innerHTML = signatures.length
+    ? signatures
+        .map(
+          (s) => `<div class="sgrow">
+        <div class="grow"><b>${esc(s.name)}</b><span>${esc(sigPreview(s.html)) || "Empty"}</span></div>
+        <button class="ghost" data-sgedit="${esc(s.id)}" aria-label="Edit ${esc(s.name)}">Edit</button>
+        <button class="ghost" data-sgrename="${esc(s.id)}" aria-label="Rename ${esc(s.name)}">Rename</button>
+        <button class="ghost danger" data-sgdel="${esc(s.id)}" aria-label="Delete ${esc(s.name)}">Delete</button></div>`
+        )
+        .join("")
+    : `<div class="sh-s">No signature yet.</div>`;
+  $("#sgUse").innerHTML = sendingAddresses()
+    .map((addr) => {
+      const n = sigFor(addr, false);
+      const r = sigFor(addr, true);
+      return `<div class="sgaddr"><b>${esc(addr)}</b><div class="sgsel">
+        <label>New mail<div class="field"><select data-sguse="${esc(addr)}" data-which="new_id" aria-label="Signature for new mail from ${esc(addr)}">${sigOptions(n && n.id)}</select></div></label>
+        <label>Replies<div class="field"><select data-sguse="${esc(addr)}" data-which="reply_id" aria-label="Signature for replies from ${esc(addr)}">${sigOptions(r && r.id)}</select></div></label>
+      </div></div>`;
+    })
+    .join("");
+}
+
+async function openSignatures() {
+  closeOverlays();
+  $("#sgListView").hidden = false;
+  $("#sgEditView").hidden = true;
+  await loadSignatures();
+  renderSignatureSheet();
+  openSheet("#sigSheet");
+}
+$("#sigOpen").addEventListener("click", openSignatures);
+
+/** The signature being edited, or null for a new one. */
+let sgEditing = null;
+function editSignature(sig) {
+  sgEditing = sig;
+  $("#sgEditTitle").textContent = sig ? "Edit signature" : "New signature";
+  $("#sgName").value = sig ? sig.name : "";
+  $("#sgBody").innerHTML = sig ? cleanHtml(sig.html) : "";
+  $("#sgErr").classList.remove("show");
+  $("#sgListView").hidden = true;
+  $("#sgEditView").hidden = false;
+  setTimeout(() => (sig ? $("#sgBody") : $("#sgName")).focus(), 60);
+}
+$("#sgNew").addEventListener("click", () => editSignature(null));
+$("#sgBack").addEventListener("click", () => {
+  $("#sgEditView").hidden = true;
+  $("#sgListView").hidden = false;
+});
+
+$("#sgList").addEventListener("click", async (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  const id = b.dataset.sgedit || b.dataset.sgrename || b.dataset.sgdel;
+  const sig = sigById(id);
+  if (!sig) return;
+  if (b.dataset.sgedit) return editSignature(sig);
+  if (b.dataset.sgrename) {
+    const name = await askText("Rename the signature", sig.name, { ok: "Rename" });
+    if (!name) return;
+    const res = await api(`/api/signatures/${encodeURIComponent(id)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    }).catch(() => null);
+    if (!res || !res.ok) return toast("Could not rename the signature");
+  } else {
+    const go = await ask(`Delete “${sig.name}”?`, "Addresses that sign with it will sign with nothing. Messages already sent keep what they went with.", { ok: "Delete", danger: true });
+    if (!go) return;
+    const res = await api(`/api/signatures/${encodeURIComponent(id)}`, { method: "DELETE" }).catch(() => null);
+    if (!res || !res.ok) return toast("Could not delete the signature");
+  }
+  await refreshSignatures();
+  renderSignatureSheet();
+});
+
+$("#sgUse").addEventListener("change", async (e) => {
+  const sel = e.target.closest("[data-sguse]");
+  if (!sel) return;
+  const address = sel.dataset.sguse;
+  // Both choices are written: the first change for an address makes its own
+  // row, and the other half has to start from what the address already uses.
+  const body = {
+    address,
+    new_id: (sigFor(address, false) || {}).id || null,
+    reply_id: (sigFor(address, true) || {}).id || null,
+    [sel.dataset.which]: sel.value || null,
+  };
+  const res = await api("/api/signatures/use", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text: $("#sigText").value }),
+    body: JSON.stringify(body),
+  }).catch(() => null);
+  if (!res || !res.ok) {
+    toast("Could not save that choice");
+    return renderSignatureSheet();
+  }
+  sigUse[address.toLowerCase()] = { new_id: body.new_id, reply_id: body.reply_id };
+  toast("Saved");
+});
+
+// The editor's controls are the composer's: the same execCommand buttons.
+// Pressing one must not take the selection out of the text it is for.
+$("#sgTools").addEventListener("pointerdown", (e) => {
+  if (e.target.closest("button")) e.preventDefault();
+});
+$("#sgTools").addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b || !b.dataset.cmd) return;
+  document.execCommand(b.dataset.cmd, false, null);
+  $("#sgBody").focus();
+});
+$("#sgLink").addEventListener("click", async () => {
+  const keep = sgRange;
+  const url = await askText("Insert link", "https://", { ok: "Insert" });
+  if (!url) return;
+  if (!/^https?:\/\//i.test(url)) { toast("Links must start with http:// or https://"); return; }
+  $("#sgBody").focus();
+  restoreSgRange(keep);
+  document.execCommand("createLink", false, url);
+});
+// Moving to the colour well takes focus off the text, and some browsers take
+// the selection with it, so where it was is remembered.
+let sgRange = null;
+document.addEventListener("selectionchange", () => {
+  const sel = getSelection();
+  if (sel.rangeCount && $("#sgBody").contains(sel.anchorNode)) sgRange = sel.getRangeAt(0).cloneRange();
+});
+function restoreSgRange(r) {
+  if (!r) return;
+  const sel = getSelection();
+  sel.removeAllRanges();
+  sel.addRange(r);
+}
+$("#sgColor").addEventListener("input", (e) => {
+  $("#sgBody").focus();
+  restoreSgRange(sgRange);
+  document.execCommand("styleWithCSS", false, true);
+  document.execCommand("foreColor", false, e.target.value);
+  document.execCommand("styleWithCSS", false, false);
+});
+
+$("#sgSave").addEventListener("click", async (e) => {
+  const err = $("#sgErr");
+  err.classList.remove("show");
+  const name = $("#sgName").value.trim();
+  if (!name) {
+    err.textContent = "Give the signature a name";
+    err.classList.add("show");
+    return $("#sgName").focus();
+  }
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  const res = await api(sgEditing ? `/api/signatures/${encodeURIComponent(sgEditing.id)}` : "/api/signatures", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, html: cleanHtml($("#sgBody").innerHTML) }),
   }).catch(() => null);
   btn.disabled = false;
-  btn.textContent = was;
-  const d = res ? await res.json().catch(() => ({})) : {};
-  if (!res || !res.ok) { toast(d.error || "Could not save the signature"); return; }
-  signatureText = String(d.text || "");
-  $("#sigText").value = signatureText;
-  toast(signatureText ? "Signature saved" : "Signature removed");
+  if (!res || !res.ok) {
+    const d = res ? await res.json().catch(() => ({})) : {};
+    err.textContent = d.error || "Could not save the signature";
+    err.classList.add("show");
+    return;
+  }
+  toast(sgEditing ? "Signature saved" : "Signature added");
+  await refreshSignatures();
+  renderSignatureSheet();
+  $("#sgEditView").hidden = true;
+  $("#sgListView").hidden = false;
 });
 
 /* ── the writing assistant's key ── */
@@ -9532,6 +9881,7 @@ $("#cAccounts").addEventListener("click", (e) => {
   if (f) {
     composeFrom = f.dataset.cfrom;
     renderFromPicker();
+    followFrom();
     queueDraftSave();
     return;
   }
@@ -9540,6 +9890,7 @@ $("#cAccounts").addEventListener("click", (e) => {
   composeAcct = b.dataset.cacc;
   composeFrom = "";
   renderFromPicker();
+  followFrom();
   queueDraftSave();
 });
 /** What the composer would send, or null with the reason shown under it. */
@@ -9549,7 +9900,7 @@ function outgoing() {
   // The draft is kept as the editor wrote it, because it comes back into the
   // editor. What leaves has to stand on its own.
   const html = mailHtml();
-  const text = $("#cBody").innerText.trim();
+  const text = bodyPlainText();
   const to = addrGet("#cTo", "#cToChips");
   if (!text || !to) {
     err.textContent = !to ? "Nobody to send it to" : "Nothing to send";
@@ -13921,7 +14272,7 @@ async function calLoadCalendars() {
   // The signature is wanted the moment a reply opens, which can be before
   // any settings sheet has ever been looked at, so it is read at startup
   // alongside the mail rather than after it.
-  await Promise.all([refreshAll(), loadSignature(), loadImageSenders(), loadCategories()]);
+  await Promise.all([refreshAll(), loadSignatures(), loadImageSenders(), loadCategories()]);
   schedulePoll();
   resumeKeptDraft();
   // What the address asked for is a convenience. Nothing in it may stop the

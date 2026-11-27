@@ -1345,33 +1345,6 @@ export async function handleApi(request, env, path, ctx, session) {
     return json({ ok: true });
   }
 
-  // GET /api/signature — what goes under everything you write.
-  // POST /api/signature { text } — an empty one removes it.
-  //
-  // In the database rather than in the browser: a signature that only exists
-  // on the laptop signs half your mail and leaves the other half bare, and
-  // which half depends on which device happened to be nearest. Plain text,
-  // not markup — it is pasted into a message, so the one thing it must not be
-  // able to do is carry anything into the composer that is not writing.
-  if (path === "/api/signature" && request.method === "GET") {
-    const row = await env.DB.prepare("SELECT value FROM settings WHERE key='signature'").first();
-    return json({ text: row?.value || "" });
-  }
-  if (path === "/api/signature" && request.method === "POST") {
-    const b = await request.json().catch(() => ({}));
-    const text = String(b.text || "").replace(/\r/g, "").slice(0, 2000).trim();
-    if (!text) {
-      await env.DB.prepare("DELETE FROM settings WHERE key='signature'").run();
-      return json({ ok: true, text: "" });
-    }
-    await env.DB.prepare(
-      "INSERT INTO settings (key, value) VALUES ('signature', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value"
-    )
-      .bind(text)
-      .run();
-    return json({ ok: true, text });
-  }
-
   // GET /api/ai-key — whether the assistant has a key and where it came from.
   // Never the key itself: it goes in and is not readable back out, like the
   // iCloud password. The last four characters are enough to tell one key from

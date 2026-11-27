@@ -21,7 +21,14 @@ const root = join(fileURLToPath(new URL("..", import.meta.url)), "public");
 const port = Number(process.argv[2] || 8765);
 
 const now = Date.now();
-const accounts = [{ id: "a1", email: "you@icloud.com", provider: "icloud", color: "#1f6fd0" }];
+const accounts = [{ id: "a1", email: "you@icloud.com", provider: "icloud", color: "#1f6fd0", aliases: ["studio@your-domain.example"] }];
+const demoSignatures = {
+  signatures: [
+    { id: "s1", name: "Personal", position: 0, html: "<b>Alex Martin</b>" },
+    { id: "s2", name: "Studio", position: 1, html: '<b>Alex Martin</b><br><span style="color:#2f6fed">Studio director</span> &middot; <a href="https://your-domain.example">your-domain.example</a>' },
+  ],
+  use: { "you@icloud.com": { new_id: "s1", reply_id: "s1" }, "studio@your-domain.example": { new_id: "s2", reply_id: "s2" } },
+};
 const folders = [
   { folder: "inbox", n: 12, unread: 3 },
   { folder: "archive", n: 40, unread: 0 },
@@ -262,6 +269,9 @@ createServer(async (req, res) => {
     }
     if (await demoTransfer(req, res, p, url)) return;
     if (p === "/api/accounts") return json(res, { accounts });
+    // Signatures: invented ones, kept in memory.
+    if (p === "/api/signatures" && req.method === "GET") return json(res, demoSignatures);
+    if (p === "/api/signatures/use") return json(res, { ok: true });
     if (p === "/api/folders") return json(res, { folders });
     if (p === "/api/messages") {
       // Pinned conversations lead, as the Worker orders them.

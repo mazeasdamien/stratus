@@ -92,7 +92,19 @@ const server = createServer(async (req, res) => {
   else if (p === "/api/messages" || /^\/api\/messages\/\w+$/.test(p)) log.push({ method: "GET", path: p, query: Object.fromEntries(url.searchParams) });
   const wait = (ms) => new Promise((r) => setTimeout(r, Number(ms) || 0));
 
-  if (p === "/api/accounts") return json({ accounts });
+  // Signatures: with `sigs` on, two of them and an alias, so From can change.
+  if (p === "/api/accounts") return json({ accounts: knobs.sigs ? [{ ...accounts[0], aliases: ["work@icloud.com"] }] : accounts });
+  if (p === "/api/signatures") {
+    return json(knobs.sigs
+      ? {
+          signatures: [
+            { id: "s1", name: "Personal", html: "<b>Damien</b>", position: 0 },
+            { id: "s2", name: "Work", html: 'Damien Mazeas<br>Studio <a href="https://studio.example">site</a>', position: 1 },
+          ],
+          use: { "you@icloud.com": { new_id: "s1", reply_id: "s1" }, "work@icloud.com": { new_id: "s2", reply_id: "s2" } },
+        }
+      : { signatures: [], use: {} });
+  }
   if (p === "/api/folders") return json({ folders });
   if (p === "/api/messages") {
     if (url.searchParams.get("thread")) return json({ messages: [] });
@@ -432,6 +444,46 @@ try {
     ok(r.under && r.toastBottom <= r.barTop, `the Undo toast sits above the reader's action bar — ${JSON.stringify(r)}`);
     const s = await ev(`closeReader(); $("#reader").classList.remove("up"); toast("Archived"); await wait(450); return $("#toast").style.bottom;`);
     ok(s === "", `with no bar under it the toast goes back to its usual spot — bottom: "${s}"`);
+  });
+
+  await scenario("signature-follows-from", async () => {
+    await fresh({ sigs: 1 });
+    const sigId = `($("#cBody").querySelector(".sig") || {}).dataset?.sig || null`;
+    const s = await ev(`
+      openCompose(); await wait(150);
+      const first = ${sigId};
+      document.querySelector('[data-cfrom="work@icloud.com"]').click(); await wait(100);
+      const swapped = ${sigId};
+      document.querySelector('[data-cacc="a1"]').click(); await wait(100);
+      const back = ${sigId};
+      return { first, swapped, back, picker: $("#cSigPick").value };`);
+    ok(s.first === "s1" && s.swapped === "s2" && s.back === "s1", `changing From swaps a signature nobody touched — ${JSON.stringify(s)}`);
+    // Edited in this draft: never replaced.
+    const e = await ev(`
+      openCompose(); await wait(150);
+      $("#cBody").querySelector(".sig").append(" — typed by hand");
+      document.querySelector('[data-cfrom="work@icloud.com"]').click(); await wait(100);
+      return { sig: ${sigId}, text: $("#cBody").querySelector(".sig").textContent };`);
+    ok(e.sig === "s1" && /typed by hand/.test(e.text), `a signature edited in the draft is left alone — ${JSON.stringify(e)}`);
+    // Taken out by hand: not put back by a change of From.
+    const gone = await ev(`
+      openCompose(); await wait(150);
+      $("#cBody").querySelector(".sig").remove();
+      document.querySelector('[data-cfrom="work@icloud.com"]').click(); await wait(100);
+      return ${sigId};`);
+    ok(gone === null, "a signature the user deleted does not come back when From changes");
+    // The picker: another one, or none, and the mail carries what it says, as text too.
+    await ev(`
+      openCompose(); await wait(150);
+      $("#cTo").value = "zoe@x.fr"; $("#cSubj").value = "Hello";
+      $("#cBody").insertAdjacentHTML("afterbegin", "<div>words</div>");
+      $("#cSigPick").value = "s2"; $("#cSigPick").dispatchEvent(new Event("change", { bubbles: true })); await wait(150);
+      document.querySelector('[data-cfrom="work@icloud.com"]').click(); await wait(50);
+      document.querySelector('[data-cacc="a1"]').click(); await wait(50);
+      $("#cSend").click(); await wait(200); pendingSend && pendingSend.fire(); await wait(500);`);
+    const sent = (await posts("/api/send"))[0]?.body || {};
+    ok(/Studio/.test(sent.html || "") && !/data-sig/.test(sent.html || ""), `a signature chosen by hand stays when From changes, and its bookkeeping does not leave — ${JSON.stringify(sent.html)}`);
+    ok(/words\s+Damien Mazeas\nStudio site \(https:\/\/studio\.example\)$/.test(sent.text || ""), `the plain-text alternative carries a plain rendering — ${JSON.stringify(sent.text)}`);
   });
 
   await scenario("stale-selection", async () => {
