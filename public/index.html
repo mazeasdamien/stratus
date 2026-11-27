@@ -5369,7 +5369,7 @@ addEventListener("keydown", (e) => {
       break;
     case "e":
       e.preventDefault();
-      fileCurrent("archive", "Archived");
+      fileCurrent("archive", t("Archived"));
       break;
     case "s":
       e.preventDefault();
@@ -5469,15 +5469,15 @@ function paintReaderTags() {
   const b = $("#rCategorize");
   if (cats.length) b.dataset.has = "1";
   else delete b.dataset.has;
-  b.setAttribute("aria-label", cats.length ? `Categorize: ${cats.map((c) => c.name).join(", ")}` : "Categorize");
+  b.setAttribute("aria-label", cats.length ? t("Categorize: {categories}", { categories: cats.map((c) => c.name).join(", ") }) : t("Categorize"));
   const pb = $("#rPin");
   pb.classList.toggle("on", pinned);
   pb.setAttribute("aria-pressed", String(pinned));
-  pb.setAttribute("aria-label", pinned ? "Unpin conversation" : "Pin conversation");
+  pb.setAttribute("aria-label", pinned ? t("Unpin conversation") : t("Pin conversation"));
   const chips = cats.map(catChip);
-  if (imp === 1) chips.push(`<span class="tagchip hi">High importance</span>`);
-  if (imp === -1) chips.push(`<span class="tagchip">Low importance</span>`);
-  if (pinned) chips.push(`<span class="tagchip">Pinned</span>`);
+  if (imp === 1) chips.push(`<span class="tagchip hi">${t("High importance")}</span>`);
+  if (imp === -1) chips.push(`<span class="tagchip">${t("Low importance")}</span>`);
+  if (pinned) chips.push(`<span class="tagchip">${t("Pinned")}</span>`);
   $("#rCats").innerHTML = chips.join("");
   $("#rCats").hidden = !chips.length;
   paintFollow();
@@ -5498,10 +5498,10 @@ function renderCatPop() {
               <span class="sw" style="--cl:var(--cat${c.color})"></span><span class="nm">${esc(c.name)}</span>${i < 5 ? `<kbd>${i + 1}</kbd>` : ""}${TICK}</button>`
           )
           .join("")
-      : `<div class="none">No categories yet.</div>`) +
+      : `<div class="none">${t("No categories yet.")}</div>`) +
     `<div class="sep"></div>` +
-    (have.size ? `<button type="button" role="menuitem" data-clear><span class="nm">Clear categories</span><kbd>0</kbd></button>` : "") +
-    `<button type="button" role="menuitem" data-all><span class="nm">All categories…</span></button>`;
+    (have.size ? `<button type="button" role="menuitem" data-clear><span class="nm">${t("Clear categories")}</span><kbd>0</kbd></button>` : "") +
+    `<button type="button" role="menuitem" data-all><span class="nm">${t("All categories…")}</span></button>`;
   if (focused) {
     const again = pop.querySelector(`[data-cat="${focused}"]`);
     if (again) again.focus();
@@ -5584,13 +5584,13 @@ async function changeCats({ add = [], remove = [] }) {
   const d = res && res.ok ? await res.json().catch(() => null) : null;
   if (d && Array.isArray(d.cats)) return paint(d.cats);
   paint(was);
-  toast("Could not change the categories");
+  toast(t("Could not change the categories"));
 }
 function toggleCatAt(i) {
   const c = categories[i];
-  if (!c) return toast(`There is no category ${i + 1} yet`);
+  if (!c) return toast(t("There is no category {n} yet", { n: i + 1 }));
   const has = ((current && current.message.cats) || []).includes(c.id);
-  say(`${c.name} ${has ? "removed" : "added"}`);
+  say(has ? t("{category} removed", { category: c.name }) : t("{category} added", { category: c.name }));
   changeCats(has ? { remove: [c.id] } : { add: [c.id] });
 }
 function clearCats() {
@@ -5617,11 +5617,11 @@ async function setPinned(pinned) {
   if (await postPin(id, pinned)) {
     // The order of the list changed: pinned conversations lead it.
     loadList(false, { keep: true });
-    toast(pinned ? "Pinned to the top" : "Unpinned");
+    toast(pinned ? t("Pinned to the top") : t("Unpinned"));
     return;
   }
   paint(was);
-  toast("Could not change the pin");
+  toast(t("Could not change the pin"));
 }
 $("#rPin").addEventListener("click", () => {
   if (current) setPinned(!Number(current.message.pinned));
@@ -5634,26 +5634,35 @@ $("#bulkPin").addEventListener("click", async () => {
   exitSelmode();
   const done = (await Promise.all(rows.map((r) => postPin(r.id, pin)))).filter(Boolean).length;
   loadList(false, { keep: true });
-  toast(done ? `${pin ? "Pinned" : "Unpinned"}${done > 1 ? ` — ${done} conversations` : ""}` : "Could not change the pin");
+  toast(
+    !done ? t("Could not change the pin")
+    : done > 1 ? (pin ? t("Pinned — {n, plural, one {# conversation} other {# conversations}}", { n: done }) : t("Unpinned — {n, plural, one {# conversation} other {# conversations}}", { n: done }))
+    : pin ? t("Pinned") : t("Unpinned")
+  );
 });
 
 /* All categories: add, rename, recolour, delete. */
+/** What each palette name in CAT_COLORS is called on screen. */
+const CAT_COLOR_NAMES = {
+  Red: t("Red"), Orange: t("Orange"), Yellow: t("Yellow"), Green: t("Green"), Blue: t("Blue"),
+  Purple: t("Purple"), Pink: t("Pink"), Teal: t("Teal"), Brown: t("Brown"), Gray: t("Gray"),
+};
 const TRASH = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`;
 function renderCatSheet() {
   $("#catList").innerHTML =
     categories
       .map(
         (c) => `<div class="catrow" data-id="${c.id}" style="--cl:var(--cat${c.color})">
-          <button class="catsw" type="button" data-sw aria-expanded="false" aria-label="Colour of ${esc(c.name)}: ${CAT_COLORS[c.color]}. Change"></button>
-          <input class="catname" type="text" value="${esc(c.name)}" maxlength="40" data-name aria-label="Name of this category" autocomplete="off" spellcheck="false">
-          <span class="catn" title="Messages with it" aria-label="${c.n} messages">${c.n}</span>
-          <button class="catdel" type="button" data-del aria-label="Delete ${esc(c.name)}" title="Delete">${TRASH}</button>
-          <div class="catpal" role="radiogroup" aria-label="Colour" hidden>${CAT_COLORS.map(
-            (nm, i) => `<button type="button" role="radio" aria-checked="${i === c.color}" aria-label="${nm}" title="${nm}" data-col="${i}" style="--cl:var(--cat${i})"></button>`
+          <button class="catsw" type="button" data-sw aria-expanded="false" aria-label="${t("Colour of {name}: {colour}. Change", { name: esc(c.name), colour: CAT_COLOR_NAMES[CAT_COLORS[c.color]] })}"></button>
+          <input class="catname" type="text" value="${esc(c.name)}" maxlength="40" data-name aria-label="${t("Name of this category")}" autocomplete="off" spellcheck="false">
+          <span class="catn" title="${t("Messages with it")}" aria-label="${t("{n, plural, one {# message} other {# messages}}", { n: Number(c.n) || 0 })}">${c.n}</span>
+          <button class="catdel" type="button" data-del aria-label="${t("Delete {name}", { name: esc(c.name) })}" title="${t("Delete")}">${TRASH}</button>
+          <div class="catpal" role="radiogroup" aria-label="${t("Colour")}" hidden>${CAT_COLORS.map(
+            (nm, i) => `<button type="button" role="radio" aria-checked="${i === c.color}" aria-label="${CAT_COLOR_NAMES[nm]}" title="${CAT_COLOR_NAMES[nm]}" data-col="${i}" style="--cl:var(--cat${i})"></button>`
           ).join("")}</div>
         </div>`
       )
-      .join("") || `<div class="sh-s">No categories yet. Add the first one below.</div>`;
+      .join("") || `<div class="sh-s">${t("No categories yet. Add the first one below.")}</div>`;
 }
 function catSheetError(msg) {
   const el = $("#catErr");
@@ -5681,7 +5690,7 @@ async function catCall(method, path, body) {
     paintReaderTags();
     return d;
   }
-  catSheetError(d.error || "That did not work");
+  catSheetError(d.error ? tw(d.error) : t("That did not work"));
   renderCatSheet();
   return null;
 }
@@ -5700,9 +5709,9 @@ $("#catList").addEventListener("click", async (e) => {
     if (!c) return;
     const used = Number(c.n) || 0;
     if (!(await ask(
-      `Delete the category ${c.name}?`,
-      used ? `It is taken off ${used} message${used > 1 ? "s" : ""}. The messages themselves stay.` : "No message has it.",
-      { ok: "Delete", danger: true }
+      t("Delete the category {name}?", { name: c.name }),
+      used ? t("It is taken off {n, plural, one {# message} other {# messages}}. The messages themselves stay.", { n: used }) : t("No message has it."),
+      { ok: t("Delete"), danger: true }
     ))) return;
     if (await catCall("DELETE", `/api/categories/${id}`)) {
       if (current && current.message.cats) current.message.cats = current.message.cats.filter((x) => x !== id);
@@ -5742,7 +5751,7 @@ $("#rImages").addEventListener("click", () => {
   // One message is the decision asked for; every message from them is the
   // one offered, and only offered.
   const email = current ? senderOf(current.message) : "";
-  if (email) toast("Images shown for this message", () => trustImages(email, true), "Always");
+  if (email) toast(t("Images shown for this message"), () => trustImages(email, true), t("Always"));
 });
 /** One filing call. Returns the server's reply, or null once it has complained. */
 async function fileMessage(id, target) {
@@ -5753,7 +5762,7 @@ async function fileMessage(id, target) {
   }).catch(() => null);
   if (!res || !res.ok) {
     const d = res ? await res.json().catch(() => ({})) : {};
-    toast(d.error || "That didn't work");
+    toast(d.error ? tw(d.error) : t("That didn't work"));
     loadList();
     return null;
   }
@@ -5774,7 +5783,7 @@ async function fileThread(key, from, target, said) {
       body: JSON.stringify({ key, from: a, folder: b, ids }),
     })
       .then((r) => (r.ok ? r.json() : r.json().then((d) => Promise.reject(d.error))))
-      .catch((e) => ({ error: typeof e === "string" ? e : "Could not move this conversation" }));
+      .catch((e) => ({ error: typeof e === "string" ? tw(e) : t("Could not move this conversation") }));
 
   const d = await call(from, target);
   if (d.error) {
@@ -5785,7 +5794,7 @@ async function fileThread(key, from, target, said) {
   // messages this move moved, which the server names. Without them it took
   // back everything of the conversation in the destination: two older
   // messages already in Trash came out of it along with the one just binned.
-  toast(d.n > 1 ? `${said} — ${d.n} messages` : said, async () => {
+  toast(d.n > 1 ? t("{action} — {n, plural, one {# message} other {# messages}}", { action: said, n: d.n }) : said, async () => {
     await call(target, from, Array.isArray(d.ids) && d.ids.length ? d.ids : undefined);
     await Promise.all([loadList(), refreshCounts()]);
   });
@@ -5830,15 +5839,15 @@ async function fileCurrent(target, said) {
   refreshCounts();
 }
 
-$("#rArchive").addEventListener("click", () => fileCurrent("archive", "Archived"));
+$("#rArchive").addEventListener("click", () => fileCurrent("archive", t("Archived")));
 // Undo comes free: fileCurrent's toast files it back where it came from.
-$("#rNotSpam").addEventListener("click", () => fileCurrent("inbox", "Moved to Inbox"));
+$("#rNotSpam").addEventListener("click", () => fileCurrent("inbox", t("Moved to Inbox")));
 $("#rDelete").addEventListener("click", async () => {
   if (!current) return;
   const here = current.message.folder;
   // Already in the bin: the only delete left is the permanent one. Moving it
   // to Trash again did nothing, which read as the button being broken.
-  if (here !== "trash" && here !== "spam") return fileCurrent("trash", "Deleted");
+  if (here !== "trash" && here !== "spam") return fileCurrent("trash", t("Deleted"));
 
   const thread = currentThread;
   // What the scope chip says, read once and used for both the question and
@@ -5851,9 +5860,11 @@ $("#rDelete").addEventListener("click", async () => {
   // is not necessarily what the question was about.
   const id = current.message.id;
   if (!(await ask(
-      many > 1 ? "Delete this conversation permanently?" : "Delete this message permanently?",
-      `${many > 1 ? `All ${many} messages are` : "It is"} removed from iCloud itself and cannot be recovered.`,
-      { ok: "Delete", danger: true }))) return;
+      many > 1 ? t("Delete this conversation permanently?") : t("Delete this message permanently?"),
+      many > 1
+        ? t("All {n} messages are removed from iCloud itself and cannot be recovered.", { n: many })
+        : t("It is removed from iCloud itself and cannot be recovered."),
+      { ok: t("Delete"), danger: true }))) return;
   const at = messages.findIndex((m) => m.id === id);
   messages = messages.filter((m) => m.id !== id);
   const next = messages[at] || messages[at - 1] || null;
@@ -5869,8 +5880,8 @@ $("#rDelete").addEventListener("click", async () => {
       body: JSON.stringify({ key: thread.key, from: here, purge: 1 }),
     }).catch(() => null);
     const dd = r ? await r.json().catch(() => ({})) : {};
-    if (!r || !r.ok) toast(dd.error || "Could not delete this conversation");
-    else toast(dd.n > 1 ? `Deleted — ${dd.n} messages` : "Deleted");
+    if (!r || !r.ok) toast(dd.error ? tw(dd.error) : t("Could not delete this conversation"));
+    else toast(dd.n > 1 ? t("{action} — {n, plural, one {# message} other {# messages}}", { action: t("Deleted"), n: dd.n }) : t("Deleted"));
     await Promise.all([loadList(), refreshCounts()]);
     return;
   }
@@ -5878,11 +5889,11 @@ $("#rDelete").addEventListener("click", async () => {
   const res = await api(`/api/messages/${id}/purge`, { method: "POST" }).catch(() => null);
   const d = res ? await res.json().catch(() => ({})) : {};
   if (!res || !res.ok) {
-    toast(d.error || "Could not delete");
+    toast(d.error ? tw(d.error) : t("Could not delete"));
     loadList();
     return;
   }
-  toast("Deleted permanently");
+  toast(t("Deleted permanently"));
   refreshCounts();
 });
 
@@ -5915,7 +5926,7 @@ $("#rStar").addEventListener("click", async () => {
   // The answer used to be ignored, so a star that was never stored stayed lit
   // until the next reload quietly put it out.
   paint(!on);
-  toast(on ? "Could not star this message" : "Could not remove the star");
+  toast(on ? t("Could not star this message") : t("Could not remove the star"));
 });
 
 $("#rUnread").addEventListener("click", async () => {
@@ -5942,10 +5953,10 @@ $("#rUnread").addEventListener("click", async () => {
     if (sub) sub.unread = was[0];
     if (parent) parent.unread = was[1];
     renderList();
-    toast("Could not mark it unread");
+    toast(t("Could not mark it unread"));
     return;
   }
-  toast("Marked unread");
+  toast(t("Marked unread"));
   refreshCounts();
 });
 
@@ -5961,15 +5972,15 @@ $("#rMove").addEventListener("click", () => {
             `<button class="mi" data-move="${esc(f.folder)}"><span class="grow">${esc(folderPath(f.folder))}</span><span class="side num">${f.n}</span></button>`
         )
         .join("")
-    : `<div class="sh-s">Nothing else to move it to yet.</div>`;
+    : `<div class="sh-s">${t("Nothing else to move it to yet.")}</div>`;
   openSheet("#moveSheet");
 });
 $("#moveList").addEventListener("click", (e) => {
   const b = e.target.closest("[data-move]");
   if (!b) return;
   closeSheets();
-  if (moveBulk) { bulkApply(b.dataset.move, `Moved to ${folderLabel(b.dataset.move)}`); return; }
-  fileCurrent(b.dataset.move, `Moved to ${folderLabel(b.dataset.move)}`);
+  if (moveBulk) { bulkApply(b.dataset.move, t("Moved to {folder}", { folder: folderLabel(b.dataset.move) })); return; }
+  fileCurrent(b.dataset.move, t("Moved to {folder}", { folder: folderLabel(b.dataset.move) }));
 });
 /** True while the move picker is deciding for the bulk selection. */
 let moveBulk = false;
@@ -5990,19 +6001,19 @@ function openSender() {
   const m = current.message;
   const email = String(m.from_email || "").toLowerCase();
   const btn = $("#sdAdd");
-  $("#sdName").textContent = m.from_name || email || "Unknown sender";
-  $("#sdAddr").textContent = email || "This message carries no sender address.";
+  $("#sdName").textContent = m.from_name || email || t("Unknown sender");
+  $("#sdAddr").textContent = email || t("This message carries no sender address.");
   btn.disabled = !email;
-  btn.textContent = email ? "Add to contacts" : "No address to add";
+  btn.textContent = email ? t("Add to contacts") : t("No address to add");
   $("#sdImages").disabled = !email;
-  $("#sdImages").textContent = imageSenders.has(email) ? "Stop loading their images" : "Always load their images";
+  $("#sdImages").textContent = imageSenders.has(email) ? t("Stop loading their images") : t("Always load their images");
   openSheet("#senderSheet");
   if (!email) return;
   // Settles a moment later rather than holding the sheet shut on a request:
   // the sheet's job is to show the address, and it can do that immediately.
   loadPeople().then(() => {
     if (!current || current.message.id !== m.id) return;
-    btn.textContent = personByEmail(email) ? "Open contact" : "Add to contacts";
+    btn.textContent = personByEmail(email) ? t("Open contact") : t("Add to contacts");
   });
 }
 $("#rMeta").addEventListener("click", (e) => {
@@ -6073,11 +6084,11 @@ const SHARED_DOMAINS = new Set([
  * way to know which one you asked for.
  */
 async function blockSender(prefill) {
-  const pattern = await askText("Block and delete", prefill, {
+  const pattern = await askText(t("Block and delete"), prefill, {
     detail:
-      "Everything from this address or domain is destroyed at iCloud — what arrives from now on, and what is already there. It cannot be undone.",
+      t("Everything from this address or domain is destroyed at iCloud — what arrives from now on, and what is already there. It cannot be undone."),
     placeholder: "example.com",
-    ok: "Block and delete",
+    ok: t("Block and delete"),
     danger: true,
   });
   if (!pattern) return;
@@ -6089,11 +6100,13 @@ async function blockSender(prefill) {
     body: JSON.stringify({ pattern }),
   }).catch(() => null);
   const d = res ? await res.json().catch(() => ({})) : {};
-  if (!res || !res.ok) return toast(d.error || "Could not block this sender");
+  if (!res || !res.ok) return toast(d.error ? tw(d.error) : t("Could not block this sender"));
 
   // The reader may be showing a message that no longer exists.
   if (current && blockedHere(current.message.from_email, d.pattern)) closeReader();
-  toast(d.removed ? `Blocked ${d.pattern} — ${d.removed} deleted` : `Blocked ${d.pattern}`);
+  toast(d.removed
+    ? t("Blocked {pattern} — {n, plural, one {# deleted} other {# deleted}}", { pattern: d.pattern, n: d.removed })
+    : t("Blocked {pattern}", { pattern: d.pattern }));
   refreshAll();
 }
 
@@ -6110,7 +6123,7 @@ function blockedHere(email, pattern) {
 $("#sdBlock").addEventListener("click", () => {
   if (!current) return;
   const email = String(current.message.from_email || "").toLowerCase();
-  if (!email) return toast("This message carries no sender address");
+  if (!email) return toast(t("This message carries no sender address"));
   // A company owns its domain, so the domain is the rule worth offering. A
   // mailbox provider's domain belongs to everyone who has an address there:
   // the field opened on "gmail.com" for one spammer, Enter confirms, and every
@@ -6143,13 +6156,15 @@ function renderBlocked() {
           (b) => `<div class="mi">
             <span class="grow"><div class="tr">${esc(b.pattern)}</div>
             <div class="sub">${
-              b.n ? `${b.n} deleted${b.last_at ? `, last ${esc(new Date(b.last_at).toLocaleDateString(LOCALE))}` : ""}` : "nothing yet"
+              !b.n ? t("nothing yet")
+              : b.last_at ? t("{n, plural, one {# deleted} other {# deleted}}, last {date}", { n: b.n, date: esc(new Date(b.last_at).toLocaleDateString(LOCALE)) })
+              : t("{n, plural, one {# deleted} other {# deleted}}", { n: b.n })
             }</div></span>
-            <button class="side" data-unblock="${esc(b.pattern)}" style="color:var(--acc)">Remove</button>
+            <button class="side" data-unblock="${esc(b.pattern)}" style="color:var(--acc)">${t("Remove")}</button>
           </div>`
         )
         .join("")
-    : `<div class="sh-s">Nothing blocked. Mail from everyone reaches you.</div>`;
+    : `<div class="sh-s">${t("Nothing blocked. Mail from everyone reaches you.")}</div>`;
 }
 
 $("#blockedList").addEventListener("click", async (e) => {
@@ -6160,12 +6175,12 @@ $("#blockedList").addEventListener("click", async (e) => {
   const res = await api(`/api/blocked/${encodeURIComponent(pattern)}`, { method: "DELETE" }).catch(() => null);
   if (!res || !res.ok) {
     b.disabled = false;
-    return toast("Could not remove this rule");
+    return toast(t("Could not remove this rule"));
   }
   blocked = blocked.filter((x) => x.pattern !== pattern);
   renderBlocked();
   // Said plainly: removing a rule brings back nothing it already destroyed.
-  toast(`${pattern} unblocked — their next message arrives`);
+  toast(t("{pattern} unblocked — their next message arrives", { pattern }));
 });
 
 /* ── rules ──
@@ -6197,52 +6212,56 @@ const ruleField = (id) => ruleCat.fields.find((f) => f.id === id);
 const ruleAction = (id) => ruleCat.actions.find((a) => a.id === id);
 /** The word for a stored folder or category value; a category that has been deleted says so. */
 const ruleValueText = (a) =>
-  a.type === "move" ? folderLabel(a.value) : a.type === "category" ? (catById(Number(a.value)) || {}).name || "a deleted category" : "";
+  a.type === "move" ? folderLabel(a.value) : a.type === "category" ? (catById(Number(a.value)) || {}).name || t("a deleted category") : "";
+// The catalog's labels are the Worker's English, hence tw().
 const ruleCondText = (c) => {
   const f = ruleField(c.field);
-  const v = f && f.values ? (f.values.find((x) => x[0] === c.value) || [0, c.value])[1] : `“${c.value}”`;
-  return `${f ? f.label : c.field} ${ruleCat.ops[c.op] || c.op} ${v}`;
+  const v = f && f.values ? tw((f.values.find((x) => x[0] === c.value) || [0, c.value])[1]) : t("“{text}”", { text: c.value });
+  return `${f ? tw(f.label) : c.field} ${tw(ruleCat.ops[c.op] || c.op)} ${v}`;
 };
 const ruleActText = (a) => {
   const d = ruleAction(a.type);
   const v = ruleValueText(a);
-  return `${d ? d.label : a.type}${v ? ": " + v : ""}`;
+  const label = d ? tw(d.label) : a.type;
+  return v ? t("{action}: {value}", { action: label, value: v }) : label;
 };
 const ruleSummary = (r) =>
-  `${r.conditions.map(ruleCondText).join(r.match === "any" ? " or " : " and ")} → ${r.actions.map(ruleActText).join(", ")}`;
+  `${r.conditions.map(ruleCondText).join(r.match === "any" ? ` ${t("or")} ` : ` ${t("and")} `)} → ${r.actions.map(ruleActText).join(", ")}`;
 
 function renderRules() {
   $("#rulesList").innerHTML = rules.length
     ? rules
         .map((r, i) => {
-          const when = r.last_at ? `, last ${new Date(r.last_at).toLocaleDateString(LOCALE)}` : "";
-          const stat = r.n ? `Acted on ${r.n} message${r.n > 1 ? "s" : ""}${when}` : "Has not acted yet";
+          const date = r.last_at ? new Date(r.last_at).toLocaleDateString(LOCALE) : "";
+          const stat = !r.n ? t("Has not acted yet")
+            : date ? t("Acted on {n, plural, one {# message} other {# messages}}, last {date}", { n: r.n, date })
+            : t("Acted on {n, plural, one {# message} other {# messages}}", { n: r.n });
           const nm = esc(r.name);
           return `<div class="rl-row${r.enabled ? "" : " off"}" data-id="${r.id}">
-            <button class="rl-sw" type="button" role="switch" aria-checked="${r.enabled}" aria-label="${nm} is ${r.enabled ? "on" : "off"}" data-act="toggle"></button>
+            <button class="rl-sw" type="button" role="switch" aria-checked="${r.enabled}" aria-label="${r.enabled ? t("{name} is on", { name: nm }) : t("{name} is off", { name: nm })}" data-act="toggle"></button>
             <div class="rl-body">
               <div class="rl-name">${nm}</div>
-              <div class="rl-sum">${r.unreadable ? "Written by another version of the app. This one cannot read it, so it never acts." : esc(ruleSummary(r))}</div>
+              <div class="rl-sum">${r.unreadable ? t("Written by another version of the app. This one cannot read it, so it never acts.") : esc(ruleSummary(r))}</div>
               <div class="rl-stat">${stat}</div>
-              ${r.last_error ? `<div class="rl-err">Last problem: ${esc(r.last_error)}</div>` : ""}
+              ${r.last_error ? `<div class="rl-err">${t("Last problem: {error}", { error: esc(tw(r.last_error)) })}</div>` : ""}
               <div class="rl-tools">
-                <button type="button" data-act="up" aria-label="Move ${nm} up"${i === 0 ? " disabled" : ""}>Move up</button>
-                <button type="button" data-act="down" aria-label="Move ${nm} down"${i === rules.length - 1 ? " disabled" : ""}>Move down</button>
-                <button type="button" class="del" data-act="del" aria-label="Delete ${nm}">Delete</button>
+                <button type="button" data-act="up" aria-label="${t("Move {name} up", { name: nm })}"${i === 0 ? " disabled" : ""}>${t("Move up")}</button>
+                <button type="button" data-act="down" aria-label="${t("Move {name} down", { name: nm })}"${i === rules.length - 1 ? " disabled" : ""}>${t("Move down")}</button>
+                <button type="button" class="del" data-act="del" aria-label="${t("Delete {name}", { name: nm })}">${t("Delete")}</button>
               </div>
             </div>
-            ${r.unreadable ? "" : `<button class="rl-edit" type="button" data-act="edit" aria-label="Edit ${nm}">Edit</button>`}
+            ${r.unreadable ? "" : `<button class="rl-edit" type="button" data-act="edit" aria-label="${t("Edit {name}", { name: nm })}">${t("Edit")}</button>`}
           </div>`;
         })
         .join("")
-    : `<div class="sh-s">No rules yet. Mail stays where it lands until you add one.</div>`;
+    : `<div class="sh-s">${t("No rules yet. Mail stays where it lands until you add one.")}</div>`;
 }
 
 async function openRules() {
   closeSheets();
   await loadRules();
   renderRules();
-  $("#rulesRunState").textContent = "Applies the enabled rules to what is in the inbox.";
+  $("#rulesRunState").textContent = t("Applies the enabled rules to what is in the inbox.");
   openSheet("#rulesSheet");
 }
 $("#openRules").addEventListener("click", openRules);
@@ -6257,7 +6276,7 @@ async function ruleMove(id, by) {
   if (i < 0 || j < 0 || j >= ids.length) return;
   [ids[i], ids[j]] = [ids[j], ids[i]];
   const r = await ruleCall("POST", "/api/rules/order", { ids });
-  if (!r.ok) return toast("Could not reorder the rules");
+  if (!r.ok) return toast(t("Could not reorder the rules"));
   rules = r.d.rules || rules;
   renderRules();
   // The button just used moved with its rule; put the focus back on it, or on
@@ -6282,7 +6301,7 @@ $("#rulesList").addEventListener("click", async (e) => {
     if (res.ok) rules = res.d.rules || rules;
     else {
       r.enabled = !on;
-      toast("Could not change this rule");
+      toast(t("Could not change this rule"));
     }
     renderRules();
     const sw = ruleRow(id) && ruleRow(id).querySelector('[data-act="toggle"]');
@@ -6292,9 +6311,9 @@ $("#rulesList").addEventListener("click", async (e) => {
   } else if (act === "edit") {
     openRuleEditor(r);
   } else if (act === "del") {
-    if (!(await ask(`Delete the rule ${r.name}?`, "Mail it already sorted stays where it is.", { ok: "Delete", danger: true }))) return;
+    if (!(await ask(t("Delete the rule {name}?", { name: r.name }), t("Mail it already sorted stays where it is."), { ok: t("Delete"), danger: true }))) return;
     const res = await ruleCall("DELETE", `/api/rules/${id}`);
-    if (!res.ok) return toast("Could not delete this rule");
+    if (!res.ok) return toast(t("Could not delete this rule"));
     rules = res.d.rules || [];
     renderRules();
   }
@@ -6305,17 +6324,19 @@ $("#rulesRun").addEventListener("click", async () => {
   const btn = $("#rulesRun");
   const state = $("#rulesRunState");
   if (!rules.some((r) => r.enabled)) {
-    state.textContent = "No rule is switched on.";
+    state.textContent = t("No rule is switched on.");
     return;
   }
   btn.disabled = true;
   let scanned = 0, changed = 0, failed = 0, cursor = null, why = "";
   try {
     for (;;) {
-      state.textContent = scanned ? `Checked ${scanned} messages, ${changed} changed…` : "Checking the inbox…";
+      state.textContent = scanned
+        ? t("Checked {n, plural, one {# message} other {# messages}}, {changed, plural, one {# changed} other {# changed}}…", { n: scanned, changed })
+        : t("Checking the inbox…");
       const r = await ruleCall("POST", "/api/rules/run", cursor ? { cursor } : {});
       if (!r.ok) {
-        why = r.d.error || "Could not run the rules";
+        why = r.d.error ? tw(r.d.error) : t("Could not run the rules");
         break;
       }
       scanned += r.d.scanned;
@@ -6329,9 +6350,9 @@ $("#rulesRun").addEventListener("click", async () => {
   }
   state.textContent =
     (why ? `${why}. ` : "") +
-    `Checked ${scanned} message${scanned === 1 ? "" : "s"}, ${changed} changed` +
-    (failed ? `, ${failed} could not be updated at iCloud (see the rules)` : "") +
-    ".";
+    (failed
+      ? t("Checked {n, plural, one {# message} other {# messages}}, {changed, plural, one {# changed} other {# changed}}, {failed, plural, one {# could not be updated at iCloud} other {# could not be updated at iCloud}} (see the rules).", { n: scanned, changed, failed })
+      : t("Checked {n, plural, one {# message} other {# messages}}, {changed, plural, one {# changed} other {# changed}}.", { n: scanned, changed }));
   await loadRules();
   renderRules();
   if (changed) refreshAll();
@@ -6347,7 +6368,7 @@ const newRuleAct = () => ({ type: ruleCat.actions[0].id, value: "" });
 const RULE_NOT_FOLDERS = new Set(["inbox", "sent", "drafts", "trash"]);
 
 function openRuleEditor(rule, back = "rules") {
-  if (!ruleCat.fields.length) return toast("Could not open the rule editor");
+  if (!ruleCat.fields.length) return toast(t("Could not open the rule editor"));
   ruleBack = back;
   ruleDraft = rule
     ? JSON.parse(JSON.stringify({ id: rule.id, name: rule.name, match: rule.match, conditions: rule.conditions, actions: rule.actions, stop: rule.stop }))
@@ -6355,7 +6376,7 @@ function openRuleEditor(rule, back = "rules") {
   if (!ruleDraft.conditions.length) ruleDraft.conditions.push(newRuleCond());
   if (!ruleDraft.actions.length) ruleDraft.actions.push(newRuleAct());
   closeSheets();
-  $("#ruleTitle").textContent = ruleDraft.id ? "Edit rule" : "New rule";
+  $("#ruleTitle").textContent = ruleDraft.id ? t("Edit rule") : t("New rule");
   $("#ruleName").value = ruleDraft.name;
   $("#ruleStop").checked = !!ruleDraft.stop;
   $("#ruleErr").classList.remove("show");
@@ -6378,36 +6399,36 @@ function paintRuleLists() {
   $("#ruleConds").innerHTML = ruleDraft.conditions
     .map((c, i) => {
       const f = ruleField(c.field) || ruleCat.fields[0];
-      const label = `Condition ${i + 1}`;
+      const n = i + 1;
       const value = f.values
-        ? `<select data-k="value" aria-label="${label} value">${ruleOptions(f.values, c.value)}</select>`
-        : `<input data-k="value" type="text" value="${esc(c.value)}" placeholder="Text to look for" aria-label="${label} value" maxlength="200" autocomplete="off" spellcheck="false">`;
+        ? `<select data-k="value" aria-label="${t("Condition {n} value", { n })}">${ruleOptions(f.values.map(([v, l]) => [v, tw(l)]), c.value)}</select>`
+        : `<input data-k="value" type="text" value="${esc(c.value)}" placeholder="${t("Text to look for")}" aria-label="${t("Condition {n} value", { n })}" maxlength="200" autocomplete="off" spellcheck="false">`;
       return `<div class="rl-item" data-i="${i}">
-        <div class="field"><select data-k="field" aria-label="${label} field">${ruleOptions(ruleCat.fields.map((x) => [x.id, x.label]), f.id)}</select></div>
-        <div class="field"><select data-k="op" aria-label="${label} operator">${ruleOptions(f.ops.map((o) => [o, ruleCat.ops[o] || o]), c.op)}</select></div>
+        <div class="field"><select data-k="field" aria-label="${t("Condition {n} field", { n })}">${ruleOptions(ruleCat.fields.map((x) => [x.id, tw(x.label)]), f.id)}</select></div>
+        <div class="field"><select data-k="op" aria-label="${t("Condition {n} operator", { n })}">${ruleOptions(f.ops.map((o) => [o, tw(ruleCat.ops[o] || o)]), c.op)}</select></div>
         <div class="field wide">${value}</div>
-        <button class="rl-x" type="button" data-rm aria-label="Remove ${label.toLowerCase()}"${only(ruleDraft.conditions.length)}>&times;</button>
+        <button class="rl-x" type="button" data-rm aria-label="${t("Remove condition {n}", { n })}"${only(ruleDraft.conditions.length)}>&times;</button>
       </div>`;
     })
     .join("");
   $("#ruleActs").innerHTML = ruleDraft.actions
     .map((a, i) => {
       const d = ruleAction(a.type) || ruleCat.actions[0];
-      const label = `Action ${i + 1}`;
+      const n = i + 1;
       let value = "";
       if (d.value === "folder") {
         const names = folders.map((f) => f.folder).filter((f) => !RULE_NOT_FOLDERS.has(f));
         if (a.value && !names.includes(a.value)) names.push(a.value);
-        value = `<div class="field"><select data-k="value" aria-label="${label} folder">${ruleOptions([["", "Choose…"], ...names.map((n) => [n, folderPath(n)])], a.value)}</select></div>`;
+        value = `<div class="field"><select data-k="value" aria-label="${t("Action {n} folder", { n })}">${ruleOptions([["", t("Choose…")], ...names.map((nm) => [nm, folderPath(nm)])], a.value)}</select></div>`;
       } else if (d.value === "category") {
         const opts = categories.map((c) => [String(c.id), c.name]);
-        if (a.value && !opts.some((o) => o[0] === String(a.value))) opts.push([String(a.value), "A deleted category"]);
-        value = `<div class="field"><select data-k="value" aria-label="${label} category">${ruleOptions([["", categories.length ? "Choose…" : "No categories yet"], ...opts], a.value)}</select></div>`;
+        if (a.value && !opts.some((o) => o[0] === String(a.value))) opts.push([String(a.value), t("A deleted category")]);
+        value = `<div class="field"><select data-k="value" aria-label="${t("Action {n} category", { n })}">${ruleOptions([["", categories.length ? t("Choose…") : t("No categories yet")], ...opts], a.value)}</select></div>`;
       }
       return `<div class="rl-item" data-i="${i}">
-        <div class="field"><select data-k="type" aria-label="${label} type">${ruleOptions(ruleCat.actions.map((x) => [x.id, x.label]), d.id)}</select></div>
+        <div class="field"><select data-k="type" aria-label="${t("Action {n} type", { n })}">${ruleOptions(ruleCat.actions.map((x) => [x.id, tw(x.label)]), d.id)}</select></div>
         ${value}
-        <button class="rl-x" type="button" data-rm aria-label="Remove ${label.toLowerCase()}"${only(ruleDraft.actions.length)}>&times;</button>
+        <button class="rl-x" type="button" data-rm aria-label="${t("Remove action {n}", { n })}"${only(ruleDraft.actions.length)}>&times;</button>
       </div>`;
     })
     .join("");
@@ -6481,12 +6502,12 @@ $("#ruleSave").addEventListener("click", async () => {
   const r = await ruleCall(d.id ? "PATCH" : "POST", d.id ? `/api/rules/${d.id}` : "/api/rules", body);
   btn.disabled = false;
   if (!r.ok) {
-    $("#ruleErr").textContent = r.d.error || "Could not save the rule";
+    $("#ruleErr").textContent = r.d.error ? tw(r.d.error) : t("Could not save the rule");
     $("#ruleErr").classList.add("show");
     return;
   }
   rules = r.d.rules || rules;
-  toast("Rule saved");
+  toast(t("Rule saved"));
   ruleLeave();
 });
 
@@ -6500,11 +6521,11 @@ $("#sdRule").addEventListener("click", ruleFromCurrent);
 async function ruleFromCurrent() {
   if (!current) return;
   const email = String(current.message.from_email || "").toLowerCase();
-  if (!email) return toast("This message carries no sender address");
+  if (!email) return toast(t("This message carries no sender address"));
   if (!ruleCat.fields.length) await loadRules();
-  if (!ruleCat.fields.length) return toast("Could not open the rule editor");
+  if (!ruleCat.fields.length) return toast(t("Could not open the rule editor"));
   openRuleEditor(
-    { id: 0, name: `From ${email}`.slice(0, 80), match: "all", conditions: [{ field: "from", op: "is", value: email }], actions: [newRuleAct()], stop: false },
+    { id: 0, name: t("From {address}", { address: email }).slice(0, 80), match: "all", conditions: [{ field: "from", op: "is", value: email }], actions: [newRuleAct()], stop: false },
     "reader"
   );
 }
@@ -6637,9 +6658,10 @@ function cleanHtml(html) {
  * defused on the way in is armed again on the way back out.
  */
 function quotedHistory(m, body) {
-  const head =
-    `On ${esc(new Date(m.date).toLocaleString(LOCALE))}, ` +
-    `${esc(m.from_name || m.from_email || "someone")} wrote:`;
+  const head = t("On {date}, {name} wrote:", {
+    date: esc(new Date(m.date).toLocaleString(LOCALE)),
+    name: esc(m.from_name || m.from_email || t("someone")),
+  });
   // What the reader is showing, in preference to what is stored: its cid:
   // references have been resolved to the pictures themselves, and remote
   // images are in whichever state you chose to read the message in.
@@ -6796,12 +6818,12 @@ function forwardedBody(m, html) {
   const who = m.from_name ? `${m.from_name} <${m.from_email}>` : m.from_email || "";
   return (
     `<div><br></div><div><br></div>` +
-    `<div class="quote-head">Begin forwarded message:<br><br>` +
-    line("From:", who) +
-    line("Subject:", m.subject) +
-    line("Date:", new Date(m.date).toLocaleString(LOCALE)) +
-    line("To:", m.to_line) +
-    line("Cc:", m.cc_line) +
+    `<div class="quote-head">${t("Begin forwarded message:")}<br><br>` +
+    line(t("From:"), who) +
+    line(t("Subject:"), m.subject) +
+    line(t("Date:"), new Date(m.date).toLocaleString(LOCALE)) +
+    line(t("To:"), m.to_line) +
+    line(t("Cc:"), m.cc_line) +
     // Cleaned on its own first, for the reason quotedHistory gives: a message
     // must not be able to close the quote it is forwarded in.
     `</div><blockquote${quoteDir(html) === "rtl" ? ' dir="rtl"' : ""}>${cleanHtml(html)}</blockquote><div><br></div>`
@@ -6834,7 +6856,7 @@ async function startForward() {
   const all = (current.body.attachments || []).slice();
 
   openCompose({
-    title: "Forward",
+    title: t("Forward"),
     account: m.account_id,
     // Only a listed alias: a forward is not an answer to anyone, so the
     // server has no message to check an unlisted address against.
@@ -6869,7 +6891,7 @@ async function startForward() {
       const res = await api(`/api/messages/${m.id}/attachment/${i}`).catch(() => null);
       if (gone()) return;
       if (!res || !res.ok) {
-        missed.push(a.filename || `attachment ${i + 1}`);
+        missed.push(a.filename || t("attachment {n}", { n: i + 1 }));
         continue;
       }
       const blob = await res.blob();
@@ -6891,7 +6913,7 @@ async function startForward() {
     }
   } catch {
     if (gone()) return;
-    toast("Some attachments could not be read");
+    toast(t("Some attachments could not be read"));
   } finally {
     busy(-1);
     if (attsLoading === session) attsLoading = 0;
@@ -6899,8 +6921,8 @@ async function startForward() {
   if (gone()) return;
   renderAtts();
   const said = [];
-  if (missed.length) said.push(`Not attached, could not be fetched: ${missed.join(", ")}`);
-  if (over) said.push(`${over} attachment${over > 1 ? "s" : ""} left behind — over 20 MB`);
+  if (missed.length) said.push(t("Not attached, could not be fetched: {files}", { files: missed.join(", ") }));
+  if (over) said.push(t("{n, plural, one {# attachment left behind — over 20 MB} other {# attachments left behind — over 20 MB}}", { n: over }));
   if (said.length) toast(said.join(". "));
 }
 $("#rForward").addEventListener("click", startForward);
@@ -6910,7 +6932,7 @@ function startReply(all) {
   const m = current.message;
   const { to, cc } = replyTargets(m, all, (current.body || {}).replyTo || "");
   openCompose({
-    title: all ? "Reply all" : "Reply",
+    title: all ? t("Reply all") : t("Reply"),
     reply: m.id,
     account: m.account_id,
     from: replyFrom(m),
@@ -6986,11 +7008,11 @@ function printedHeader(m) {
   const who = m.from_name ? `${m.from_name} <${m.from_email}>` : m.from_email;
   return (
     `<div class="hdr">` +
-    line("From", who) +
-    line("To", m.to_line) +
-    line("Cc", m.cc_line) +
-    line("Bcc", m.bcc_line) +
-    line("Date", new Date(m.date).toLocaleString(LOCALE)) +
+    line(t("From"), who) +
+    line(t("To"), m.to_line) +
+    line(t("Cc"), m.cc_line) +
+    line(t("Bcc"), m.bcc_line) +
+    line(t("Date"), new Date(m.date).toLocaleString(LOCALE)) +
     `</div>`
   );
 }
@@ -7061,7 +7083,7 @@ async function savePdf(all) {
       if (rows.length) ids = rows.map((r) => r.id);
     }
     const parts = await printableParts(ids);
-    if (!parts.length) { toast("Could not read this message"); return; }
+    if (!parts.length) { toast(t("Could not read this message")); return; }
 
     const f = $("#printFrame");
     // The dialog opens on a page that is finished: the load event waits for
@@ -7071,12 +7093,12 @@ async function savePdf(all) {
       f.onload = () => done();
       setTimeout(done, 6000);
     });
-    f.srcdoc = printableDoc(parts, m.subject || "message");
+    f.srcdoc = printableDoc(parts, m.subject || t("message"));
     await ready;
     f.contentWindow.focus();
     f.contentWindow.print();
   } catch {
-    toast("Could not open the print dialog");
+    toast(t("Could not open the print dialog"));
   } finally {
     busy(-1);
   }
@@ -7087,7 +7109,7 @@ $("#rPdf").addEventListener("click", () => {
   // Nothing to choose between when there is only one message.
   const n = currentThread ? currentThread.n : 1;
   if (n < 2) return savePdf(false);
-  $("#pdfAll").textContent = `The whole conversation (${n} messages)`;
+  $("#pdfAll").textContent = t("The whole conversation ({n} messages)", { n });
   openSheet("#pdfSheet");
 });
 $("#pdfOne").addEventListener("click", () => { closeSheets(); savePdf(false); });
@@ -7101,12 +7123,12 @@ $("#rUnsub").addEventListener("click", async () => {
   // No answer at all is not "this message has no way to unsubscribe", which
   // is what a dropped connection used to be told. It reads as final, and the
   // option is right there the next time the request gets through.
-  if (!res) { toast("Could not reach the server — you are not unsubscribed"); return; }
+  if (!res) { toast(t("Could not reach the server — you are not unsubscribed")); return; }
   const d = await res.json().catch(() => ({}));
 
   if (d.ok) {
     // RFC 8058 one-click: the Worker made the request, nothing to open.
-    toast("Unsubscribed — the sender has been told");
+    toast(t("Unsubscribed — the sender has been told"));
     return;
   }
   if (d.url) {
@@ -7114,19 +7136,19 @@ $("#rUnsub").addEventListener("click", async () => {
     // goes and let the decision be yours rather than opening it silently.
     // The URL is shown in full, not summarised: it is the whole basis for
     // deciding whether to follow a link that arrived inside an email.
-    if (await ask("Open this sender's unsubscribe page?", d.url, { ok: "Open" })) {
+    if (await ask(t("Open this sender's unsubscribe page?"), d.url, { ok: t("Open") })) {
       window.open(d.url, "_blank", "noopener,noreferrer");
     }
     return;
   }
   if (d.mailto) {
     const to = d.mailto.replace(/^mailto:/i, "").split("?")[0];
-    if (await ask("Unsubscribe by email?", `This sender accepts only a message to ${to}.`, { ok: "Write it" })) {
-      openCompose({ title: "Unsubscribe", account: current.message.account_id, to, subject: "unsubscribe", html: "<p>unsubscribe</p>" });
+    if (await ask(t("Unsubscribe by email?"), t("This sender accepts only a message to {address}.", { address: to }), { ok: t("Write it") })) {
+      openCompose({ title: t("Unsubscribe"), account: current.message.account_id, to, subject: "unsubscribe", html: "<p>unsubscribe</p>" }); // i18n-ok: a command to a mailing-list robot
     }
     return;
   }
-  toast(d.error || (res.ok ? "No unsubscribe option in this message" : "Could not unsubscribe — the server refused"));
+  toast(d.error ? tw(d.error) : res.ok ? t("No unsubscribe option in this message") : t("Could not unsubscribe — the server refused"));
 });
 
 /* ── downloads ──
@@ -7147,13 +7169,13 @@ $("#rAtts").addEventListener("click", (e) => {
   if (!a) return;
   if (a.classList.contains("busy")) {
     e.preventDefault();
-    toast("Already fetching that one");
+    toast(t("Already fetching that one"));
     return;
   }
   a.classList.add("busy");
   const size = a.querySelector(".sz");
   const was = size ? size.textContent : "";
-  if (size) size.textContent = "fetching…";
+  if (size) size.textContent = t("fetching…");
   setTimeout(() => {
     a.classList.remove("busy");
     if (size) size.textContent = was;
@@ -10294,7 +10316,7 @@ function replyParticipants(opts) {
   const m = [typeof current !== "undefined" && current && current.message, ...messages].find((x) => x && x.id === opts.reply);
   if (m) for (const a of [m.from_email, ...addressesIn(m.to_line), ...addressesIn(m.cc_line)]) if (a) set.add(String(a).toLowerCase());
   // What a reply opens with is, by construction, what was already on it.
-  if (/^Reply/.test(opts.title || "")) for (const a of [...addressesIn(opts.to), ...addressesIn(opts.cc)]) set.add(a);
+  if (opts.title === t("Reply") || opts.title === t("Reply all")) for (const a of [...addressesIn(opts.to), ...addressesIn(opts.cc)]) set.add(a);
   return set;
 }
 
