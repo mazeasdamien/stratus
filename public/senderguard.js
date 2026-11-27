@@ -23,6 +23,10 @@
  * look at your contacts.
  */
 
+import "./i18n.js";
+
+const { t } = globalThis.StratusI18n;
+
 /**
  * The brands phishing impersonates most.
  *
@@ -189,21 +193,22 @@ export function senderWarnings(fromName, fromEmail) {
 
   const named = brandNamed(fromName);
   if (named && !atBrand(named, host)) {
-    out.push({ kind: "brand-name", text: `The sender's name says ${named.brand}, but the message came from ${email}, which is not one of ${named.brand}'s addresses.` });
+    out.push({ kind: "brand-name", text: t("The sender's name says {brand}, but the message came from {email}, which is not one of {brand}'s addresses.", { brand: named.brand, email }) });
   }
 
   const like = lookalikeOf(host);
   if (like) {
-    const what =
+    const values = { email, domain: registrable(host).domain, brand: like.brand.brand, real: like.real };
+    const text =
       like.how === "tld"
-        ? `${registrable(host).domain} borrows the name of ${like.brand.brand} on a domain it does not use`
-        : `${registrable(host).domain} looks like ${like.real}, which belongs to ${like.brand.brand}, but is not it`;
-    out.push({ kind: "lookalike-domain", text: `The address ${email} is at a look-alike domain: ${what}.` });
+        ? t("The address {email} is at a look-alike domain: {domain} borrows the name of {brand} on a domain it does not use.", values)
+        : t("The address {email} is at a look-alike domain: {domain} looks like {real}, which belongs to {brand}, but is not it.", values);
+    out.push({ kind: "lookalike-domain", text });
   }
 
   const claimed = nameAsHost(fromName);
   if (claimed && registrable(claimed).domain !== registrable(host).domain) {
-    out.push({ kind: "name-is-address", text: `The sender's name shows ${String(fromName).trim()}, but the message came from ${email}.` });
+    out.push({ kind: "name-is-address", text: t("The sender's name shows {name}, but the message came from {email}.", { name: String(fromName).trim(), email }) });
   }
   return out;
 }

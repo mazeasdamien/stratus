@@ -9955,12 +9955,12 @@ function renderContacts() {
           (c) => `<div class="mi">
             <span class="grow"><div class="tr">${esc(c.name || c.email)}</div>
             ${c.name ? `<div class="sub tr">${esc(c.email)}</div>` : ""}</span>
-            <span class="side num">${c.n ? c.n : "added"}</span>
-            <button class="side" data-forget="${esc(c.email)}" style="color:var(--red)">Remove</button>
+            <span class="side num">${c.n ? c.n : t("added")}</span>
+            <button class="side" data-forget="${esc(c.email)}" style="color:var(--red)">${t("Remove")}</button>
           </div>`
         )
         .join("")
-    : `<div class="sh-s">${contacts.length ? "No match." : "Nothing yet — these appear once you have sent mail, or when you add a sender from a message."}</div>`;
+    : `<div class="sh-s">${contacts.length ? t("No match.") : t("Nothing yet — these appear once you have sent mail, or when you add a sender from a message.")}</div>`;
 }
 $("#ctSearch").addEventListener("input", renderContacts);
 $("#contactList").addEventListener("click", async (e) => {
@@ -9975,7 +9975,7 @@ $("#contactList").addEventListener("click", async (e) => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email }),
   }).catch(() => {});
-  toast(`Removed ${email}`);
+  toast(t("Removed {email}", { email }));
 });
 $("#composeBtn").addEventListener("click", () => {
   if (!accounts.length) { toast(noAccountWhy()); return; }
@@ -10008,7 +10008,7 @@ function outgoing() {
   const text = bodyPlainText();
   const to = addrGet("#cTo", "#cToChips");
   if (!text || !to) {
-    err.textContent = !to ? "Nobody to send it to" : "Nothing to send";
+    err.textContent = !to ? t("Nobody to send it to") : t("Nothing to send");
     err.classList.add("show");
     return null;
   }
@@ -10046,11 +10046,11 @@ async function postSend(body, at, which = sendIdentity()) {
   const d = res ? await res.json().catch(() => ({})) : {};
   const moved = draftSession !== session;
   if (!res || !res.ok) {
-    const why = d.error || (at ? "Could not schedule" : "Could not send");
+    const why = tw(d.error) || (at ? t("Could not schedule") : t("Could not send"));
     // The composer holds another message now, so this one exists nowhere on
     // screen: it is filed in Drafts from what was to be sent.
     if (moved) {
-      keepUnsent(body, which, `Not sent — ${why}`);
+      keepUnsent(body, which, t("Not sent — {reason}", { reason: why }));
       return null;
     }
     // The composer was closed while the message was on its way. It still
@@ -10060,7 +10060,7 @@ async function postSend(body, at, which = sendIdentity()) {
     if (!document.body.classList.contains("composing")) {
       document.body.classList.add("composing");
       openSheet("#composeSheet");
-      toast(`Not sent — ${why}`);
+      toast(t("Not sent — {reason}", { reason: why }));
     }
     const err = $("#cErr");
     err.textContent = why;
@@ -10085,7 +10085,7 @@ async function postSend(body, at, which = sendIdentity()) {
   // reason to survive — in this browser or in Drafts on every device.
   const dropped = await dropDraft();
   closeSheets();
-  if (!dropped) toast("Sent — but its draft could not be removed from Drafts");
+  if (!dropped) toast(t("Sent — but its draft could not be removed from Drafts"));
   return d;
 }
 
@@ -10124,7 +10124,7 @@ const sendIdentity = () => ({ session: draftSession, pid: draftPid, slot: draftS
 function keepUnsent(body, which, said) {
   const { attachments, ...fields } = body;
   saveDraftRemote({ ...fields, pid: which.pid, at: Date.now() }, attachments || [], NaN, which.slot).then((why) => {
-    toast(why ? `${said}. Kept in this browser only: ${why}` : `${said}. It is in Drafts.`);
+    toast(why ? t("{said}. Kept in this browser only: {reason}", { said, reason: tw(why) }) : t("{said}. It is in Drafts.", { said }));
     refreshAll();
   });
 }
@@ -10135,18 +10135,18 @@ function cancelPendingSend() {
   clearTimeout(pendingSend.timer);
   pendingSend = null;
   // A reaction has no composer to give it back to: it simply does not go.
-  if (which.reaction) return toast("Reaction not sent");
+  if (which.reaction) return toast(t("Reaction not sent"));
   $("#composeSheet").inert = false;
-  $("#cSend").textContent = "Send";
+  $("#cSend").textContent = t("Send");
   // Undone after the composer moved on to another message: there is no
   // composer to put it back in, so it goes to Drafts.
-  if (draftSession !== which.session) return keepUnsent(body, which, "Not sent");
+  if (draftSession !== which.session) return keepUnsent(body, which, t("Not sent"));
   // Undone after the composer was closed: it still holds the message.
   if (!document.body.classList.contains("composing")) {
     document.body.classList.add("composing");
     openSheet("#composeSheet");
   }
-  toast("Not sent — it is back in the composer");
+  toast(t("Not sent — it is back in the composer"));
 }
 addEventListener("beforeunload", (e) => {
   if (outgoingNow()) e.preventDefault();
@@ -10158,8 +10158,8 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden && pendingSend) pendingSend.fire();
 });
 $("#cSend").addEventListener("click", async () => {
-  if (outgoingNow()) return toast("The previous message is still going out — try again in a moment");
-  if (filesPending()) return toast("Attachments are still loading — try again in a moment");
+  if (outgoingNow()) return toast(t("The previous message is still going out — try again in a moment"));
+  if (filesPending()) return toast(t("Attachments are still loading — try again in a moment"));
   // Asked before anything starts: not under the undo hold, where a "Send
   // anyway" would have to be answered while the message is already leaving.
   if (asking) return;
@@ -10187,10 +10187,14 @@ function holdSend(body, which) {
     // The words exist in this browser until the server has answered.
     saveDraftLocal();
     $("#composeSheet").inert = true;
-    $("#cSend").textContent = "Sending…";
+    $("#cSend").textContent = t("Sending…");
   }
-  const who = body.to.split(",")[0].trim() + (body.to.includes(",") || body.cc || body.bcc ? " and others" : "");
-  toast(`${composer ? "Sending" : "Reacting"} to ${who}`, () => cancelPendingSend(), "Undo");
+  const who = body.to.split(",")[0].trim();
+  const others = body.to.includes(",") || body.cc || body.bcc;
+  const said = composer
+    ? others ? t("Sending to {who} and others", { who }) : t("Sending to {who}", { who })
+    : others ? t("Reacting to {who} and others", { who }) : t("Reacting to {who}", { who });
+  toast(said, () => cancelPendingSend(), t("Undo"));
   const fire = async () => {
     if (!pendingSend) return;
     clearTimeout(pendingSend.timer);
@@ -10204,15 +10208,17 @@ function holdSend(body, which) {
     }
     if (composer) {
       $("#composeSheet").inert = false;
-      $("#cSend").textContent = "Send";
+      $("#cSend").textContent = t("Send");
     }
     if (!d) return;
     toast(
       d.filed === false
         // It went, and it is in your Sent folder here. What failed is the copy
         // at Apple, so the reason travels with the message.
-        ? `Sent — Apple would not keep a copy: ${d.filedError || "unknown reason"}`
-        : (composer ? "Sent" + fuNote(d) : "Reaction sent")
+        ? t("Sent — Apple would not keep a copy: {reason}", { reason: tw(d.filedError) || t("unknown reason") })
+        : !composer ? t("Reaction sent")
+        : d.followup === false ? t("Sent, but the reminder could not be set")
+        : t("Sent")
     );
     // The copy is filed by now, so Sent and its counts are already stale.
     refreshAll();
@@ -10255,7 +10261,7 @@ async function renderSenderWarning(m) {
   const found = senderWarningsFor(m);
   senderWarned = found.length > 0;
   $("#rWarnText").innerHTML = found.map((w) => `<p>${esc(w.text)}</p>`).join("") +
-    (found.length ? `<p><b>Be careful with links and attachments in this message.</b></p>` : "");
+    (found.length ? `<p><b>${t("Be careful with links and attachments in this message.")}</b></p>` : "");
   $("#rWarn").hidden = !found.length;
   senderChecked = true;
   syncReactButton();
@@ -10280,7 +10286,8 @@ function replyParticipants(opts) {
   const m = [typeof current !== "undefined" && current && current.message, ...messages].find((x) => x && x.id === opts.reply);
   if (m) for (const a of [m.from_email, ...addressesIn(m.to_line), ...addressesIn(m.cc_line)]) if (a) set.add(String(a).toLowerCase());
   // What a reply opens with is, by construction, what was already on it.
-  if (/^Reply/.test(opts.title || "")) for (const a of [...addressesIn(opts.to), ...addressesIn(opts.cc)]) set.add(a);
+  // Read off the composer's title, which may already be in the interface language.
+  if (/^Reply/.test(opts.title || "") || [t("Reply"), t("Reply all")].includes(opts.title)) for (const a of [...addressesIn(opts.to), ...addressesIn(opts.cc)]) set.add(a);
   return set;
 }
 
@@ -10299,7 +10306,7 @@ function moveToBcc(outside) {
   }
   addrSet("#cBcc", "#cBccChips", [...split("#cBcc", "#cBccChips"), ...moved].join(", "));
   $("#cBccWrap").hidden = false;
-  markToggle("#cBccToggle", "#cBccWrap", "Bcc");
+  markToggle("#cBccToggle", "#cBccWrap", t("Bcc"));
   // Nobody left to put in To: the message goes to you, and everyone else is blind.
   if (!addrGet("#cTo", "#cToChips")) addrSet("#cTo", "#cToChips", composeAddress());
   queueDraftSave();
@@ -10327,12 +10334,15 @@ async function confirmRecipients() {
   const own = accounts.flatMap(identitiesOf);
   const flagged = G.lookalikes(everyone, contacts.map((c) => c.email), own).filter((l) => !replyKnown.has(l.address));
   if (flagged.length) {
-    const lines = flagged.slice(0, 4).map((l) => `${l.address} is one character from ${l.resembles}.`);
-    if (flagged.length > 4) lines.push(`And ${flagged.length - 4} more.`);
+    const lines = flagged.slice(0, 4).map((l) => t("{address} is one character from {resembles}.", { address: l.address, resembles: l.resembles }));
+    if (flagged.length > 4) lines.push(t("{n, plural, one {And # more.} other {And # more.}}", { n: flagged.length - 4 }));
+    const one = flagged.length === 1;
     const go = await ask(
-      flagged.length === 1 ? "Is this the right address?" : "Are these the right addresses?",
-      lines.join(NL) + NL + NL + `You have not written to ${flagged.length === 1 ? "it" : "them"} before. A typo sends a message to a stranger.`,
-      { ok: "Send anyway", cancel: "Go back" }
+      one ? t("Is this the right address?") : t("Are these the right addresses?"),
+      lines.join(NL) + NL + NL + (one
+        ? t("You have not written to it before. A typo sends a message to a stranger.")
+        : t("You have not written to them before. A typo sends a message to a stranger.")),
+      { ok: t("Send anyway"), cancel: t("Go back") }
     );
     if (!go) return null;
   }
@@ -10340,9 +10350,9 @@ async function confirmRecipients() {
   const ex = G.exposure([...to, ...cc], own);
   if (ex) {
     const r = await askChoice(
-      "Show everyone each other's address?",
-      `${ex.outside.length} people at ${ex.domains.length} different domains are on To and Cc. Each of them will see everyone else's address. Bcc keeps them private.`,
-      { ok: "Send anyway", alt: "Move them to Bcc", cancel: "Go back" }
+      t("Show everyone each other's address?"),
+      t("{people} people at {domains} different domains are on To and Cc. Each of them will see everyone else's address. Bcc keeps them private.", { people: ex.outside.length, domains: ex.domains.length }),
+      { ok: t("Send anyway"), alt: t("Move them to Bcc"), cancel: t("Go back") }
     );
     if (r === null) return null;
     if (r === "alt") {
@@ -10362,18 +10372,18 @@ function laterChoices(now = new Date()) {
     return d;
   };
   const out = [];
-  if (now.getHours() < 17) out.push(["This evening", at(0, 18)]);
-  out.push(["Tomorrow morning", at(1, 8)]);
+  if (now.getHours() < 17) out.push([t("This evening"), at(0, 18)]);
+  out.push([t("Tomorrow morning"), at(1, 8)]);
   // Monday, unless tomorrow already is.
   const toMonday = (8 - now.getDay()) % 7 || 7;
-  if (toMonday > 1) out.push(["Monday morning", at(toMonday, 8)]);
+  if (toMonday > 1) out.push([t("Monday morning"), at(toMonday, 8)]);
   return out;
 }
 const whenText = (ms) =>
   new Date(ms).toLocaleString(LOCALE, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 $("#cLater").addEventListener("click", () => {
   if (outgoingNow()) return;
-  if (filesPending()) return toast("Attachments are still loading — try again in a moment");
+  if (filesPending()) return toast(t("Attachments are still loading — try again in a moment"));
   if (!outgoing()) return;
   $("#laterList").innerHTML = laterChoices()
     .map(([label, d]) => `<button class="mi" data-at="${d.getTime()}"><span class="grow">${esc(label)}</span><span class="side">${esc(whenText(d))}</span></button>`)
@@ -10384,14 +10394,14 @@ $("#cLater").addEventListener("click", () => {
   openSheet("#laterSheet");
 });
 async function scheduleAt(ms) {
-  if (!(ms > Date.now() + 60_000)) { toast("Pick a time at least a minute from now"); return; }
+  if (!(ms > Date.now() + 60_000)) { toast(t("Pick a time at least a minute from now")); return; }
   closeOverlays();
   // Asked now, when it is scheduled, and not again when it later goes.
   const body = await confirmRecipients();
   if (!body) return;
   const d = await postSend(body, ms);
   if (d) {
-    toast(`Scheduled — ${whenText(d.scheduled)}`);
+    toast(t("Scheduled — {when}", { when: whenText(d.scheduled) }));
     loadOutbox();
   }
 }
@@ -10408,7 +10418,9 @@ async function loadOutbox() {
   outbox = res && res.ok ? (await res.json().catch(() => ({}))).outbox || [] : outbox;
   const btn = $("#openOutbox");
   btn.hidden = !outbox.length;
-  btn.textContent = `Scheduled (${outbox.length})${outbox.some((o) => o.last_error) ? " — one needs a look" : ""}`;
+  btn.textContent = outbox.some((o) => o.last_error)
+    ? t("Scheduled ({n}) — one needs a look", { n: outbox.length })
+    : t("Scheduled ({n})", { n: outbox.length });
   if ($("#outboxSheet").classList.contains("up")) renderOutbox();
 }
 function renderOutbox() {
@@ -10416,17 +10428,17 @@ function renderOutbox() {
     ? outbox
         .map(
           (o) => `<div class="obox">
-        <div class="grow"><b>${esc(o.subject || "(no subject)")}</b>
-          <span>To ${esc(o.to_line)} · ${esc(whenText(o.at))}</span>
-          ${o.last_error ? `<span class="bad">Not sent yet: ${esc(o.last_error)}</span>` : ""}</div>
+        <div class="grow"><b>${esc(o.subject || t("(no subject)"))}</b>
+          <span>${t("To {to} · {when}", { to: esc(o.to_line), when: esc(whenText(o.at)) })}</span>
+          ${o.last_error ? `<span class="bad">${t("Not sent yet: {reason}", { reason: esc(tw(o.last_error)) })}</span>` : ""}</div>
         <div class="acts">
-          <button class="ghost" data-osend="${o.id}">Send now</button>
-          <button class="ghost" data-oedit="${o.id}">Edit</button>
-          <button class="ghost danger" data-ocancel="${o.id}">Cancel</button>
+          <button class="ghost" data-osend="${o.id}">${t("Send now")}</button>
+          <button class="ghost" data-oedit="${o.id}">${t("Edit")}</button>
+          <button class="ghost danger" data-ocancel="${o.id}">${t("Cancel")}</button>
         </div></div>`
         )
         .join("")
-    : `<div class="sh-s">Nothing waiting to go.</div>`;
+    : `<div class="sh-s">${t("Nothing waiting to go.")}</div>`;
 }
 $("#openOutbox").addEventListener("click", () => {
   closeSheets();
@@ -10438,24 +10450,26 @@ $("#outboxList").addEventListener("click", async (e) => {
   if (!b) return;
   const id = b.dataset.osend || b.dataset.oedit || b.dataset.ocancel;
   const act = b.dataset.osend ? "send" : "cancel";
-  if (b.dataset.ocancel && !(await ask("Cancel this message?", "It will not be sent, and is not kept anywhere.", { ok: "Cancel it", danger: true }))) return;
+  if (b.dataset.ocancel && !(await ask(t("Cancel this message?"), t("It will not be sent, and is not kept anywhere."), { ok: t("Cancel it"), danger: true }))) return;
   // Asked, like Cancel beside it. A message that has gone cannot be taken
   // back, and one tap on the wrong one of three small buttons sent it.
   if (b.dataset.osend) {
     const o = outbox.find((x) => String(x.id) === id) || {};
-    const to = o.to_line ? `To ${o.to_line}. ` : "";
-    const when = o.at ? ` instead of ${whenText(o.at)}` : "";
-    if (!(await ask("Send this message now?", `${to}It goes straight away${when}, and cannot be taken back.`, { ok: "Send now" }))) return;
+    const to = o.to_line ? t("To {to}.", { to: o.to_line }) + " " : "";
+    const goes = o.at
+      ? t("It goes straight away instead of {when}, and cannot be taken back.", { when: whenText(o.at) })
+      : t("It goes straight away, and cannot be taken back.");
+    if (!(await ask(t("Send this message now?"), to + goes, { ok: t("Send now") }))) return;
   }
   b.disabled = true;
   const res = await api(`/api/outbox/${id}/${act}`, { method: "POST" }).catch(() => null);
   const d = res ? await res.json().catch(() => ({})) : {};
-  if (!res || !res.ok) { toast(d.error || "That didn't work"); b.disabled = false; return; }
+  if (!res || !res.ok) { toast(tw(d.error) || t("That didn't work")); b.disabled = false; return; }
   if (b.dataset.oedit && d.message) {
     const m = d.message;
     closeSheets();
     openCompose({
-      title: "Scheduled message",
+      title: t("Scheduled message"),
       account: m.account_id,
       from: m.from,
       to: m.to,
@@ -10475,9 +10489,9 @@ $("#outboxList").addEventListener("click", async (e) => {
     // one. Opened like any other message it counted as unchanged, and closing
     // it kept nothing: the message was then in no outbox and no Drafts.
     queueDraftSave();
-    toast("Taken out of the schedule — send it or schedule it again");
+    toast(t("Taken out of the schedule — send it or schedule it again"));
   } else {
-    toast(b.dataset.osend ? "Sent" : "Cancelled");
+    toast(b.dataset.osend ? t("Sent") : t("Cancelled"));
   }
   loadOutbox();
   refreshAll();

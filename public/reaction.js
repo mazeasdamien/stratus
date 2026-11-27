@@ -10,13 +10,17 @@
  * message being answered, exactly as for a typed reply.
  */
 
+import "./i18n.js";
+
+const { t } = globalThis.StratusI18n;
+
 export const REACTIONS = [
-  { emoji: "👍", name: "Thumbs up" },
-  { emoji: "❤️", name: "Heart" },
-  { emoji: "🎉", name: "Celebration" },
-  { emoji: "😂", name: "Laughing" },
-  { emoji: "😮", name: "Surprised" },
-  { emoji: "😢", name: "Sad" },
+  { emoji: "👍", name: t("Thumbs up") },
+  { emoji: "❤️", name: t("Heart") },
+  { emoji: "🎉", name: t("Celebration") },
+  { emoji: "😂", name: t("Laughing") },
+  { emoji: "😮", name: t("Surprised") },
+  { emoji: "😢", name: t("Sad") },
 ];
 
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -34,7 +38,7 @@ export function reactionMessage({ message, to, from = "", emoji }) {
   const subject = String(message.subject || "").trim();
   // The line says what it is, in words, for a reader whose client shows no
   // emoji or who has no idea why a thumb has arrived.
-  const line = subject ? `This is a reaction to “${subject}”.` : "This is a reaction to your message.";
+  const line = subject ? t("This is a reaction to “{subject}”.", { subject }) : t("This is a reaction to your message.");
   return {
     account_id: message.account_id,
     from: from || undefined,
