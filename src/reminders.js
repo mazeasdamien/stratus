@@ -72,18 +72,23 @@ async function move(env, event, arg, where = "1", binds = []) {
 export async function setReminder(env, { kind, ref, title = "", body = "", at }) {
   if (!kind || !ref || !Number.isFinite(at)) throw new Error("reminders: kind, ref and a numeric at are required");
   const now = Date.now();
-  // In an UPDATE the right-hand sides see the old row, so `at` below is the
-  // time it had before this call.
-  const rearm = "CASE WHEN excluded.at <> reminders.at AND excluded.at > ? THEN NULL ELSE";
+  const t = Math.round(at);
+  // Compared with base_at, the time the feature asked for last, and not with
+  // `at`, which a snooze moves. A feature that saves its event again with the
+  // same time would otherwise undo the snooze and ring at once. In an UPDATE
+  // the right-hand sides see the old row.
+  const moved = "excluded.base_at <> reminders.base_at";
+  const rearm = `CASE WHEN ${moved} AND excluded.base_at > ? THEN NULL ELSE`;
   await env.DB.prepare(
-    `INSERT INTO reminders (id, kind, ref, title, body, at, created_at) VALUES (?,?,?,?,?,?,?)
+    `INSERT INTO reminders (id, kind, ref, title, body, at, base_at, created_at) VALUES (?,?,?,?,?,?,?,?)
      ON CONFLICT(kind, ref) DO UPDATE SET
        title=excluded.title, body=excluded.body,
        fired_at=${rearm} reminders.fired_at END,
        dismissed_at=${rearm} reminders.dismissed_at END,
-       at=excluded.at`
+       at=CASE WHEN ${moved} THEN excluded.base_at ELSE reminders.at END,
+       base_at=excluded.base_at`
   )
-    .bind(crypto.randomUUID(), String(kind), String(ref), String(title), String(body), Math.round(at), now, now, now)
+    .bind(crypto.randomUUID(), String(kind), String(ref), String(title), String(body), t, t, now, now, now)
     .run();
 }
 

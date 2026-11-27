@@ -110,8 +110,11 @@ try {
   eq((await call("POST", `/api/reminders/${m1}/snooze`, { until })).status, 200, "snoozing a fired reminder works");
   eq((await listed()).reminders.map((r) => r.ref), ["t1", "e1"], "it leaves the list");
   eq((await call("POST", `/api/reminders/${m1}/snooze`, { until: until + MIN })).status, 409, "a reminder that is not waiting cannot be snoozed again");
+  // The feature saving its thing again, same time as before, as an edit to a
+  // meeting's title would.
+  await setReminder(env, { kind: "followup", ref: "m1", title: "Chase Camille", body: "No reply yet", at: due + 1000 });
   await cron();
-  eq(rings, 2, "a snoozed reminder does not ring early");
+  eq(rings, 2, "a snoozed reminder does not ring early, even set again unchanged");
   clock = until + 1000;
   await cron();
   eq(rings, 3, "it rings when the snooze is over");

@@ -207,8 +207,9 @@ export const SCHEMA = [
   ref          TEXT NOT NULL,                -- that feature's own id for the thing
   title        TEXT NOT NULL DEFAULT '',
   body         TEXT NOT NULL DEFAULT '',
-  at           INTEGER NOT NULL,             -- ms, when it is due
-  fired_at     INTEGER,                      -- ms the cron picked it up; NULL until then
+  at           INTEGER NOT NULL,             -- ms, when it rings: base_at, or later once snoozed
+  base_at      INTEGER NOT NULL,             -- ms, the time the feature asked for
+  fired_at    INTEGER,                      -- ms the cron picked it up; NULL until then
   dismissed_at INTEGER,                      -- ms the user dismissed it
   created_at   INTEGER NOT NULL,
   UNIQUE (kind, ref)
