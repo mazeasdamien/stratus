@@ -19,7 +19,13 @@ Optional: a custom domain (dashboard → Domains & Routes), an Anthropic key for
 
 ## Features
 
-Archive, move, star, snooze and search, written through to iCloud · drafts, scheduled send, undo send, aliases and Hide My Email · Claude: Fix, Improve, replies, thread summaries · invitations · remote images held back, one-click unsubscribe, blocked senders · PDF, `.eml`, zip, nightly backup · Web Push. Press `?` for the shortcuts.
+**Mail.** Archive, move, star, snooze, written through to iCloud · search with operators (`from:`, `has:attachment`, `is:unread`, `after:`, `"a phrase"`, `-word`; the `?` in the search box lists them) · named categories, pins, importance · follow-up flags with a reminder, and "remind me if nobody replies" · rules that sort mail as it arrives · drafts, scheduled send, undo send, aliases and Hide My Email, a signature per address · a warning before mail goes to a look-alike address, and on mail that poses as a well-known brand · emoji reactions · remote images held back, one-click unsubscribe, blocked senders · right-to-left mail, the files inside a `winmail.dat` · swipe actions you choose, drag to a folder.
+
+**Calendar, People, Tasks.** Day, week and month views with recurring events, reminders and read-only subscriptions to calendars on the web; invitations from your mail appear among them · an address book with contact cards · a to-do list, with tasks made from a message. These three live in your Worker's database, not at iCloud.
+
+**In and out.** `.eml` and `.mbox` for mail, `.ics` for calendars, `.vcf` for contacts · PDF, zip, nightly backup.
+
+**Also.** Claude: Fix, Improve, replies, thread summaries · Web Push · offline reading on the devices that turn it on (Settings → Offline). Press `?` for the shortcuts.
 
 ## How it works
 
