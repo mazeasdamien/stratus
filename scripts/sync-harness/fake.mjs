@@ -195,6 +195,8 @@ export class FakeImap {
     const ok = (t = "done") => send(`${tag} OK ${t}\r\n`);
     const no = (t = "no") => send(`${tag} NO ${t}\r\n`);
     const flagStr = (m) => [...m.flags].join(" ");
+    // A command the server answers NO to, whatever it is: `refuse` is a RegExp.
+    if (this.refuse?.test(cmd)) return no("[SERVERBUG] Internal error occurred");
     let m;
     if (/^LOGIN /.test(cmd)) return ok();
     if (cmd === "CAPABILITY") {

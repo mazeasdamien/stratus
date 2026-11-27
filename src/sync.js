@@ -13,6 +13,7 @@ import { IMAP_CAP, MAX_BODY_BYTES, folderNameFor, icloudPassword } from "./mailb
 import { attNames, flagAccount, forgetMessages, indexMessage, storeRows } from "./store.js";
 import { importanceFromHeaders } from "./importance.js";
 import { indexEvent } from "./ics.js";
+import { arrivals, sortArrivals } from "./sorting.js";
 import { bodyKey, defuse, hashHex, json } from "./util.js";
 
 /**
@@ -677,6 +678,7 @@ export async function syncIcloud(env, account, tally = {}) {
       }
 
       const rows = [];
+      const texts = new Map(); // pid → message text, for the rules
       // Sizes first, so an oversized message is listed from its headers rather
       // than jamming the folder behind a body that will never fit.
       const sizes = new Map(
@@ -770,9 +772,13 @@ export async function syncIcloud(env, account, tally = {}) {
           httpMetadata: { contentType: "application/json" },
         });
         // Indexed from the defused HTML, so what is searched is what you read.
-        await indexMessage(env, id, row, htmlToText(doc.html || ""));
+        const text = htmlToText(doc.html || "");
+        texts.set(row.pid, text);
+        await indexMessage(env, id, row, text);
         if (doc.calendar) await indexEvent(env, id, account.id, doc.calendar, row.subject);
       }
+      // Asked before the rows exist: mail new to the inbox is what rules act on.
+      const arrived = app === "inbox" && rows.length ? await arrivals(env, account.id, rows, last, texts) : [];
       if (rows.length) {
         await storeRows(env, account.id, rows);
         await env.DB.prepare(
@@ -782,6 +788,10 @@ export async function syncIcloud(env, account, tally = {}) {
           .run();
         stored += rows.length;
       }
+      // With the inbox still selected on this connection. Moved out or read, a
+      // message is no longer unread mail in the inbox by the time the cron
+      // compares the newest unread there (src/index.js), so it rings nothing.
+      if (arrived.length) await sortArrivals(env, account, im, boxes, arrived);
 
       folders[mb.name] = {
         ...carry,

@@ -22,6 +22,9 @@ if (!process.argv[2]) {
   for (const mode of MODES) {
     const r = spawnSync(process.execPath, ["--no-warnings", self, mode], { stdio: "inherit" });
     if (r.status !== 0) failed++;
+    // Rules (src/sorting.js) have their own script, in the same mode.
+    const rules = spawnSync(process.execPath, ["--no-warnings", fileURLToPath(new URL("./rules.mjs", import.meta.url)), mode], { stdio: "inherit" });
+    if (rules.status !== 0) failed++;
   }
   console.log(failed ? `✗ sync : ${failed} mode(s) en échec sur ${MODES.length}` : `✓ sync : ${MODES.length} modes IMAP passés`);
   process.exit(failed ? 1 : 0);
