@@ -10624,7 +10624,7 @@ async function toggleThread(key) {
   }
   const res = await api(`/api/messages?thread=${encodeURIComponent(key)}`).catch(() => null);
   if (seq !== threadSeq) return;
-  if (!res || !res.ok) return toast("Could not open this conversation");
+  if (!res || !res.ok) return toast(t("Could not open this conversation"));
   const rows = (await res.json().catch(() => ({}))).messages || [];
   if (seq !== threadSeq) return;
   threadRows = rows;
@@ -10648,11 +10648,11 @@ async function dropDraftRow(id, n = 1, key = "") {
   // newest of eleven and leave ten is not an offer.
   const many = n > 1 && !!key;
   const yes = await ask(
-    many ? `Delete these ${n} drafts?` : "Delete this draft?",
+    many ? t("Delete these {n} drafts?", { n }) : t("Delete this draft?"),
     many
-      ? "Every copy in this conversation goes, here and at iCloud. This cannot be undone, and nothing is sent."
-      : "It is removed here and at iCloud. This cannot be undone.",
-    { ok: "Delete", danger: true }
+      ? t("Every copy in this conversation goes, here and at iCloud. This cannot be undone, and nothing is sent.")
+      : t("It is removed here and at iCloud. This cannot be undone."),
+    { ok: t("Delete"), danger: true }
   );
   if (!yes) return;
   // One login for the whole pile rather than one per copy.
@@ -10664,7 +10664,7 @@ async function dropDraftRow(id, n = 1, key = "") {
       }).catch(() => null)
     : await api(`/api/messages/${id}/purge`, { method: "POST" }).catch(() => null);
   const d = res ? await res.json().catch(() => ({})) : {};
-  if (!res || !res.ok) return toast(d.error || "Could not delete this draft");
+  if (!res || !res.ok) return toast(tw(d.error) || t("Could not delete this draft"));
 
   // The composer may be holding the very draft that no longer exists, and
   // closing it runs the save — which would write it straight back, under a new
@@ -10675,7 +10675,7 @@ async function dropDraftRow(id, n = 1, key = "") {
     draftSession++;
     if (document.body.classList.contains("composing")) closeSheets();
   }
-  toast(many ? `${n} drafts deleted` : "Draft deleted");
+  toast(many ? t("{n} drafts deleted", { n }) : t("Draft deleted"));
   if (many) { openThread = ""; threadRows = []; }
   refreshAll();
   refreshCounts();
@@ -10685,13 +10685,13 @@ async function dropDraftRow(id, n = 1, key = "") {
 async function resumeDraft(id) {
   closeSheets();
   const res = await api(`/api/messages/${id}`).catch(() => null);
-  if (!res || !res.ok) return toast("Could not open this draft");
+  if (!res || !res.ok) return toast(t("Could not open this draft"));
   const d = await res.json();
   /** Files on the draft at Apple that this composer will not be holding. */
   const carried = (d.body.attachments || []).length;
 
   openCompose({
-    title: "Draft",
+    title: t("Draft"),
     account: d.message.account_id,
     from: d.message.from_email,
     to: d.message.to_line || "",
@@ -10713,14 +10713,14 @@ async function resumeDraft(id) {
   if (d.message.bcc_line) {
     addrSet("#cBcc", "#cBccChips", d.message.bcc_line);
     $("#cBccWrap").hidden = false;
-    markToggle("#cBccToggle", "#cBccWrap", "Bcc");
+    markToggle("#cBccToggle", "#cBccWrap", t("Bcc"));
   }
 
   // Said rather than hidden: the files are still on the draft at Apple, but
   // they are not in this composer, and sending from here would quietly leave
   // them behind.
   const n = carried;
-  if (n) toast(`${n} attachment${n > 1 ? "s" : ""} not carried over — attach again before sending. The original draft keeps ${n > 1 ? "them" : "it"}.`);
+  if (n) toast(t("{n, plural, one {# attachment not carried over — attach again before sending. The original draft keeps it.} other {# attachments not carried over — attach again before sending. The original draft keeps them.}}", { n }));
 }
 
 async function refreshAll(spin = false) {
@@ -10780,9 +10780,9 @@ async function syncNow() {
     await refreshAll();
     const got = answers.reduce((n, d) => n + (d.fetched || 0), 0);
     const failed = answers.find((d) => !d.ok);
-    if (failed) toast(failed.error || "Could not reach iCloud");
-    else if (!got && answers.some((d) => d.busy)) toast("Already syncing — new mail will appear in a moment");
-    else toast(got ? `${got} new message${got > 1 ? "s" : ""}` : "Up to date");
+    if (failed) toast(tw(failed.error) || t("Could not reach iCloud"));
+    else if (!got && answers.some((d) => d.busy)) toast(t("Already syncing — new mail will appear in a moment"));
+    else toast(got ? t("{n, plural, one {# new message} other {# new messages}}", { n: got }) : t("Up to date"));
   } finally {
     btn.classList.remove("busy");
   }
@@ -11039,9 +11039,9 @@ $("#idSave").addEventListener("click", async (e) => {
   }).catch(() => null);
   btn.disabled = false;
   const d = res ? await res.json().catch(() => ({})) : {};
-  if (!res || !res.ok) { toast(d.error || "Could not save"); return; }
+  if (!res || !res.ok) { toast(tw(d.error) || t("Could not save")); return; }
   $("#idAliases").value = (d.aliases || []).join(", ");
-  toast(d.aliases?.length ? `Saved — ${d.aliases.length} other address${d.aliases.length > 1 ? "es" : ""}` : "Saved");
+  toast(d.aliases?.length ? t("{n, plural, one {Saved — # other address} other {Saved — # other addresses}}", { n: d.aliases.length }) : t("Saved"));
   loadAccounts();
 });
 $("#openKeys").addEventListener("click", () => {
@@ -11095,14 +11095,21 @@ function inviteWhen(inv) {
   if (inv.start.allDay) {
     // An all-day DTEND is exclusive: a one-day event ends the next midnight.
     const last = e ? new Date(e.getTime() - 86400_000) : null;
-    return last && !sameDay(last, s) ? `${day(s)} – ${day(last)}` : `${day(s)}, all day`;
+    return last && !sameDay(last, s) ? `${day(s)} – ${day(last)}` : t("{day}, all day", { day: day(s) });
   }
-  const t = (d) => d.toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit", ...zone });
-  if (!e) return `${day(s)}, ${t(s)}`;
+  const hm = (d) => d.toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit", ...zone });
+  if (!e) return `${day(s)}, ${hm(s)}`;
   return sameDay(e, s)
-    ? `${day(s)}, ${t(s)} – ${t(e)}`
-    : `${day(s)} ${t(s)} – ${day(e, { day: "numeric", month: "short" })} ${t(e)}`;
+    ? `${day(s)}, ${hm(s)} – ${hm(e)}`
+    : `${day(s)} ${hm(s)} – ${day(e, { day: "numeric", month: "short" })} ${hm(e)}`;
 }
+/** What an attendee's answer reads as, by its PARTSTAT. */
+const INVITE_REPLIED = {
+  ACCEPTED: (name) => t("{name} accepted", { name }),
+  TENTATIVE: (name) => t("{name} might come", { name }),
+  DECLINED: (name) => t("{name} declined", { name }),
+  other: (name) => t("{name} answered", { name }),
+};
 function renderInvite(cur) {
   const box = $("#rInvite");
   const inv = cur && cur.invite;
@@ -11114,28 +11121,28 @@ function renderInvite(cur) {
   if (inv.method === "REQUEST") {
     const shown = rsvpShown(m.id, cur.rsvp);
     actions = ["accepted", "tentative", "declined"]
-      .map((s) => `<button class="ghost" data-rsvp="${s}" aria-pressed="${shown === s}">${{ accepted: "Accept", tentative: "Maybe", declined: "Decline" }[s]}</button>`)
+      .map((s) => `<button class="ghost" data-rsvp="${s}" aria-pressed="${shown === s}">${{ accepted: t("Accept"), tentative: t("Maybe"), declined: t("Decline") }[s]}</button>`)
       .join("");
   }
-  actions += `<button class="ghost" data-cal-add>Add to calendar</button>`;
+  actions += `<button class="ghost" data-cal-add>${t("Add to calendar")}</button>`;
   if (ics >= 0) {
-    actions += `<a class="ghost" href="/api/messages/${encodeURIComponent(m.id)}/attachment/${ics}" download="invite.ics">Download .ics</a>`;
+    actions += `<a class="ghost" href="/api/messages/${encodeURIComponent(m.id)}/attachment/${ics}" download="invite.ics">${t("Download .ics")}</a>`;
   }
   const join = meetingLink(inv.url);
   if (join) {
-    actions += `<a class="ghost" href="${esc(join.href)}" target="_blank" rel="noopener noreferrer">Join meeting · ${esc(join.host)}</a>`;
+    actions += `<a class="ghost" href="${esc(join.href)}" target="_blank" rel="noopener noreferrer">${t("Join meeting · {host}", { host: esc(join.host) })}</a>`;
   }
   // Answers to your own invitations arrive as METHOD:REPLY: say who said what.
   const replied =
     inv.method === "REPLY" && inv.attendees.length
-      ? `${inv.attendees[0].name || inv.attendees[0].email} ${({ ACCEPTED: "accepted", TENTATIVE: "might come", DECLINED: "declined" })[inv.attendees[0].partstat] || "answered"}`
+      ? (INVITE_REPLIED[inv.attendees[0].partstat] || INVITE_REPLIED.other)(inv.attendees[0].name || inv.attendees[0].email)
       : "";
   box.classList.toggle("cancelled", inv.method === "CANCEL" || inv.status === "CANCELLED");
   box.innerHTML =
-    `<div class="it">${inv.method === "CANCEL" ? "Cancelled: " : ""}${esc(inv.summary || m.subject || "Invitation")}</div>` +
+    `<div class="it">${inv.method === "CANCEL" ? t("Cancelled: {title}", { title: esc(inv.summary || m.subject || t("Invitation")) }) : esc(inv.summary || m.subject || t("Invitation"))}</div>` +
     `<div class="iw">${esc(inviteWhen(inv))}</div>` +
     (inv.location ? `<div class="im">${esc(inv.location)}</div>` : "") +
-    (who ? `<div class="im">Organised by ${esc(who)}</div>` : "") +
+    (who ? `<div class="im">${t("Organised by {name}", { name: esc(who) })}</div>` : "") +
     (replied ? `<div class="im">${esc(replied)}</div>` : "") +
     (actions ? `<div class="ia">${actions}</div>` : "");
   box.hidden = false;
@@ -11155,11 +11162,11 @@ function renderInvite(cur) {
  * and then Decline sends Decline, once.
  */
 const pendingRsvp = new Map(); // message id → { status, timer }
-const RSVP_DOING = { accepted: "Accepting", tentative: "Answering maybe", declined: "Declining" };
+const RSVP_DOING = { accepted: t("Accepting"), tentative: t("Answering maybe"), declined: t("Declining") };
 const RSVP_DONE = {
-  accepted: "Accepted — the organiser has been told",
-  tentative: "Answered maybe",
-  declined: "Declined — the organiser has been told",
+  accepted: t("Accepted — the organiser has been told"),
+  tentative: t("Answered maybe"),
+  declined: t("Declined — the organiser has been told"),
 };
 /** The answer to light up: the one about to go, or else the one that went. */
 const rsvpShown = (id, stored) => (pendingRsvp.has(id) ? pendingRsvp.get(id).status : stored || "");
@@ -11182,7 +11189,7 @@ function answerInvite(id, status) {
     clearTimeout(mine.timer);
     pendingRsvp.delete(id);
     paintRsvp(id);
-    toast("Not sent — the organiser has not been told");
+    toast(t("Not sent — the organiser has not been told"));
   });
 }
 async function sendRsvp(id, status) {
@@ -11201,7 +11208,7 @@ async function sendRsvp(id, status) {
   // Repainted either way: on a failure the button goes back to what was
   // last really sent.
   paintRsvp(id);
-  toast(res && res.ok ? RSVP_DONE[status] : d.error || "Could not send the answer");
+  toast(res && res.ok ? RSVP_DONE[status] : tw(d.error) || t("Could not send the answer"));
 }
 addEventListener("beforeunload", (e) => {
   if (pendingRsvp.size) e.preventDefault();
@@ -11290,7 +11297,7 @@ function switchTab(id) {
 
 registerView({
   id: "mail",
-  label: "Mail",
+  label: t("Mail"),
   icon: '<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
   pane: "#list",
   search: true,
@@ -11298,7 +11305,7 @@ registerView({
 });
 registerView({
   id: "timeline",
-  label: "Calendar",
+  label: t("Calendar"),
   icon: '<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
   pane: "#timelineView",
   dot: true,
@@ -11325,7 +11332,7 @@ $("#viewTabs").addEventListener("keydown", (e) => {
 });
 
 async function loadTimeline() {
-  if (currentTab === "timeline") $("#hmeta").textContent = "Loading meetings…";
+  if (currentTab === "timeline") $("#hmeta").textContent = t("Loading meetings…");
   const res = await api("/api/timeline").catch(() => null);
   const d = res && res.ok ? await res.json().catch(() => null) : null;
   // No answer is not an answer of "none". It used to empty the list, so a
@@ -11352,16 +11359,16 @@ function eventDayLabel(start) {
     ? new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()).getTime()
     : new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   const diff = Math.round((targetDay - today) / 86400_000);
-  if (diff === 0) return "Today";
-  if (diff === 1) return "Tomorrow";
-  if (diff === -1) return "Yesterday";
+  if (diff === 0) return t("Today");
+  if (diff === 1) return t("Tomorrow");
+  if (diff === -1) return t("Yesterday");
   return d.toLocaleDateString(LOCALE, { weekday: "long", day: "numeric", month: "long", ...whenZone(start) });
 }
 
 /** Draws the calendar, which now holds what this tab used to list; the dot is still the timeline's. */
 function renderTimeline() {
   if (!$("#timelineView")) return;
-  $("#timelineDot").hidden = !timelineEvents.some((e) => eventDayLabel(e.start) === "Today");
+  $("#timelineDot").hidden = !timelineEvents.some((e) => eventDayLabel(e.start) === t("Today"));
   calRender();
 }
 
@@ -11371,14 +11378,14 @@ $("#rSummarize").addEventListener("click", async () => {
   if (!current) return;
   const id = current.message.id;
   summaryFor = id;
-  $("#rSummaryText").textContent = "Reading the conversation…";
+  $("#rSummaryText").textContent = t("Reading the conversation…");
   $("#rSummary").hidden = false;
   const res = await api(`/api/messages/${id}/summary`, { method: "POST" }).catch(() => null);
   const d = res ? await res.json().catch(() => ({})) : {};
   if (!current || current.message.id !== id) return; // moved on while it was thinking
   if (!res || !res.ok) {
     $("#rSummary").hidden = true;
-    toast(d.error || "Could not summarize");
+    toast(tw(d.error) || t("Could not summarize"));
     return;
   }
   // Text, never markup: this came from a model reading a stranger's mail.
@@ -11401,7 +11408,7 @@ $("#rSnooze").addEventListener("click", () => {
 });
 async function snoozeCurrent(until) {
   if (!current) return;
-  if (!(until > Date.now() + 60_000)) { toast("Pick a time at least a minute from now"); return; }
+  if (!(until > Date.now() + 60_000)) { toast(t("Pick a time at least a minute from now")); return; }
   closeSheets();
   const id = current.message.id;
   const at = messages.findIndex((m) => m.id === id);
@@ -11417,13 +11424,13 @@ async function snoozeCurrent(until) {
   }).catch(() => null);
   const d = res ? await res.json().catch(() => ({})) : {};
   if (!res || !res.ok) {
-    toast(d.error || "Could not snooze");
+    toast(tw(d.error) || t("Could not snooze"));
     loadList();
     return;
   }
   // Undo is a move back to where it was, which also lifts the snooze: the
   // wake-up only acts on a message still sitting where snoozing put it.
-  toast(`Snoozed until ${whenText(d.until)}`, async () => {
+  toast(t("Snoozed until {when}", { when: whenText(d.until) }), async () => {
     await fileMessage(id, d.from || "inbox");
     await Promise.all([loadList(), refreshCounts()]);
   });
@@ -11445,7 +11452,7 @@ $("#rEml").addEventListener("click", () => {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  toast("Downloading the original message…");
+  toast(t("Downloading the original message…"));
 });
 
 /* ── reader overflow ──
@@ -11463,7 +11470,7 @@ function renderMoreSheet() {
     if (!b || b.hidden) return "";
     const label = b.getAttribute("aria-label") || (b.querySelector(".lbl") || {}).textContent || id;
     return `<button class="mi" data-more="${id}"><span class="grow">${esc(String(label).trim())}</span></button>`;
-  }).join("") || `<div class="sh-s">Nothing else for this message.</div>`;
+  }).join("") || `<div class="sh-s">${t("Nothing else for this message.")}</div>`;
 }
 $("#rMore").addEventListener("click", () => {
   renderMoreSheet();
@@ -11491,7 +11498,7 @@ function addrPaint(inputSel, chipsSel, list) {
     const bad = !looksAddr(a);
     return `<span class="chip${bad ? " bad" : ""}" data-addr="${esc(a)}">
       <span class="nm">${esc(a)}</span>
-      <button class="x" type="button" aria-label="Remove ${esc(a)}">&times;</button>
+      <button class="x" type="button" aria-label="${t("Remove {address}", { address: esc(a) })}">&times;</button>
     </span>`;
   }).join("");
 }
@@ -11566,7 +11573,7 @@ const PEOPLE_ICON = '<circle cx="9" cy="8" r="3.4"/><path d="M2.8 20c.6-3.5 3.1-
 $("#main").append($("#peopleView"));
 
 const personName = (c) =>
-  c.name || c.org || (c.emails[0] && c.emails[0].value) || (c.phones[0] && c.phones[0].value) || "No name";
+  c.name || c.org || (c.emails[0] && c.emails[0].value) || (c.phones[0] && c.phones[0].value) || t("No name");
 const personSort = (c) => personName(c).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 const personLetter = (c) => {
   const ch = personSort(c)[0] || "";
@@ -11615,21 +11622,21 @@ function renderPeople() {
   if (currentTab === "people") {
     $("#hmeta").textContent =
       peopleState === "failed" && !people.length
-        ? "People · could not be loaded"
-        : `People · ${people.length} ${people.length === 1 ? "contact" : "contacts"}`;
+        ? t("People · could not be loaded")
+        : t("{n, plural, one {People · # contact} other {People · # contacts}}", { n: people.length });
   }
   const list = $("#ppList");
   if (!people.length) {
     list.innerHTML =
       peopleState === "idle"
-        ? `<div class="pp-empty">Loading…</div>`
+        ? `<div class="pp-empty">${t("Loading…")}</div>`
         : peopleState === "failed"
-        ? `<div class="pp-empty"><b>Could not load your contacts</b>The server did not answer.<button class="ghost" data-pp-retry>Try again</button></div>`
-        : `<div class="pp-empty"><b>No contacts yet</b>Add someone with the + above, bring a .vcf file in with Import, or add a sender from a message you are reading.</div>`;
+        ? `<div class="pp-empty"><b>${t("Could not load your contacts")}</b>${t("The server did not answer.")}<button class="ghost" data-pp-retry>${t("Try again")}</button></div>`
+        : `<div class="pp-empty"><b>${t("No contacts yet")}</b>${t("Add someone with the + above, bring a .vcf file in with Import, or add a sender from a message you are reading.")}</div>`;
     return;
   }
   if (!shown.length) {
-    list.innerHTML = `<div class="pp-empty"><b>No one matches</b>Nothing here goes by “${esc(term)}”.</div>`;
+    list.innerHTML = `<div class="pp-empty"><b>${t("No one matches")}</b>${t("Nothing here goes by “{term}”.", { term: esc(term) })}</div>`;
     return;
   }
   let html = "";
@@ -11647,12 +11654,12 @@ function renderPeople() {
       `<span class="pp-tx"><span class="pp-nm tr">${esc(personName(c))}</span>${sub ? `<span class="pp-ln tr">${esc(sub)}</span>` : ""}</span>` +
       `</button></div>`;
   }
-  list.innerHTML = `<div role="list" aria-label="People">${html}</div>`;
+  list.innerHTML = `<div role="list" aria-label="${t("People")}">${html}</div>`;
 }
 
 const PERSON_TYPES = {
-  emails: [["", "Email"], ["work", "Work"], ["home", "Home"], ["other", "Other"]],
-  phones: [["", "Phone"], ["cell", "Mobile"], ["work", "Work"], ["home", "Home"], ["fax", "Fax"], ["other", "Other"]],
+  emails: [["", t("Email")], ["work", t("Work")], ["home", t("Home")], ["other", t("Other")]],
+  phones: [["", t("Phone")], ["cell", t("Mobile")], ["work", t("Work")], ["home", t("Home")], ["fax", t("Fax")], ["other", t("Other")]],
 };
 const personTypeLabel = (kind, t) => (PERSON_TYPES[kind].find(([v]) => v === t) || [t, t])[1];
 
@@ -11671,17 +11678,17 @@ function renderPerson() {
   const c = personCard(personOpen);
   if (!c) { closePerson(); return; }
   const sec = (rows) => (rows ? `<div class="pc-sec">${rows}</div>` : "");
-  const kind = (list, t) => (t ? personTypeLabel(list, t) : list === "emails" ? "email" : "phone");
+  const kind = (list, type) => (type ? personTypeLabel(list, type) : list === "emails" ? t("email") : t("phone"));
   // Tapping an address writes to it. With several, each one can also be
   // searched on its own, because the search takes one sender at a time and the
   // big button below only knows the first.
   const emailRows = c.emails
     .map(
       (e) =>
-        `<div class="pc-line pc-multi"><button class="pc-wr" data-write="${esc(e.value)}" aria-label="Write to ${esc(e.value)}">` +
+        `<div class="pc-line pc-multi"><button class="pc-wr" data-write="${esc(e.value)}" aria-label="${t("Write to {address}", { address: esc(e.value) })}">` +
         `<span class="pc-k">${esc(kind("emails", e.type))}</span><span class="pc-v">${esc(e.value)}</span>${PC_WRITE}</button>` +
         (c.emails.length > 1
-          ? `<button class="pc-find" data-find="${esc(e.value)}" aria-label="Show mail from ${esc(e.value)}" title="Mail from this address">${PC_FIND}</button>`
+          ? `<button class="pc-find" data-find="${esc(e.value)}" aria-label="${t("Show mail from {address}", { address: esc(e.value) })}" title="${t("Mail from this address")}">${PC_FIND}</button>`
           : "") +
         `</div>`
     )
@@ -11689,7 +11696,7 @@ function renderPerson() {
   const phones = c.phones
     .map(
       (p) =>
-        `<a class="pc-line" href="tel:${esc(p.value.replace(/[^\d+*#]/g, ""))}" aria-label="Call ${esc(p.value)}">` +
+        `<a class="pc-line" href="tel:${esc(p.value.replace(/[^\d+*#]/g, ""))}" aria-label="${t("Call {number}", { number: esc(p.value) })}">` +
         `<span class="pc-k">${esc(kind("phones", p.type))}</span><span class="pc-v">${esc(p.value)}</span></a>`
     )
     .join("");
@@ -11700,13 +11707,13 @@ function renderPerson() {
     ([c.title, c.org].filter(Boolean).join(" · ") ? `<div class="pc-org">${esc([c.title, c.org].filter(Boolean).join(" · "))}</div>` : "") +
     `</div>` +
     `<div class="pc-acts">` +
-    (c.emails.length ? `<button class="rbtn acc" data-pc="mail">Mail with this person</button>` : "") +
-    `<a class="rbtn" href="/api/contacts/${esc(c.id)}/export" download>Export .vcf</a>` +
-    `<button class="rbtn danger" data-pc="delete">Delete</button>` +
+    (c.emails.length ? `<button class="rbtn acc" data-pc="mail">${t("Mail with this person")}</button>` : "") +
+    `<a class="rbtn" href="/api/contacts/${esc(c.id)}/export" download>${t("Export .vcf")}</a>` +
+    `<button class="rbtn danger" data-pc="delete">${t("Delete")}</button>` +
     `</div>` +
     sec(emailRows) +
     sec(phones) +
-    sec(plain("address", c.address, "pre") + plain("birthday", c.birthday ? birthdayText(c.birthday) : "") + plain("notes", c.notes, "pre"));
+    sec(plain(t("address"), c.address, "pre") + plain(t("birthday"), c.birthday ? birthdayText(c.birthday) : "") + plain(t("notes"), c.notes, "pre"));
 }
 
 function showPerson(id) {
@@ -11727,7 +11734,7 @@ function closePerson() {
 
 registerView({
   id: "people",
-  label: "People",
+  label: t("People"),
   icon: PEOPLE_ICON,
   pane: "#peopleView",
   onShow: async () => {
@@ -11784,13 +11791,13 @@ $("#pcBody").addEventListener("click", async (e) => {
 
 async function deletePerson(c) {
   const name = personName(c);
-  if (!(await ask(`Delete ${name}?`, "The card is removed from People. Mail to and from them stays where it is.", { ok: "Delete", danger: true }))) return;
+  if (!(await ask(t("Delete {name}?", { name }), t("The card is removed from People. Mail to and from them stays where it is."), { ok: t("Delete"), danger: true }))) return;
   const res = await api(`/api/contacts/${c.id}`, { method: "DELETE" }).catch(() => null);
-  if (!res || !res.ok) { toast("Could not delete this contact"); return; }
+  if (!res || !res.ok) { toast(t("Could not delete this contact")); return; }
   people = people.filter((p) => p.id !== c.id);
   contacts = [];
   closePerson();
-  toast(`Deleted ${name}`, async () => {
+  toast(t("Deleted {name}", { name }), async () => {
     const { id, uid, created_at, updated_at, ...fields } = c;
     const back = await api("/api/contacts", {
       method: "POST",
@@ -11798,7 +11805,7 @@ async function deletePerson(c) {
       body: JSON.stringify(fields),
     }).catch(() => null);
     const d = back && back.ok ? await back.json().catch(() => null) : null;
-    if (!d) { toast("Could not bring it back"); return; }
+    if (!d) { toast(t("Could not bring it back")); return; }
     people.push(d.contact);
     sortPeople();
     contacts = [];
@@ -11816,18 +11823,18 @@ function addPersonRow(kind, item = {}) {
   const host = $(kind === "emails" ? "#peEmails" : "#pePhones");
   const row = document.createElement("div");
   row.className = "field pe-row";
-  const what = kind === "emails" ? "Email address" : "Phone number";
+  const mail = kind === "emails";
   row.innerHTML =
-    `<select class="pe-type" aria-label="${what} type">${optionList(kind, item.type || "")}</select>` +
-    `<input type="${kind === "emails" ? "email" : "tel"}" aria-label="${what}" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${kind === "emails" ? "name@example.com" : "+33 6 00 00 00 00"}" value="${esc(item.value || "")}">` +
-    `<button class="pe-x" type="button" aria-label="Remove this ${what.toLowerCase()}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>`;
+    `<select class="pe-type" aria-label="${mail ? t("Email address type") : t("Phone number type")}">${optionList(kind, item.type || "")}</select>` +
+    `<input type="${mail ? "email" : "tel"}" aria-label="${mail ? t("Email address") : t("Phone number")}" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${mail ? t("name@example.com") : "+33 6 00 00 00 00"}" value="${esc(item.value || "")}">` +
+    `<button class="pe-x" type="button" aria-label="${mail ? t("Remove this email address") : t("Remove this phone number")}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>`;
   host.append(row);
   return row;
 }
 
 function openPersonEditor(c) {
   personEdit = c;
-  $("#peTitle").textContent = c.id ? "Edit contact" : "New contact";
+  $("#peTitle").textContent = c.id ? t("Edit contact") : t("New contact");
   $("#peName").value = c.name || "";
   $("#peOrg").value = c.org || "";
   $("#peJob").value = c.title || "";
@@ -11891,7 +11898,7 @@ $("#peSave").addEventListener("click", async () => {
     $("#peErr").classList.add("show");
     $("#peSave").disabled = false;
   };
-  if (body.birthday && !/^(\d{4}-\d{2}-\d{2}|--\d{2}-\d{2})$/.test(body.birthday)) { fail("Write the birthday as year-month-day, like 1990-04-23."); return; }
+  if (body.birthday && !/^(\d{4}-\d{2}-\d{2}|--\d{2}-\d{2})$/.test(body.birthday)) { fail(t("Write the birthday as year-month-day, like 1990-04-23.")); return; }
   $("#peSave").disabled = true;
   $("#peErr").classList.remove("show");
   const res = await api(base.id ? `/api/contacts/${base.id}` : "/api/contacts", {
@@ -11900,7 +11907,7 @@ $("#peSave").addEventListener("click", async () => {
     body: JSON.stringify(body),
   }).catch(() => null);
   const d = res ? await res.json().catch(() => ({})) : {};
-  if (!res || !res.ok) { fail(d.error || "Could not save this contact."); return; }
+  if (!res || !res.ok) { fail(tw(d.error) || t("Could not save this contact.")); return; }
   people = people.filter((p) => p.id !== d.contact.id);
   people.push(d.contact);
   sortPeople();
@@ -11908,7 +11915,7 @@ $("#peSave").addEventListener("click", async () => {
   contacts = [];
   closeSheets();
   if (currentTab === "people") showPerson(d.contact.id);
-  toast(base.id ? "Saved" : `Added ${personName(d.contact)}`);
+  toast(base.id ? t("Saved") : t("Added {name}", { name: personName(d.contact) }));
 });
 
 /* import and export */
@@ -11923,20 +11930,20 @@ $("#ppFile").addEventListener("change", async () => {
   const file = $("#ppFile").files[0];
   $("#ppFile").value = "";
   if (!file) return;
-  if (file.size > 5 * 1024 * 1024) { peopleResult(`${file.name} is larger than 5 MB, which is more than an address book needs.`, true); return; }
-  peopleResult(`Importing ${file.name}…`);
+  if (file.size > 5 * 1024 * 1024) { peopleResult(t("{file} is larger than 5 MB, which is more than an address book needs.", { file: file.name }), true); return; }
+  peopleResult(t("Importing {file}…", { file: file.name }));
   // The file goes as it is, bytes and all: read as text here, a card written in
   // Windows-1252 would already have lost its accents.
   const res = await api("/api/contacts/import", { method: "POST", headers: { "Content-Type": "text/vcard" }, body: file }).catch(() => null);
   const d = res ? await res.json().catch(() => ({})) : {};
-  if (!res || !res.ok) { peopleResult(`${file.name}: ${d.error || "could not be imported."}`, true); return; }
+  if (!res || !res.ok) { peopleResult(d.error ? `${file.name}: ${tw(d.error)}` : t("{file}: could not be imported.", { file: file.name }), true); return; }
   contacts = [];
   await loadPeople(true);
   renderPeople();
-  if (!d.found) { peopleResult(`${file.name}: no contacts found in it.`, true); return; }
-  const n = (k, one) => `${d[k]} ${one}`;
-  peopleResult(`${file.name}: ${n("added", "added")}, ${n("updated", "updated")}, ${n("skipped", "skipped")}.`);
-  say(`Imported: ${d.added} added, ${d.updated} updated, ${d.skipped} skipped`);
+  if (!d.found) { peopleResult(t("{file}: no contacts found in it.", { file: file.name }), true); return; }
+  const counts = { added: d.added, updated: d.updated, skipped: d.skipped };
+  peopleResult(t("{file}: {added, plural, one {# added} other {# added}}, {updated, plural, one {# updated} other {# updated}}, {skipped, plural, one {# skipped} other {# skipped}}.", { file: file.name, ...counts }));
+  say(t("Imported: {added, plural, one {# added} other {# added}}, {updated, plural, one {# updated} other {# updated}}, {skipped, plural, one {# skipped} other {# skipped}}", counts));
 });
 
 /** The sender sheet's button: add this sender as a card, or open the one they have. */
@@ -12015,11 +12022,11 @@ addEventListener("keydown", (e) => {
  * same everywhere. `refused: null` is an action that is never taken.
  */
 const SWIPE_ACTIONS = {
-  none: { label: "Nothing", refused: null },
-  archive: { label: "Archive", refused: ["archive", "drafts", "sent", "trash", "spam"] },
-  delete: { label: "Delete", refused: ["drafts", "trash", "spam"] },
-  read: { label: "Mark read", refused: [] },
-  star: { label: "Star", refused: [] },
+  none: { label: t("Nothing"), refused: null },
+  archive: { label: t("Archive"), refused: ["archive", "drafts", "sent", "trash", "spam"] },
+  delete: { label: t("Delete"), refused: ["drafts", "trash", "spam"] },
+  read: { label: t("Mark read"), refused: [] },
+  star: { label: t("Star"), refused: [] },
 };
 
 /** Whether an action may be taken on a row in this folder. */
@@ -12040,18 +12047,18 @@ function swipeFace(action, m) {
   const svg = (d) =>
     `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
   if (action === "delete")
-    return { label: "Delete", icon: svg('<path d="M4 7h16"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>') };
+    return { label: t("Delete"), icon: svg('<path d="M4 7h16"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>') };
   if (action === "star") {
     const on = !!Number(m.starred);
-    return { label: on ? "Unstar" : "Star", icon: svg(`<path d="m12 3.6 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.8l5.9-.9Z"${on ? ' fill="currentColor"' : ""}/>`) };
+    return { label: on ? t("Unstar") : t("Star"), icon: svg(`<path d="m12 3.6 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.8l5.9-.9Z"${on ? ' fill="currentColor"' : ""}/>`) };
   }
   if (action === "read") {
     const unread = Number(m.unread) > 0;
     return unread
-      ? { label: "Mark read", icon: svg('<path d="M3 9.5 12 4l9 5.5V19a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/><path d="m3.5 10 8.5 6 8.5-6"/>') }
-      : { label: "Mark unread", icon: svg('<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m3.5 7.5 8.5 6 8.5-6"/>') };
+      ? { label: t("Mark read"), icon: svg('<path d="M3 9.5 12 4l9 5.5V19a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/><path d="m3.5 10 8.5 6 8.5-6"/>') }
+      : { label: t("Mark unread"), icon: svg('<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m3.5 7.5 8.5 6 8.5-6"/>') };
   }
-  return { label: "Archive", icon: svg('<rect x="3" y="4" width="18" height="5" rx="1.4"/><path d="M5 9v9.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V9"/><path d="M10 13h4"/>') };
+  return { label: t("Archive"), icon: svg('<rect x="3" y="4" width="18" height="5" rx="1.4"/><path d="M5 9v9.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V9"/><path d="M10 13h4"/>') };
 }
 
 /** Moves a row's conversation or message, with the Undo that files it back. */
@@ -12115,15 +12122,15 @@ async function swipeFlag(m, patch, said, oops) {
 
 /** Does what a committed swipe was dragged to do. */
 function swipeRun(action, m) {
-  if (action === "archive") return swipeFile(m, "archive", "Archived");
-  if (action === "delete") return swipeFile(m, "trash", "Deleted");
+  if (action === "archive") return swipeFile(m, "archive", t("Archived"));
+  if (action === "delete") return swipeFile(m, "trash", t("Deleted"));
   if (action === "star") {
     const on = !Number(m.starred);
-    return swipeFlag(m, { starred: on }, on ? "Starred" : "Unstarred", on ? "Could not star this message" : "Could not remove the star");
+    return swipeFlag(m, { starred: on }, on ? t("Starred") : t("Unstarred"), on ? t("Could not star this message") : t("Could not remove the star"));
   }
   if (action === "read") {
     const unread = Number(m.unread) > 0;
-    return swipeFlag(m, { unread: !unread }, unread ? "Marked read" : "Marked unread", unread ? "Could not mark it read" : "Could not mark it unread");
+    return swipeFlag(m, { unread: !unread }, unread ? t("Marked read") : t("Marked unread"), unread ? t("Could not mark it read") : t("Could not mark it unread"));
   }
 }
 
@@ -12304,7 +12311,7 @@ const threadMove = (key, a, b, ids) =>
 async function dropMove(rows, target, fromSelection) {
   const todo = rows.filter((m) => String(m.folder || "inbox") !== target);
   if (!todo.length) return;
-  const said = `Moved to ${folderLabel(target)}`;
+  const said = t("Moved to {folder}", { folder: folderLabel(target) });
   if (fromSelection) exitSelmode();
   if (todo.length === 1) return swipeFile(todo[0], target, said);
 
@@ -12330,7 +12337,7 @@ async function dropMove(rows, target, fromSelection) {
   if (done.length < todo.length) loadList();
   if (!done.length) return;
   const n = done.reduce((a, r) => a + r.n, 0);
-  toast(n > 1 ? `${said} — ${n} messages` : said, async () => {
+  toast(n > 1 ? t("Moved {n} messages to {folder}", { n, folder: folderLabel(target) }) : said, async () => {
     await Promise.all(done.map((r) => (r.key ? threadMove(r.key, target, r.from, r.ids) : fileMessage(r.id, r.from))));
     await Promise.all([loadList(), refreshCounts()]);
   });
@@ -12371,7 +12378,7 @@ async function dropMove(rows, target, fromSelection) {
     if (rows.length > 1 && e.dataTransfer.setDragImage) {
       const ghost = document.createElement("div");
       ghost.className = "dragghost";
-      ghost.textContent = `${rows.length} messages`;
+      ghost.textContent = t("{n, plural, one {# message} other {# messages}}", { n: rows.length });
       document.body.appendChild(ghost);
       e.dataTransfer.setDragImage(ghost, 14, 14);
       setTimeout(() => ghost.remove());
@@ -12379,7 +12386,7 @@ async function dropMove(rows, target, fromSelection) {
     drag = { rows, fromSelection, at: Date.now() };
     const targets = dropTargets(rows, folders);
     strip.innerHTML =
-      `<div class="hint">${rows.length > 1 ? `Drop ${rows.length} messages on a folder` : "Drop on a folder to move it"} · Esc cancels</div>` +
+      `<div class="hint">${rows.length > 1 ? t("Drop {n} messages on a folder · Esc cancels", { n: rows.length }) : t("Drop on a folder to move it · Esc cancels")}</div>` +
       targets.map((f) => `<div class="dt" data-folder="${esc(f.folder)}" title="${esc(folderPath(f.folder))}">${esc(folderLabel(f.folder))}</div>`).join("");
     // After the browser has taken its picture of the row, so the strip is not
     // in it and nothing moves under the pointer before the drag has begun.
@@ -12423,7 +12430,7 @@ function enterSelmode() {
   document.body.classList.add("selmode");
   $("#bulkbar").hidden = false;
   requestAnimationFrame(() => $("#bulkbar").classList.add("up"));
-  $("#bulkCount").textContent = `${picked.size} selected`;
+  $("#bulkCount").textContent = t("{n, plural, one {# selected} other {# selected}}", { n: picked.size });
 }
 function exitSelmode() {
   picked.clear();
@@ -12450,11 +12457,11 @@ function togglePick(wrap) {
   wrap.classList.toggle("picked", picked.has(id));
   const box = wrap.querySelector(".selbox");
   if (box) box.setAttribute("aria-pressed", String(picked.has(id)));
-  $("#bulkCount").textContent = `${picked.size} selected`;
-  say(`${picked.size} selected`);
+  $("#bulkCount").textContent = t("{n, plural, one {# selected} other {# selected}}", { n: picked.size });
+  say(t("{n, plural, one {# selected} other {# selected}}", { n: picked.size }));
 }
 /** Files every picked row at once. One message if one went, a count if many. */
-function bulkApply(target, said) {
+function bulkApply(target, said, saidMany) {
   const ids = [...picked];
   if (!ids.length) return;
   // The rows as listed, read before they leave the list. A row that stands
@@ -12480,21 +12487,21 @@ function bulkApply(target, said) {
     // Whatever did not move is still where it was; show it again.
     if (counts.includes(0)) loadList();
     if (!ok) return;
-    toast(ok > 1 ? `${said} — ${ok} messages` : said);
-    say(ok > 1 ? `${said} ${ok} messages` : said);
+    toast(ok > 1 ? saidMany(ok) : said);
+    say(ok > 1 ? saidMany(ok) : said);
     refreshCounts();
   });
 }
-$("#bulkArchive").addEventListener("click", () => bulkApply("archive", "Archived"));
+$("#bulkArchive").addEventListener("click", () => bulkApply("archive", t("Archived"), (n) => t("{n} messages archived", { n })));
 $("#bulkDelete").addEventListener("click", async () => {
   const n = picked.size;
   if (!n) return;
   if (!(await ask(
-    n > 1 ? `Delete these ${n} messages?` : "Delete this message?",
-    "They are moved to Trash at iCloud. Undo is offered on the next single action, not on a batch.",
-    { ok: "Delete", danger: true }
+    n > 1 ? t("Delete these {n} messages?", { n }) : t("Delete this message?"),
+    t("They are moved to Trash at iCloud. Undo is offered on the next single action, not on a batch."),
+    { ok: t("Delete"), danger: true }
   ))) return;
-  bulkApply("trash", "Deleted");
+  bulkApply("trash", t("Deleted"), (n) => t("{n} messages deleted", { n }));
 });
 $("#bulkMove").addEventListener("click", () => {
   if (!picked.size) return;
@@ -12502,7 +12509,7 @@ $("#bulkMove").addEventListener("click", () => {
   $("#moveList").innerHTML = folders
     .map((f) => `<button class="mi" data-move="${esc(f.folder)}"><span class="grow">${esc(folderPath(f.folder))}</span><span class="side num">${f.n}</span></button>`)
     .join("");
-  $("#moveSub").textContent = "Filed at the provider, not just here.";
+  $("#moveSub").textContent = t("Filed at the provider, not just here.");
   openSheet("#moveSheet");
 });
 $("#bulkDone").addEventListener("click", exitSelmode);
