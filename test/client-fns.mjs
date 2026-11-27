@@ -26,6 +26,8 @@ function decl(name) {
 
 /** These declarations, with what they expect around them passed in. */
 export function clientFns(names, globals = {}) {
+  // The translator as English leaves it: the page defines these at its top.
+  globals = { t: (s) => s, tw: (s) => s, sense: (s) => s.replace(/ \[[^\]]+\]$/, ""), LOCALE: "en", ...globals };
   const keys = Object.keys(globals);
   const src = names.map(decl).join("\n");
   return new Function(...keys, `${src}\nreturn { ${names.join(", ")} };`)(...keys.map((k) => globals[k]));

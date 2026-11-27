@@ -208,7 +208,7 @@ self.addEventListener("push", (event) => {
       }
 
       const title = state.from || t("New mail");
-      const line = state.subject || (state.unread ? t("{n} unread", { n: state.unread }) : t("Open to see what arrived"));
+      const line = state.subject || (state.unread ? t("{n, plural, other {# unread}}", { n: state.unread }) : t("Open to see what arrived"));
 
       // The same doorbell, rung twice.
       //

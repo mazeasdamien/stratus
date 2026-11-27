@@ -587,6 +587,7 @@ function decl(name) {
 
 /** Ces fonctions-là, avec ce qu'elles attendent autour d'elles. */
 function clientFns(names, globals = {}) {
+  globals = { t: (s) => s, tw: (s) => s, sense: (s) => s.replace(/ \[[^\]]+\]$/, ""), LOCALE: "en", ...globals };
   const keys = Object.keys(globals);
   const src = names.map(decl).join("\n");
   return new Function(...keys, `${src}\nreturn { ${names.join(", ")} };`)(...keys.map((k) => globals[k]));
@@ -683,7 +684,7 @@ console.log("\n-- client : bascules Cc / Bcc ---------------");
   // illisible à l'ouverture du composeur.
   const m = /const CC_TOGGLES = (\[[\s\S]*?\n\]);/.exec(clientScript);
   ok(!!m, "CC_TOGGLES présent");
-  const list = m ? new Function(`return ${m[1]}`)() : [];
+  const list = m ? new Function("t", `return ${m[1]}`)((s) => s) : [];
   eq(list.map((t) => t[4]), ["Cc", "Bcc"], "le libellé est la 5e case");
   eq(list.map((t) => t.length), [5, 5], "cinq cases, pas quatre");
   ok(

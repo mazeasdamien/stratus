@@ -387,7 +387,7 @@ function scanScript(file, text, base = 0, lineOf, region = null) {
     }
   }
 
-  const looksText = (v) => /\p{L}{2}/u.test(v) && (/\s/.test(v.trim()) || /^[A-Z\p{Lu}]/u.test(v)) && !/^[#.\[]/.test(v) && !/^[a-z]+[A-Z][A-Za-z]*$/.test(v);
+  const looksText = (v) => /\p{L}{2}/u.test(v) && (/\s/.test(v.trim()) || /^[A-Z\p{Lu}]/u.test(v)) && !/^[#.\[]/.test(v) && !/^[a-z]+[A-Z][A-Za-z]*$/.test(v) && !/^[A-Z]+$/.test(v);
   const loneText = (tok) => tok.type === "str" ? tok.v : tok.type === "tpl" ? tok.parts.join("\u0001") : "";
   const opNear = (i) => ["===", "!==", "==", "!="].some((o) => (toks[i - 1] && toks[i - 1].v === o) || (toks[i + 1] && toks[i + 1].v === o));
   const keyProp = (i) => toks[i + 1] && toks[i + 1].type === "punct" && toks[i + 1].v === ":" && toks[i - 1] && toks[i - 1].type === "punct" && [",", "{"].includes(toks[i - 1].v);
@@ -451,7 +451,9 @@ function scanScript(file, text, base = 0, lineOf, region = null) {
     const alias = after && after.v === "=" && toks[i + 2] && toks[i + 2].type === "ident" && toks[i + 3] && toks[i + 3].v === "." && toks[i + 4] && toks[i + 4].v === "t" && toks[i + 5] && [",", ";"].includes(toks[i + 5].v);
     if (alias) continue;
     if (before && before.type === "ident" && /^(const|let|var)$/.test(before.v)) {
-      // to the end of the block that holds it
+      // to the end of the block that holds it; for a loop's own variable, the loop
+      const lp = toks[i - 2] && toks[i - 2].v === "(" && toks[i - 3] && toks[i - 3].v === "for" ? i - 2 : -1;
+      if (lp >= 0) { const c = match(toks, lp); scopes.push([i, toks[c + 1] && toks[c + 1].v === "{" ? match(toks, c + 1) : arrowEnd(toks, c + 1), tk]); continue; }
       let depth = 0;
       from = i; to = toks.length;
       for (let j = i; j < toks.length; j++) { const v = toks[j].type === "punct" ? toks[j].v : ""; if (v === "{" || v === "${") depth++; else if (v === "}") { if (!depth) { to = j; break; } depth--; } }
