@@ -341,6 +341,12 @@ try {
   ok(slow.body.error.includes("too long"), "a server that never answers is given up on");
   LIM.feedTimeoutMs = saved.feedTimeoutMs;
 
+  // A big feed is written in statements that stay inside D1's 100 values each.
+  const many = Array.from({ length: 600 }, (_, i) => ({ uid: `m${i}`, start: "20260501T090000Z", end: "20260501T100000Z", summary: `Match ${i}` }));
+  web = async () => new Response(feed(many), { status: 200 });
+  const big = await call("POST", `/api/calendar/calendars/${subId}/refresh`);
+  eq([big.body.ok, big.body.calendar.events], [true, 600], "a feed of six hundred events is stored");
+
   LIM.feedEvents = 3;
   web = async () => new Response(feed([A, B, C, { uid: "f4", start: "20260404T090000Z", end: "20260404T100000Z", summary: "Fourth" }]), { status: 200 });
   const capped = await call("POST", `/api/calendar/calendars/${subId}/refresh`);

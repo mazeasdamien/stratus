@@ -245,6 +245,22 @@ const INSERT = `INSERT OR REPLACE INTO cal_events (${COLUMNS.join(", ")}) VALUES
 const insertEvent = (env, row) => env.DB.prepare(INSERT).bind(...COLUMNS.map((c) => row[c] ?? null));
 
 /**
+ * Many rows as few statements as D1 allows: it takes 100 bound values to a
+ * statement, so five rows of seventeen. A feed of two thousand events is then
+ * four hundred statements in a batch rather than two thousand.
+ */
+function insertEvents(env, rows) {
+  const per = Math.floor(100 / COLUMNS.length);
+  const stmts = [];
+  for (let i = 0; i < rows.length; i += per) {
+    const chunk = rows.slice(i, i + per);
+    const sql = `INSERT OR REPLACE INTO cal_events (${COLUMNS.join(", ")}) VALUES ${chunk.map(() => `(${COLUMNS.map(() => "?").join(", ")})`).join(", ")}`;
+    stmts.push(env.DB.prepare(sql).bind(...chunk.flatMap((r) => COLUMNS.map((c) => r[c] ?? null))));
+  }
+  return stmts;
+}
+
+/**
  * A parsed file's events as rows. `uidFor` gives an event with no UID one that
  * is the same next time, so a feed that never writes UIDs keeps its rows' ids
  * from one fetch to the next instead of making new ones.
@@ -316,7 +332,7 @@ export async function refreshCalendar(env, cal, now = Date.now()) {
     }
     await env.DB.batch([
       env.DB.prepare("DELETE FROM cal_events WHERE calendar_id=?").bind(cal.id),
-      ...rows.map((r) => insertEvent(env, r)),
+      ...insertEvents(env, rows),
       env.DB.prepare("UPDATE calendars SET fetched_at=?, last_error=?, hash=? WHERE id=?").bind(now, note, fingerprint, cal.id),
     ]);
     return { ok: true, changed: true, events: rows.length };
@@ -822,9 +838,7 @@ async function importInto(env, cal, text) {
   }).map((r) => ({ ...r, id: known.get(`${r.uid}|${r.recurrence_id ?? ""}`) ?? r.id }));
   const aligned = rows.map((r) => (r.recurrence_id === null ? alignToRule(r) ?? { ...r, rrule: "" } : r));
   const droppedRules = parsed.events.filter((e, i) => e.rrule && !aligned[i].rrule).length;
-  for (let i = 0; i < aligned.length; i += 400) {
-    await env.DB.batch(aligned.slice(i, i + 400).map((r) => insertEvent(env, r)));
-  }
+  for (let i = 0; i < aligned.length; i += 500) await env.DB.batch(insertEvents(env, aligned.slice(i, i + 500)));
   let armed = 0;
   let unarmed = 0;
   const overrides = new Map();
@@ -982,7 +996,11 @@ async function api(request, env, path) {
     const id = decodeURIComponent(ev[1]);
     if (method === "GET") {
       const row = await getEvent(env, id);
-      return row ? json({ event: eventOf(row, await getCalendar(env, row.calendar_id)) }) : bad("No such event", 404);
+      if (!row) return bad("No such event", 404);
+      const event = eventOf(row, await getCalendar(env, row.calendar_id));
+      // An edited occurrence has no rule of its own; the sheet shows its series'.
+      if (row.recurrence_id !== null) event.rrule = (await masterOf(env, row))?.rrule ?? "";
+      return json({ event });
     }
     if (method === "PATCH") return patchEvent(env, id, await request.json().catch(() => ({})));
     if (method === "DELETE") {
