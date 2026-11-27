@@ -778,7 +778,15 @@ export async function syncIcloud(env, account, tally = {}) {
         if (doc.calendar) await indexEvent(env, id, account.id, doc.calendar, row.subject);
       }
       // Asked before the rows exist: mail new to the inbox is what rules act on.
-      const arrived = app === "inbox" && rows.length ? await arrivals(env, account.id, rows, last, texts) : [];
+      // A failure to ask means no rules this pass, never no mail: the rows
+      // below are stored either way.
+      const arrived =
+        app === "inbox" && rows.length
+          ? await arrivals(env, account.id, rows, last, texts).catch((e) => {
+              console.log(`rules: ${e.message || e}`);
+              return [];
+            })
+          : [];
       if (rows.length) {
         await storeRows(env, account.id, rows);
         await env.DB.prepare(
