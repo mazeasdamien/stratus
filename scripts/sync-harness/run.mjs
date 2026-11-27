@@ -58,6 +58,7 @@ const OLD = SCHEMA.map((s) =>
   s
     .replace(/^\s*-- First References[\s\S]*?thread_key  TEXT NOT NULL DEFAULT '',\n\s*refs .*\n/m, "  thread_key  TEXT NOT NULL DEFAULT '',\n")
     .replace(/\n\s*-- Where the provider has it[\s\S]*?uid         INTEGER NOT NULL DEFAULT 0,/m, "")
+    .replace(/\n\s*-- File names of the attachments[\s\S]*?att_names   TEXT,/m, "")
     // And the events table from before it told a floating time from a fixed one.
     .replace(/\n\s*floating    INTEGER[^\n]*/, "")
 );
@@ -65,7 +66,7 @@ for (const s of OLD) DB.raw.exec(s);
 const eventCols = () => DB.raw.prepare("SELECT name FROM pragma_table_info('events')").all().map((r) => r.name);
 ok(eventCols().includes("all_day") && !eventCols().includes("floating"), "old schema has an events table without floating: " + eventCols().join(","));
 const cols = DB.raw.prepare("SELECT name FROM pragma_table_info('messages')").all().map((r) => r.name);
-ok(!cols.includes("uid") && !cols.includes("refs"), "old schema really lacks the new columns: " + cols.join(","));
+ok(!cols.includes("uid") && !cols.includes("refs") && !cols.includes("att_names"), "old schema really lacks the new columns: " + cols.join(","));
 
 const latin = (s) => Buffer.from(s, "utf8").toString("latin1");
 // Dated within the last hour, a minute apart in arrival order: push only rings
@@ -109,6 +110,7 @@ for (let i = 0; i < 4; i++) await pass1("initial " + i);
 const newCols = DB.raw.prepare("SELECT name FROM pragma_table_info('messages')").all().map((r) => r.name);
 ok(newCols.includes("uid") && newCols.includes("mailbox") && newCols.includes("refs"), "heal added uid/mailbox/refs");
 ok(DB.raw.prepare("SELECT name FROM sqlite_master WHERE name='idx_messages_uid'").get(), "uid index created after heal");
+ok(newCols.includes("att_names") && DB.raw.prepare("SELECT name FROM sqlite_master WHERE name='idx_messages_att_todo'").get(), "heal added att_names and its backlog index");
 eq(count(), 8, "all 8 messages stored");
 eq([row("<a@x>").mailbox, row("<a@x>").uid], ["INBOX", A.uid], "row A placed at INBOX/uid");
 eq(row("<a@x>").thread_key, "<a@x>", "root keyed on own id");
@@ -751,6 +753,39 @@ const nightly = [];
 await worker.scheduled({ cron: "17 3 * * *" }, env, { waitUntil: (p) => nightly.push(p) });
 await Promise.all(nightly);
 eq(failRows().map((r) => r.n), [1], "the nightly run drops the counts that have expired and keeps the live one");
+
+// ── Search operators over mail that really went through the sync ──
+// Three new messages: one with a file, one with only an inline logo, one with
+// nothing. The first is the only one has:attachment may find.
+const mime = (id, subject, parts) =>
+  latin(
+    `From: Zoé <zoe@x.fr>\r\nTo: me@example.com\r\nSubject: ${subject}\r\nDate: ${new Date((clock += 60_000)).toUTCString()}\r\nMessage-ID: ${id}\r\nMIME-Version: 1.0\r\n` +
+      `Content-Type: multipart/mixed; boundary="B"\r\n\r\n--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nle devis est prêt\r\n${parts}--B--\r\n`
+  );
+imap.add("INBOX", mime("<att@x>", "Devis joint", `--B\r\nContent-Type: application/pdf; name="devis-2026.pdf"\r\nContent-Disposition: attachment; filename="devis-2026.pdf"\r\nContent-Transfer-Encoding: base64\r\n\r\nJVBERi0=\r\n`));
+imap.add("INBOX", mime("<logo@x>", "Devis logo", `--B\r\nContent-Type: image/png; name="logo.png"\r\nContent-Disposition: inline; filename="logo.png"\r\nContent-ID: <logo1>\r\nContent-Transfer-Encoding: base64\r\n\r\niVBORw0=\r\n`));
+imap.add("INBOX", msg("<none@x>", "Devis seul", "", "le devis est prêt"));
+for (let i = 0; i < 3; i++) await pass1("attachments " + i);
+eq([row("<att@x>").att_names, row("<logo@x>").att_names, row("<none@x>").att_names], ["devis-2026.pdf", "", ""], "a newly synced message records its attachment names; an inline logo and a plain mail record none");
+
+const cookie = signedIn.cookie.split(";")[0];
+const searchIds = async (q) => {
+  const res = await worker.fetch(new Request(`http://x/api/messages?folder=all&limit=100&tz=-120&q=${encodeURIComponent(q)}`, { headers: { Cookie: cookie } }), env, { waitUntil() {} });
+  return (await res.json()).messages.map((m) => m.subject).sort();
+};
+eq(await searchIds("devis"), ["Devis joint", "Devis logo", "Devis seul"], "the route still searches plain words");
+eq(await searchIds("devis has:attachment"), ["Devis joint"], "has:attachment finds the message synced with a file, and not the other two");
+eq(await searchIds("attachment:2026"), ["Devis joint"], "attachment:name finds it by file name");
+eq(await searchIds("devis from:zoe is:unread -joint"), ["Devis logo", "Devis seul"], "operators and a negative together, through the route");
+
+// Mail stored before the column existed has no answer until the cron reaches
+// it: it matches neither operator, and then it does.
+DB.raw.prepare("UPDATE messages SET att_names=NULL WHERE mid='<att@x>'").run();
+eq(await searchIds("devis has:attachment"), [], "a message whose attachments are unknown is not found by has:attachment");
+await pass1("backfill");
+eq(row("<att@x>").att_names, "devis-2026.pdf", "the backfill reads the names back from the stored body");
+eq(await searchIds("devis has:attachment"), ["Devis joint"], "and then has:attachment finds it");
+eq(DB.raw.prepare("SELECT COUNT(*) n FROM messages WHERE att_names IS NULL").get().n, 0, "nothing is left waiting");
 
 console.log(`${fail ? "✗" : "✓"} ${pass} assertions passées, ${fail} échec(s) (caps ${caps.join(" ")})`);
 process.exit(fail ? 1 : 0);
